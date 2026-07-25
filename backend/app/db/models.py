@@ -181,6 +181,27 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Health(Base):
+    """Composite per-repo health score (app/engines/health.py). One row per
+    repo_id, overwritten (delete-then-insert via wipe_repo_data, same as
+    every other repo-scoped table) on each re-run rather than updated in
+    place, so re-analysis stays a full replace like everything else."""
+
+    __tablename__ = "health"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    high_risk_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    cycle_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    hidden_dependency_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Baseline(Base):
     """Corpus percentile baselines. Empty until Release C's CorpusBaseline lands."""
 

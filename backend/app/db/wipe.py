@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Commit, CommitFile, Coupling, Dependency, File, FileMetrics, Finding
+from app.db.models import Commit, CommitFile, Coupling, Dependency, File, FileMetrics, Finding, Health
 
 
 def wipe_repo_data(repo_id: uuid.UUID, session: Session) -> None:
@@ -29,5 +29,6 @@ def wipe_repo_data(repo_id: uuid.UUID, session: Session) -> None:
     session.execute(delete(Coupling).where(Coupling.repo_id == repo_id))
     session.execute(delete(Dependency).where(Dependency.repo_id == repo_id))
     session.execute(delete(Finding).where(Finding.repo_id == repo_id))
+    session.execute(delete(Health).where(Health.repo_id == repo_id))
     session.execute(delete(Commit).where(Commit.repo_id == repo_id))
     session.execute(delete(File).where(File.repo_id == repo_id))

@@ -8,7 +8,10 @@ from app.db.base import SessionLocal
 from app.db.models import Job, JobStatus, Repo, RepoStatus
 from app.engines.architecture import ArchEngine
 from app.engines.coupling import CouplingEngine
+from app.engines.findings import FindingsRankEngine
+from app.engines.health import HealthEngine
 from app.engines.overlay import OverlayEngine
+from app.engines.risk import RiskEngine
 from app.ingestion.cloner import clone_repo
 from app.ingestion.miner import mine_repo
 from app.ingestion.persist import persist_mined_repo
@@ -25,11 +28,18 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
 
     Structural (import) parsing runs here, while the clone still exists, and
     its edges are persisted alongside the mined commits/files (see
-    app/languages/scanner.py). Coupling/Architecture/Overlay only ever read
-    the DB, so they run after the clone is already deleted — this is the one
+    app/languages/scanner.py). Every analysis engine only ever reads the DB,
+    so they all run after the clone is already deleted — this is the one
     pipeline covering both ingestion and analysis (master-context.md sec 9);
     repo.status tracks it as mining -> analyzing -> ready. An engine failure
     fails the whole job/repo, same as a mining failure would.
+
+    Engine order is fixed and load-bearing: Coupling -> Architecture ->
+    Overlay (needs both of the previous two) -> Risk (needs Coupling's
+    max-coupling-degree per file) -> Health (needs Risk's file_metrics plus
+    Architecture's cycles and Overlay's hidden-dependency count) ->
+    FindingsRank (needs every other engine's findings already written, to
+    compute one global rank across categories).
     """
     session = SessionLocal()
     clone_path: str | None = None
@@ -67,6 +77,9 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
         CouplingEngine().run(repo_id, session)
         ArchEngine().run(repo_id, session)
         OverlayEngine().run(repo_id, session)
+        RiskEngine().run(repo_id, session)
+        HealthEngine().run(repo_id, session)
+        FindingsRankEngine().run(repo_id, session)
         _update_job(session, job_id, progress=95)
         session.commit()
 

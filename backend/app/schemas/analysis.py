@@ -57,3 +57,48 @@ class HiddenDependencyOut(BaseModel):
 class HiddenDependencyResponse(BaseModel):
     repo_id: uuid.UUID
     pairs: list[HiddenDependencyOut]
+
+
+class RiskFileOut(BaseModel):
+    file_path: str
+    language: str
+    risk_score: float
+    risk_confidence: float
+    hotspot_rank: int
+    churn_total: int
+    complexity: float
+    commit_count: int
+    max_coupling_degree: float
+
+
+class RiskResponse(BaseModel):
+    repo_id: uuid.UUID
+    calibration: str
+    files: list[RiskFileOut]
+
+
+class HealthResponse(BaseModel):
+    repo_id: uuid.UUID
+    calibration: str
+    score: float
+    high_risk_ratio: float
+    cycle_count: int
+    hidden_dependency_count: int
+    computed_at: str
+
+
+class FindingOut(BaseModel):
+    id: uuid.UUID
+    category: str
+    severity: Severity
+    confidence: float
+    file_path: str | None
+    evidence_sha: str | None
+    title: str
+    detail: str
+    rank: int
+
+
+class FindingsResponse(BaseModel):
+    repo_id: uuid.UUID
+    findings: list[FindingOut]

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
-from app.db.models import Coupling, Repo
+from app.db.models import Coupling, File, FileMetrics, Finding, Health, Repo
 from app.engines.architecture import (
     build_graph,
     cycle_severity,
@@ -16,16 +16,29 @@ from app.engines.architecture import (
 )
 from app.engines.coupling import confidence_hint, is_low_confidence
 from app.engines.overlay import compute_hidden_dependencies
+from app.engines.risk import max_coupling_by_path
 from app.schemas.analysis import (
     ArchitectureResponse,
     CouplingPairOut,
     CouplingResponse,
     CycleOut,
     DependencyEdgeOut,
+    FindingOut,
+    FindingsResponse,
+    HealthResponse,
     HiddenDependencyOut,
     HiddenDependencyResponse,
     LayeringViolationOut,
+    RiskFileOut,
+    RiskResponse,
 )
+
+# Calibration is always "heuristic" until Release C wires a CorpusBaseline in
+# behind the same BaselineProvider interface (master-context.md sec 9,
+# decision 2) -- surfaced to the client so the UI can honestly label
+# risk/health as not-yet-corpus-calibrated rather than imply a precision
+# these numbers don't have yet.
+CALIBRATION_LABEL = "heuristic"
 
 router = APIRouter()
 
@@ -111,3 +124,96 @@ def get_hidden_dependencies(repo_id: uuid.UUID, db: Session = Depends(get_db)) -
         for h in hidden
     ]
     return HiddenDependencyResponse(repo_id=repo_id, pairs=pairs)
+
+
+@router.get("/repos/{repo_id}/risk", response_model=RiskResponse)
+def get_risk(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> RiskResponse:
+    """Every scored file, ranked by hotspot_rank -- RiskEngine's persisted
+    file_metrics rows (app/engines/risk.py), read straight rather than
+    recomputed (unlike coupling/architecture, this isn't cheap enough or
+    pure-graph enough to casually recompute per request, and the whole point
+    of hotspot_rank is that it was decided once, deterministically, at
+    analysis time)."""
+    _get_repo_or_404(repo_id, db)
+
+    rows = db.execute(
+        select(File, FileMetrics)
+        .join(FileMetrics, FileMetrics.file_id == File.id)
+        .where(File.repo_id == repo_id)
+        .order_by(FileMetrics.hotspot_rank)
+    ).all()
+
+    max_coupling = max_coupling_by_path(repo_id, db)
+
+    files = [
+        RiskFileOut(
+            file_path=file.path,
+            language=file.language,
+            risk_score=metrics.risk_score,
+            risk_confidence=metrics.risk_confidence,
+            hotspot_rank=metrics.hotspot_rank,
+            churn_total=file.churn_total,
+            complexity=file.complexity,
+            commit_count=file.commit_count,
+            max_coupling_degree=max_coupling.get(file.path, 0.0),
+        )
+        for file, metrics in rows
+    ]
+    return RiskResponse(repo_id=repo_id, calibration=CALIBRATION_LABEL, files=files)
+
+
+@router.get("/repos/{repo_id}/health", response_model=HealthResponse)
+def get_health(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> HealthResponse:
+    """The single composite health score (app/engines/health.py) -- read
+    straight, not recomputed, since it's already a persisted aggregate of
+    the other engines' output for this analysis run."""
+    _get_repo_or_404(repo_id, db)
+
+    health = db.scalar(select(Health).where(Health.repo_id == repo_id))
+    if health is None:
+        raise HTTPException(status_code=404, detail="Health not computed for this repo yet.")
+
+    return HealthResponse(
+        repo_id=repo_id,
+        calibration=CALIBRATION_LABEL,
+        score=health.score,
+        high_risk_ratio=health.high_risk_ratio,
+        cycle_count=health.cycle_count,
+        hidden_dependency_count=health.hidden_dependency_count,
+        computed_at=health.computed_at.isoformat(),
+    )
+
+
+@router.get("/repos/{repo_id}/findings", response_model=FindingsResponse)
+def get_findings(
+    repo_id: uuid.UUID, category: str | None = None, db: Session = Depends(get_db)
+) -> FindingsResponse:
+    """The single ranked findings stream (master-context.md sec 7 / sec 9
+    decision 5) -- one global rank across every category (risk, architecture,
+    hidden_dependency), finalized once per analysis run by
+    FindingsRankEngine. Optionally filtered to a single category, but even
+    filtered the ordering is still the global rank, not a re-rank within the
+    filtered subset."""
+    _get_repo_or_404(repo_id, db)
+
+    query = select(Finding).where(Finding.repo_id == repo_id)
+    if category is not None:
+        query = query.where(Finding.category == category)
+    query = query.order_by(Finding.rank)
+
+    rows = db.scalars(query).all()
+    findings = [
+        FindingOut(
+            id=f.id,
+            category=f.category,
+            severity=f.severity,
+            confidence=f.confidence,
+            file_path=f.file_path,
+            evidence_sha=f.evidence_sha,
+            title=f.title,
+            detail=f.detail,
+            rank=f.rank,
+        )
+        for f in rows
+    ]
+    return FindingsResponse(repo_id=repo_id, findings=findings)
