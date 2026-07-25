@@ -8,6 +8,7 @@ from app.db.base import SessionLocal
 from app.db.models import Commit, CommitFile, File, Job, JobStatus, Repo, RepoStatus
 from app.db.wipe import wipe_repo_data
 from app.ingestion.cloner import clone_repo
+from app.ingestion.miner import mine_repo
 from app.jobs.runner import run_ingestion_job
 
 
@@ -164,3 +165,42 @@ def test_reingestion_is_idempotent_full_replace(fixture_repo, db_session):
         assert commit_files_after_second == commit_files_after_first
     finally:
         _cleanup_repo(db_session, repo_id)
+
+
+def test_mined_paths_are_posix_even_on_windows(tmp_path):
+    """Regression test: PyDriller/GitPython hand back OS-native path
+    separators (backslashes on Windows), which -- for files in a
+    subdirectory -- silently broke `is_deleted` (comparing a backslash path
+    against `_final_tree_paths`' posix set never matches) and would have
+    broken the hidden-dependency overlay too, since
+    app/languages/scanner.py always produces posix paths. The original
+    fixture repo (top-level a.py/b.py only) never caught this because a
+    bare filename has no separator to get mangled.
+    """
+    repo_dir = tmp_path / "nested-fixture-repo"
+    repo_dir.mkdir()
+    _git(repo_dir, "init", "-b", "main")
+    _git(repo_dir, "config", "user.email", "test@example.com")
+    _git(repo_dir, "config", "user.name", "Test User")
+
+    (repo_dir / "pkg").mkdir()
+    (repo_dir / "pkg" / "a.py").write_text("value = 1\n")
+    _git(repo_dir, "add", "pkg/a.py")
+    _git(repo_dir, "commit", "-m", "add pkg/a.py")
+
+    (repo_dir / "pkg" / "b.py").write_text("value = 2\n")
+    _git(repo_dir, "add", "pkg/b.py")
+    _git(repo_dir, "commit", "-m", "add pkg/b.py")
+
+    mined = mine_repo(str(repo_dir))
+
+    paths = {f.path for f in mined.files}
+    assert paths == {"pkg/a.py", "pkg/b.py"}
+    assert not any("\\" in p for p in paths)
+
+    files_by_path = {f.path: f for f in mined.files}
+    assert files_by_path["pkg/a.py"].is_deleted is False
+    assert files_by_path["pkg/b.py"].is_deleted is False
+
+    for commit in mined.commits:
+        assert not any("\\" in p for p in commit.file_paths)

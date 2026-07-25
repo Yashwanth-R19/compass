@@ -77,6 +77,16 @@ def mine_repo(repo_path: str) -> MinedRepo:
             path = mf.new_path or mf.old_path
             if path is None:
                 continue
+            # PyDriller/GitPython hand back OS-native separators on Windows
+            # (backslashes) even though git itself always stores paths with
+            # forward slashes. Normalize immediately so these paths agree
+            # with everything else that touches a repo-relative path
+            # (_final_tree_paths' is_deleted check below, and -- critically
+            # -- app/languages/scanner.py's structural edges, which are
+            # always posix). Without this, is_deleted is wrong on Windows
+            # and the hidden-dependency overlay can never match a coupling
+            # pair to its real import edge there.
+            path = path.replace("\\", "/")
 
             added = mf.added_lines or 0
             deleted = mf.deleted_lines or 0

@@ -6,17 +6,30 @@ from datetime import datetime, timezone
 
 from app.db.base import SessionLocal
 from app.db.models import Job, JobStatus, Repo, RepoStatus
+from app.engines.architecture import ArchEngine
+from app.engines.coupling import CouplingEngine
+from app.engines.overlay import OverlayEngine
 from app.ingestion.cloner import clone_repo
 from app.ingestion.miner import mine_repo
 from app.ingestion.persist import persist_mined_repo
+from app.languages.scanner import extract_structural_edges
 
 
 def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
-    """Clone -> mine -> persist a repo, tracking progress on the job row.
+    """Clone -> mine -> parse structure -> persist -> delete clone -> run
+    analysis engines, tracking progress on the job row throughout.
 
     Transport-agnostic by design: called from FastAPI BackgroundTasks today,
     but takes no FastAPI objects and can be invoked identically from a future
     GitHub Actions worker. Always cleans up the clone, success or failure.
+
+    Structural (import) parsing runs here, while the clone still exists, and
+    its edges are persisted alongside the mined commits/files (see
+    app/languages/scanner.py). Coupling/Architecture/Overlay only ever read
+    the DB, so they run after the clone is already deleted — this is the one
+    pipeline covering both ingestion and analysis (master-context.md sec 9);
+    repo.status tracks it as mining -> analyzing -> ready. An engine failure
+    fails the whole job/repo, same as a mining failure would.
     """
     session = SessionLocal()
     clone_path: str | None = None
@@ -27,14 +40,36 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
 
         repo = session.get(Repo, repo_id)
         clone_path = clone_repo(repo.url)
-        _update_job(session, job_id, progress=20)
+        _update_job(session, job_id, progress=15)
         session.commit()
 
         mined = mine_repo(clone_path)
-        _update_job(session, job_id, progress=60)
+        _update_job(session, job_id, progress=40)
         session.commit()
 
-        persist_mined_repo(repo_id, mined, session)
+        dependencies = extract_structural_edges(clone_path)
+        _update_job(session, job_id, progress=55)
+        session.commit()
+
+        persist_mined_repo(repo_id, mined, dependencies, session)
+        _update_job(session, job_id, progress=70)
+        session.commit()
+
+        # Clone is disposable and no longer needed — everything from here on
+        # is pure DB-only analysis (master-context.md sec 9: "the clone is
+        # disposable").
+        _rmtree_force(clone_path)
+        clone_path = None
+
+        _update_repo(session, repo_id, status=RepoStatus.analyzing)
+        session.commit()
+
+        CouplingEngine().run(repo_id, session)
+        ArchEngine().run(repo_id, session)
+        OverlayEngine().run(repo_id, session)
+        _update_job(session, job_id, progress=95)
+        session.commit()
+
         _update_repo(
             session,
             repo_id,
@@ -42,9 +77,6 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
             commit_count=len(mined.commits),
             analyzed_at=datetime.now(timezone.utc),
         )
-        _update_job(session, job_id, progress=90)
-        session.commit()
-
         _update_job(
             session, job_id, status=JobStatus.done, progress=100, finished_at=datetime.now(timezone.utc)
         )
