@@ -55,7 +55,7 @@ export function RiskPage() {
   return (
     <Card
       title="Files by risk"
-      subtitle={`${risk.data.files.length} files — heuristic score, not yet corpus-calibrated`}
+      subtitle={`${risk.data.files.length} ${risk.data.files.length === 1 ? "file" : "files"} — heuristic score, not yet corpus-calibrated`}
     >
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
