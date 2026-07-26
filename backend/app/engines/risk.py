@@ -38,7 +38,9 @@ def max_coupling_by_path(repo_id: uuid.UUID, session: Session) -> dict[str, floa
     return max_degree
 
 
-def _most_recent_significant_commit_sha(repo_id: uuid.UUID, path: str, session: Session) -> str | None:
+def _most_recent_significant_commit_sha(
+    repo_id: uuid.UUID, path: str, session: Session
+) -> str | None:
     """Evidence commit for a risk finding: the most recent commit touching
     this file, preferring an ``is_fix`` commit over a merely-recent one when
     both exist -- "significant" here means "looks like it was fixing
@@ -118,16 +120,18 @@ class RiskEngine(Engine):
         norm_churn_complexity = self._baseline.risk_normalizer(
             "churn_x_complexity", dominant_language, size_bucket
         )(churn_x_complexity)
-        norm_coupling = self._baseline.risk_normalizer("coupling_degree", dominant_language, size_bucket)(
-            coupling_degrees
-        )
-        norm_commit_count = self._baseline.risk_normalizer("commit_count", dominant_language, size_bucket)(
-            commit_counts
-        )
+        norm_coupling = self._baseline.risk_normalizer(
+            "coupling_degree", dominant_language, size_bucket
+        )(coupling_degrees)
+        norm_commit_count = self._baseline.risk_normalizer(
+            "commit_count", dominant_language, size_bucket
+        )(commit_counts)
 
         risk_scores = [
             0.60 * c + 0.25 * k + 0.15 * m
-            for c, k, m in zip(norm_churn_complexity, norm_coupling, norm_commit_count)
+            for c, k, m in zip(
+                norm_churn_complexity, norm_coupling, norm_commit_count, strict=False
+            )
         ]
 
         # risk_confidence is INDEPENDENT of risk_score -- not part of the

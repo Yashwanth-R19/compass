@@ -61,7 +61,9 @@ def get_coupling(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> CouplingR
 
     low_confidence = is_low_confidence(repo_id, db)
     rows = db.scalars(
-        select(Coupling).where(Coupling.repo_id == repo_id).order_by(Coupling.coupling_degree.desc())
+        select(Coupling)
+        .where(Coupling.repo_id == repo_id)
+        .order_by(Coupling.coupling_degree.desc())
     ).all()
 
     pairs = [
@@ -98,14 +100,18 @@ def get_architecture(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> Archi
         edges=[DependencyEdgeOut(from_path=f, to_path=t) for f, t in edges],
         cycles=[CycleOut(files=cycle, severity=cycle_severity(len(cycle))) for cycle in cycles],
         layering_violations=[
-            LayeringViolationOut(from_path=f, to_path=t, kind=kind, severity=layering_violation_severity(kind))
+            LayeringViolationOut(
+                from_path=f, to_path=t, kind=kind, severity=layering_violation_severity(kind)
+            )
             for f, t, kind in violations
         ],
     )
 
 
 @router.get("/repos/{repo_id}/hidden-dependencies", response_model=HiddenDependencyResponse)
-def get_hidden_dependencies(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> HiddenDependencyResponse:
+def get_hidden_dependencies(
+    repo_id: uuid.UUID, db: Session = Depends(get_db)
+) -> HiddenDependencyResponse:
     """Coupled-but-not-imported pairs, ranked by coupling_degree desc -- the
     money insight (master-context.md sec 5): files that co-change without
     any import between them, recomputed fresh via app/engines/overlay.py."""

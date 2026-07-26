@@ -19,7 +19,9 @@ export function Card({
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-            {subtitle ? <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
+            {subtitle ? (
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
+            ) : null}
           </div>
           {action}
         </div>

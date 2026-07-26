@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
@@ -58,7 +59,7 @@ def _dotted_parts(node: Node) -> list[str]:
     """``a.b.c`` (a dotted_name node, possibly wrapped in aliased_import) -> ["a", "b", "c"]."""
     if node.type == "aliased_import":
         node = node.children[0]
-    return [c.text.decode() for c in node.children if c.type == "identifier"]
+    return [cast(bytes, c.text).decode() for c in node.children if c.type == "identifier"]
 
 
 def _resolve_module(repo_root: Path, rel_dir: Path, parts: list[str]) -> str | None:
@@ -97,7 +98,11 @@ def _resolve(node: Node, current_dir: Path, repo_root: Path) -> list[str]:
     relative = next((c for c in before if c.type == "relative_import"), None)
     if relative is not None:
         dots = sum(
-            1 for prefix in relative.children if prefix.type == "import_prefix" for tok in prefix.children if tok.type == "."
+            1
+            for prefix in relative.children
+            if prefix.type == "import_prefix"
+            for tok in prefix.children
+            if tok.type == "."
         )
         base_dir = current_dir
         for _ in range(dots - 1):
@@ -114,7 +119,7 @@ def _resolve(node: Node, current_dir: Path, repo_root: Path) -> list[str]:
     # Each imported name might itself be a submodule (`from pkg import sub`
     # where sub is pkg/sub.py) -- try that first per name, since it's the
     # more specific/accurate edge.
-    targets: list[str] = []
+    resolved_targets: list[str] = []
     for name_node in after:
         if name_node.type not in ("dotted_name", "aliased_import"):
             continue  # skips ',' tokens and wildcard_import ('*')
@@ -123,14 +128,14 @@ def _resolve(node: Node, current_dir: Path, repo_root: Path) -> list[str]:
             continue
         resolved = _resolve_module(repo_root, base_dir, [parts[-1]])
         if resolved:
-            targets.append(resolved)
+            resolved_targets.append(resolved)
 
-    if not targets:
+    if not resolved_targets:
         # No imported name resolved as its own submodule (or this was a
         # bare `from X import *`) -- fall back to the module itself, e.g.
         # `from pkg.utils import CONSTANT` resolving to pkg/utils.py.
         fallback = _resolve_module(repo_root, base_dir, [])
         if fallback:
-            targets.append(fallback)
+            resolved_targets.append(fallback)
 
-    return targets
+    return resolved_targets

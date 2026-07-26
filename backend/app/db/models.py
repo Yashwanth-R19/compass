@@ -153,7 +153,9 @@ class Finding(Base):
         UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
     )
     category: Mapped[str] = mapped_column(String, nullable=False)
-    severity: Mapped[Severity] = mapped_column(SAEnum(Severity, name="finding_severity"), nullable=False)
+    severity: Mapped[Severity] = mapped_column(
+        SAEnum(Severity, name="finding_severity"), nullable=False
+    )
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     file_path: Mapped[str | None] = mapped_column(String, nullable=True)
     evidence_sha: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -191,7 +193,11 @@ class Health(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+        UUID(as_uuid=True),
+        ForeignKey("repos.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
     )
     score: Mapped[float] = mapped_column(Float, nullable=False)
     high_risk_ratio: Mapped[float] = mapped_column(Float, nullable=False)

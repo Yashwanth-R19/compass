@@ -28,7 +28,9 @@ export function CouplingPage() {
 
   const hiddenPairKeys = useMemo(() => {
     if (!hiddenDeps.data) return new Set<string>();
-    return new Set(hiddenDeps.data.pairs.map((p) => [p.file_a_path, p.file_b_path].sort().join("|")));
+    return new Set(
+      hiddenDeps.data.pairs.map((p) => [p.file_a_path, p.file_b_path].sort().join("|")),
+    );
   }, [hiddenDeps.data]);
 
   const { nodes, edges } = useMemo(() => {
@@ -51,7 +53,8 @@ export function CouplingPage() {
   const capped = useCappedGraph(nodes, edges);
 
   if (coupling.isPending) return <LoadingState label="Loading coupling data…" />;
-  if (coupling.isError) return <ErrorState error={coupling.error} onRetry={() => void coupling.refetch()} />;
+  if (coupling.isError)
+    return <ErrorState error={coupling.error} onRetry={() => void coupling.refetch()} />;
   if (coupling.data.pairs.length === 0) {
     return (
       <EmptyState
@@ -65,8 +68,8 @@ export function CouplingPage() {
     <div className="flex flex-col gap-4">
       {coupling.data.low_confidence ? (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-          Low confidence: this repo doesn't have much analyzed history yet, so the small-repo fallback threshold
-          was used. Treat these pairs as directional signal, not certainty.
+          Low confidence: this repo doesn't have much analyzed history yet, so the small-repo
+          fallback threshold was used. Treat these pairs as directional signal, not certainty.
         </p>
       ) : null}
 
@@ -99,7 +102,11 @@ export function CouplingPage() {
                 nodeRelSize={4}
                 nodeLabel={(n) => (n as CappableNode).id}
                 nodeColor={() => "#475569"}
-                linkColor={(l) => (highlightHidden && (l as unknown as CouplingEdge).isHidden ? HIDDEN_COLOR : NORMAL_COLOR)}
+                linkColor={(l) =>
+                  highlightHidden && (l as unknown as CouplingEdge).isHidden
+                    ? HIDDEN_COLOR
+                    : NORMAL_COLOR
+                }
                 linkWidth={(l) => 0.5 + (l as unknown as CouplingEdge).weight * 4}
                 linkLabel={(l) => {
                   const link = l as unknown as CouplingEdge;
@@ -127,8 +134,8 @@ export function CouplingPage() {
                     ) : null}
                   </div>
                   <p className="text-xs text-slate-400 dark:text-slate-500">
-                    {formatPercent(p.coupling_degree)} coupled · {p.shared_revs} shared commits · {p.confidence}{" "}
-                    confidence
+                    {formatPercent(p.coupling_degree)} coupled · {p.shared_revs} shared commits ·{" "}
+                    {p.confidence} confidence
                   </p>
                 </li>
               );

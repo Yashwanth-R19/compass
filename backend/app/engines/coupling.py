@@ -54,7 +54,9 @@ def load_kept_changesets(repo_id: uuid.UUID, session: Session) -> list[list[str]
         return []
 
     rows = session.execute(
-        select(CommitFile.commit_id, CommitFile.file_path).where(CommitFile.commit_id.in_(commit_ids))
+        select(CommitFile.commit_id, CommitFile.file_path).where(
+            CommitFile.commit_id.in_(commit_ids)
+        )
     ).all()
 
     by_commit: dict[uuid.UUID, set[str]] = defaultdict(set)
@@ -121,7 +123,9 @@ def _build_rows(
     return rows
 
 
-def compute_coupling(repo_id: uuid.UUID, session: Session) -> tuple[list[dict[str, Any]], bool, int]:
+def compute_coupling(
+    repo_id: uuid.UUID, session: Session
+) -> tuple[list[dict[str, Any]], bool, int]:
     """Returns ``(rows, low_confidence, commits_analyzed)``.
 
     Tries the normal MIN_SHARED_REVS floor first. If that yields nothing at

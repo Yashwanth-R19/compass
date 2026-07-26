@@ -31,7 +31,8 @@ export function HomePage() {
   }
 
   const isWorking = submission && job && job.status !== "done" && job.status !== "failed";
-  const submitError = submitRepo.error instanceof ApiError ? submitRepo.error.message : submitRepo.error?.message;
+  const submitError =
+    submitRepo.error instanceof ApiError ? submitRepo.error.message : submitRepo.error?.message;
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-8 py-16 text-center">
@@ -40,8 +41,9 @@ export function HomePage() {
           Compass
         </h1>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Mine a GitHub repository's full commit history for hidden change-coupling, calibrated risk, and
-          architecture insight — computed deterministically, not guessed by an AI reading the current tree.
+          Mine a GitHub repository's full commit history for hidden change-coupling, calibrated
+          risk, and architecture insight — computed deterministically, not guessed by an AI reading
+          the current tree.
         </p>
       </div>
 
@@ -69,7 +71,9 @@ export function HomePage() {
         <div className="w-full rounded-lg border border-slate-200 bg-white p-5 text-left dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-slate-700 dark:text-slate-300">
-              {job.status === "failed" ? "Analysis failed" : JOB_STAGE_LABEL[job.status] ?? job.status}
+              {job.status === "failed"
+                ? "Analysis failed"
+                : (JOB_STAGE_LABEL[job.status] ?? job.status)}
             </span>
             <span className="text-slate-400 dark:text-slate-500">{job.progress}%</span>
           </div>
@@ -81,7 +85,9 @@ export function HomePage() {
           </div>
           {job.status === "failed" ? (
             <div className="mt-3">
-              <p className="text-sm text-red-600 dark:text-red-400">{job.error ?? "Unknown error."}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {job.error ?? "Unknown error."}
+              </p>
               <button
                 type="button"
                 onClick={() => setSubmission(null)}

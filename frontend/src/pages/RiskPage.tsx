@@ -9,7 +9,14 @@ import { confidenceLabel, formatPercent, formatScore } from "../lib/format";
 import type { RiskFileOut } from "../api/types";
 import type { RepoOutletContext } from "./RepoLayout";
 
-type SortKey = "hotspot_rank" | "risk_score" | "risk_confidence" | "complexity" | "churn_total" | "commit_count" | "max_coupling_degree";
+type SortKey =
+  | "hotspot_rank"
+  | "risk_score"
+  | "risk_confidence"
+  | "complexity"
+  | "churn_total"
+  | "commit_count"
+  | "max_coupling_degree";
 
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "hotspot_rank", label: "Rank" },
@@ -96,7 +103,10 @@ function RiskRow({ file }: { file: RiskFileOut }) {
         isLowConfidence ? "bg-amber-50/60 dark:bg-amber-500/5" : ""
       }`}
     >
-      <td className="max-w-[280px] truncate py-2 pr-3 font-mono text-xs text-slate-700 dark:text-slate-300" title={file.file_path}>
+      <td
+        className="max-w-[280px] truncate py-2 pr-3 font-mono text-xs text-slate-700 dark:text-slate-300"
+        title={file.file_path}
+      >
         {file.file_path}
       </td>
       <td className="py-2 pr-3 text-slate-500 dark:text-slate-400">#{file.hotspot_rank + 1}</td>
@@ -108,7 +118,9 @@ function RiskRow({ file }: { file: RiskFileOut }) {
               style={{ width: `${Math.round(file.risk_score * 100)}%` }}
             />
           </div>
-          <span className="tabular-nums text-slate-700 dark:text-slate-300">{formatScore(file.risk_score)}</span>
+          <span className="tabular-nums text-slate-700 dark:text-slate-300">
+            {formatScore(file.risk_score)}
+          </span>
         </div>
       </td>
       <td className="py-2 pr-3">
@@ -119,9 +131,15 @@ function RiskRow({ file }: { file: RiskFileOut }) {
           {isLowConfidence ? " ⚠" : ""}
         </span>
       </td>
-      <td className="py-2 pr-3 tabular-nums text-slate-600 dark:text-slate-300">{formatScore(file.complexity, 1)}</td>
-      <td className="py-2 pr-3 tabular-nums text-slate-600 dark:text-slate-300">{file.churn_total}</td>
-      <td className="py-2 pr-3 tabular-nums text-slate-600 dark:text-slate-300">{file.commit_count}</td>
+      <td className="py-2 pr-3 tabular-nums text-slate-600 dark:text-slate-300">
+        {formatScore(file.complexity, 1)}
+      </td>
+      <td className="py-2 pr-3 tabular-nums text-slate-600 dark:text-slate-300">
+        {file.churn_total}
+      </td>
+      <td className="py-2 pr-3 tabular-nums text-slate-600 dark:text-slate-300">
+        {file.commit_count}
+      </td>
       <td className="py-2 pr-3 tabular-nums text-slate-600 dark:text-slate-300">
         {formatPercent(file.max_coupling_degree)}
       </td>

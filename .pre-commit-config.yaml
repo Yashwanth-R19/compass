@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        # backend/alembic is generated migration content, not hand-written
+        # app code -- same scope as the ruff/black pass in CLAUDE.md.
+        files: ^backend/(app|tests)/
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        files: ^backend/(app|tests)/
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        additional_dependencies: ["prettier@3.9.6"]
+        files: ^frontend/src/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: ^backend/alembic/
+      - id: trailing-whitespace
+        exclude: ^backend/alembic/
+      - id: check-merge-conflict

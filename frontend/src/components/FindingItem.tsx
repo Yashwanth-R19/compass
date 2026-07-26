@@ -1,5 +1,11 @@
 import type { FindingOut } from "../api/types";
-import { SEVERITY_CLASSES, SEVERITY_LABEL, confidenceLabel, formatPercent, shortSha } from "../lib/format";
+import {
+  SEVERITY_CLASSES,
+  SEVERITY_LABEL,
+  confidenceLabel,
+  formatPercent,
+  shortSha,
+} from "../lib/format";
 
 const CATEGORY_LABEL: Record<string, string> = {
   risk: "Risk",
@@ -7,8 +13,17 @@ const CATEGORY_LABEL: Record<string, string> = {
   hidden_dependency: "Hidden dependency",
 };
 
-export function FindingItem({ finding, repoUrl }: { finding: FindingOut; repoUrl?: string | null }) {
-  const commitUrl = repoUrl && finding.evidence_sha ? `${repoUrl.replace(/\/$/, "")}/commit/${finding.evidence_sha}` : null;
+export function FindingItem({
+  finding,
+  repoUrl,
+}: {
+  finding: FindingOut;
+  repoUrl?: string | null;
+}) {
+  const commitUrl =
+    repoUrl && finding.evidence_sha
+      ? `${repoUrl.replace(/\/$/, "")}/commit/${finding.evidence_sha}`
+      : null;
   const confLabel = confidenceLabel(finding.confidence);
 
   return (

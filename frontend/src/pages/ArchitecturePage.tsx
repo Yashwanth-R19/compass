@@ -54,7 +54,9 @@ export function ArchitecturePage() {
 
   const selectedEdges = useMemo(() => {
     if (!selectedNode || !arch.data) return [];
-    return arch.data.edges.filter((e) => e.from_path === selectedNode || e.to_path === selectedNode);
+    return arch.data.edges.filter(
+      (e) => e.from_path === selectedNode || e.to_path === selectedNode,
+    );
   }, [selectedNode, arch.data]);
 
   if (arch.isPending) return <LoadingState label="Loading architecture graph…" />;
@@ -98,9 +100,12 @@ export function ArchitecturePage() {
                 // even though our own graph data typed them as strings.
                 const rawSource = (l as { source?: unknown }).source;
                 const rawTarget = (l as { target?: unknown }).target;
-                const sourceId = typeof rawSource === "string" ? rawSource : (rawSource as CappableNode).id;
-                const targetId = typeof rawTarget === "string" ? rawTarget : (rawTarget as CappableNode).id;
-                if (selectedNode && sourceId !== selectedNode && targetId !== selectedNode) return DIMMED_COLOR;
+                const sourceId =
+                  typeof rawSource === "string" ? rawSource : (rawSource as CappableNode).id;
+                const targetId =
+                  typeof rawTarget === "string" ? rawTarget : (rawTarget as CappableNode).id;
+                if (selectedNode && sourceId !== selectedNode && targetId !== selectedNode)
+                  return DIMMED_COLOR;
                 return link.inCycle ? CYCLE_COLOR : NORMAL_COLOR;
               }}
               linkDirectionalArrowLength={4}
@@ -118,21 +123,28 @@ export function ArchitecturePage() {
 
       <div className="flex flex-col gap-4">
         {selectedNode ? (
-          <Card title="Selected file" subtitle={selectedNode} action={
-            <button
-              type="button"
-              onClick={() => setSelectedNode(null)}
-              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-            >
-              Clear
-            </button>
-          }>
+          <Card
+            title="Selected file"
+            subtitle={selectedNode}
+            action={
+              <button
+                type="button"
+                onClick={() => setSelectedNode(null)}
+                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                Clear
+              </button>
+            }
+          >
             {selectedEdges.length === 0 ? (
               <p className="text-sm text-slate-400 dark:text-slate-500">No import edges.</p>
             ) : (
               <ul className="space-y-1.5 text-sm">
                 {selectedEdges.map((e) => (
-                  <li key={`${e.from_path}->${e.to_path}`} className="text-slate-600 dark:text-slate-300">
+                  <li
+                    key={`${e.from_path}->${e.to_path}`}
+                    className="text-slate-600 dark:text-slate-300"
+                  >
                     {e.from_path === selectedNode ? (
                       <>
                         imports <span className="font-medium">{fileName(e.to_path)}</span>
@@ -151,7 +163,9 @@ export function ArchitecturePage() {
 
         <Card title="Cycles" subtitle={`${arch.data.cycles.length} found`}>
           {arch.data.cycles.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500">No circular dependencies. 🎉</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500">
+              No circular dependencies. 🎉
+            </p>
           ) : (
             <ul className="space-y-2 text-sm">
               {arch.data.cycles.map((c, i) => (
@@ -161,14 +175,19 @@ export function ArchitecturePage() {
                   >
                     {SEVERITY_LABEL[c.severity]}
                   </span>
-                  <span className="text-slate-600 dark:text-slate-300">{c.files.map(fileName).join(" → ")}</span>
+                  <span className="text-slate-600 dark:text-slate-300">
+                    {c.files.map(fileName).join(" → ")}
+                  </span>
                 </li>
               ))}
             </ul>
           )}
         </Card>
 
-        <Card title="Layering violations" subtitle={`${arch.data.layering_violations.length} found`}>
+        <Card
+          title="Layering violations"
+          subtitle={`${arch.data.layering_violations.length} found`}
+        >
           {arch.data.layering_violations.length === 0 ? (
             <p className="text-sm text-slate-400 dark:text-slate-500">No layering violations.</p>
           ) : (

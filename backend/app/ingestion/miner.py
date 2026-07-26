@@ -7,7 +7,16 @@ from pathlib import Path
 import lizard
 from pydriller import Repository
 
-IGNORE_DIRS = {"node_modules", ".git", "dist", "build", "venv", ".venv", "__pycache__", "migrations"}
+IGNORE_DIRS = {
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "venv",
+    ".venv",
+    "__pycache__",
+    "migrations",
+}
 MAX_FILE_BYTES = 1_000_000
 
 LANGUAGE_BY_EXT = {

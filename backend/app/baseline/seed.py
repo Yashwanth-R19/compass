@@ -40,7 +40,13 @@ class SeedBaseline(BaselineProvider):
         if row is None:
             return self._heuristic.percentile(metric, language, size_bucket, value)
 
-        breakpoints = [(row.p10, 0.10), (row.p25, 0.25), (row.p50, 0.50), (row.p75, 0.75), (row.p90, 0.90)]
+        breakpoints = [
+            (row.p10, 0.10),
+            (row.p25, 0.25),
+            (row.p50, 0.50),
+            (row.p75, 0.75),
+            (row.p90, 0.90),
+        ]
         return interpolate_breakpoints(breakpoints, value)
 
     def risk_normalizer(
@@ -50,7 +56,13 @@ class SeedBaseline(BaselineProvider):
         if row is None:
             return self._heuristic.risk_normalizer(metric, language, size_bucket)
 
-        breakpoints = [(row.p10, 0.10), (row.p25, 0.25), (row.p50, 0.50), (row.p75, 0.75), (row.p90, 0.90)]
+        breakpoints = [
+            (row.p10, 0.10),
+            (row.p25, 0.25),
+            (row.p50, 0.50),
+            (row.p75, 0.75),
+            (row.p90, 0.90),
+        ]
 
         def corpus_normalizer(values: Sequence[float]) -> list[float]:
             # Corpus-backed path: each value is mapped through the STORED

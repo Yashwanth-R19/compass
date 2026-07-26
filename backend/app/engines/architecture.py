@@ -110,7 +110,10 @@ class ArchEngine(Engine):
         violations = layering_violations(edges)
 
         findings: list[dict[str, Any]] = [_cycle_finding(repo_id, cycle) for cycle in cycles]
-        findings += [_layering_finding(repo_id, from_path, to_path, kind) for from_path, to_path, kind in violations]
+        findings += [
+            _layering_finding(repo_id, from_path, to_path, kind)
+            for from_path, to_path, kind in violations
+        ]
 
         # Ranked by severity then size, most impactful first -- the
         # anti-alert-fatigue discipline (master-context.md sec 7).
@@ -171,7 +174,9 @@ def layering_violation_severity(kind: str) -> Severity:
     return Severity.high if kind == "skip" else Severity.med
 
 
-def _layering_finding(repo_id: uuid.UUID, from_path: str, to_path: str, kind: str) -> dict[str, Any]:
+def _layering_finding(
+    repo_id: uuid.UUID, from_path: str, to_path: str, kind: str
+) -> dict[str, Any]:
     severity = layering_violation_severity(kind)
     if kind == "skip":
         title = "Layering violation: UI imports DB directly"

@@ -4,17 +4,7 @@ import pytest
 
 from app.baseline.heuristic import HeuristicBaseline, size_bucket_for
 from app.baseline.seed import SeedBaseline
-from app.db.base import SessionLocal
 from app.db.models import Baseline
-
-
-@pytest.fixture
-def db_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 def test_heuristic_min_max_normalizer_scales_to_unit_interval():
@@ -59,9 +49,9 @@ def test_seed_baseline_falls_back_to_heuristic_when_table_empty(db_session):
     values = [10.0, 20.0, 30.0]
     assert seed_norm(values) == heuristic_norm(values)
 
-    assert seed.percentile(
+    assert seed.percentile("churn_x_complexity", "python", "small", 500.0) == heuristic.percentile(
         "churn_x_complexity", "python", "small", 500.0
-    ) == heuristic.percentile("churn_x_complexity", "python", "small", 500.0)
+    )
 
 
 def test_seed_baseline_uses_corpus_row_when_present(db_session):
@@ -82,13 +72,10 @@ def test_seed_baseline_uses_corpus_row_when_present(db_session):
     )
     db_session.add(row)
     db_session.commit()
-    try:
-        seed = SeedBaseline(db_session)
-        norm = seed.risk_normalizer("commit_count", "python", "small")
-        # Corpus-backed: maps through the stored percentile curve, NOT a
-        # per-repo min-max over the values handed in.
-        assert norm([5.0]) == pytest.approx([0.50])
-        assert seed.percentile("commit_count", "python", "small", 5.0) == pytest.approx(0.50)
-    finally:
-        db_session.delete(row)
-        db_session.commit()
+
+    seed = SeedBaseline(db_session)
+    norm = seed.risk_normalizer("commit_count", "python", "small")
+    # Corpus-backed: maps through the stored percentile curve, NOT a
+    # per-repo min-max over the values handed in.
+    assert norm([5.0]) == pytest.approx([0.50])
+    assert seed.percentile("commit_count", "python", "small", 5.0) == pytest.approx(0.50)

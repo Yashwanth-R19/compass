@@ -8,7 +8,10 @@ export function ScoreGauge({ score, size = 140 }: { score: number; size?: number
   const colors = healthColor(clamped);
 
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+    <div
+      className="relative inline-flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2}
@@ -31,7 +34,9 @@ export function ScoreGauge({ score, size = 140 }: { score: number; size?: number
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className={`text-3xl font-semibold tabular-nums ${colors.text}`}>{Math.round(clamped)}</span>
+        <span className={`text-3xl font-semibold tabular-nums ${colors.text}`}>
+          {Math.round(clamped)}
+        </span>
         <span className="text-xs text-slate-400 dark:text-slate-500">/ 100</span>
       </div>
     </div>

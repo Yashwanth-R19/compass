@@ -37,7 +37,10 @@ def compute_hidden_dependencies(repo_id: uuid.UUID, session: Session) -> list[Hi
     """
     coupling_rows = session.execute(
         select(
-            Coupling.file_a_path, Coupling.file_b_path, Coupling.shared_revs, Coupling.coupling_degree
+            Coupling.file_a_path,
+            Coupling.file_b_path,
+            Coupling.shared_revs,
+            Coupling.coupling_degree,
         ).where(Coupling.repo_id == repo_id)
     ).all()
     if not coupling_rows:

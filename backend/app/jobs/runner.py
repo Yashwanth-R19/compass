@@ -2,7 +2,7 @@ import os
 import shutil
 import stat
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.db.base import SessionLocal
 from app.db.models import Job, JobStatus, Repo, RepoStatus
@@ -88,10 +88,10 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
             repo_id,
             status=RepoStatus.ready,
             commit_count=len(mined.commits),
-            analyzed_at=datetime.now(timezone.utc),
+            analyzed_at=datetime.now(UTC),
         )
         _update_job(
-            session, job_id, status=JobStatus.done, progress=100, finished_at=datetime.now(timezone.utc)
+            session, job_id, status=JobStatus.done, progress=100, finished_at=datetime.now(UTC)
         )
         session.commit()
     except Exception as exc:
@@ -101,7 +101,7 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
             job_id,
             status=JobStatus.failed,
             error=str(exc),
-            finished_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(UTC),
         )
         _update_repo(session, repo_id, status=RepoStatus.failed)
         session.commit()

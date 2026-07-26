@@ -3,7 +3,16 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Commit, CommitFile, Coupling, Dependency, File, FileMetrics, Finding, Health
+from app.db.models import (
+    Commit,
+    CommitFile,
+    Coupling,
+    Dependency,
+    File,
+    FileMetrics,
+    Finding,
+    Health,
+)
 
 
 def wipe_repo_data(repo_id: uuid.UUID, session: Session) -> None:

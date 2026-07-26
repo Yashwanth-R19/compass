@@ -35,10 +35,18 @@ export function confidenceLabel(confidence: number): "low" | "medium" | "high" {
 
 export function healthColor(score: number): { text: string; ring: string; bar: string } {
   if (score >= 75) {
-    return { text: "text-emerald-600 dark:text-emerald-400", ring: "stroke-emerald-500", bar: "bg-emerald-500" };
+    return {
+      text: "text-emerald-600 dark:text-emerald-400",
+      ring: "stroke-emerald-500",
+      bar: "bg-emerald-500",
+    };
   }
   if (score >= 50) {
-    return { text: "text-amber-600 dark:text-amber-400", ring: "stroke-amber-500", bar: "bg-amber-500" };
+    return {
+      text: "text-amber-600 dark:text-amber-400",
+      ring: "stroke-amber-500",
+      bar: "bg-amber-500",
+    };
   }
   return { text: "text-red-600 dark:text-red-400", ring: "stroke-red-500", bar: "bg-red-500" };
 }

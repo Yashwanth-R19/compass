@@ -1,7 +1,12 @@
 import { ApiError } from "../api/client";
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Something went wrong.";
+  const message =
+    error instanceof ApiError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : "Something went wrong.";
 
   return (
     <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 py-16 text-center dark:border-red-500/30 dark:bg-red-500/10">

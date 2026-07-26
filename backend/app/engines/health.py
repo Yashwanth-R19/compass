@@ -44,7 +44,9 @@ structural findings alone.
 
 
 def _high_risk_ratio(repo_id: uuid.UUID, session: Session) -> float:
-    total = session.scalar(select(func.count()).select_from(File).where(File.repo_id == repo_id)) or 0
+    total = (
+        session.scalar(select(func.count()).select_from(File).where(File.repo_id == repo_id)) or 0
+    )
     if total == 0:
         return 0.0
     high_risk = (
@@ -71,7 +73,9 @@ def compute_health(repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
 
     risk_penalty = min(100.0, RISK_PENALTY_WEIGHT * high_risk_ratio)
     cycle_penalty = min(CYCLE_PENALTY_CAP, CYCLE_PENALTY_PER_CYCLE * cycle_count)
-    hidden_dep_penalty = min(HIDDEN_DEP_PENALTY_CAP, HIDDEN_DEP_PENALTY_PER_PAIR * hidden_dependency_count)
+    hidden_dep_penalty = min(
+        HIDDEN_DEP_PENALTY_CAP, HIDDEN_DEP_PENALTY_PER_PAIR * hidden_dependency_count
+    )
 
     score = max(0.0, 100.0 - risk_penalty - cycle_penalty - hidden_dep_penalty)
 

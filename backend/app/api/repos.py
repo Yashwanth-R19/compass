@@ -61,7 +61,9 @@ def get_repo(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> RepoOut:
     if repo is None:
         raise HTTPException(status_code=404, detail="Repo not found.")
 
-    file_count = db.scalar(select(func.count()).select_from(File).where(File.repo_id == repo_id)) or 0
+    file_count = (
+        db.scalar(select(func.count()).select_from(File).where(File.repo_id == repo_id)) or 0
+    )
 
     return RepoOut(
         id=repo.id,

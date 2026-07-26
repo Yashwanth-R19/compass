@@ -27,8 +27,9 @@ alembic upgrade head
 uvicorn app.main:app --reload # http://localhost:8000
 ```
 
-Run the test suite (hits the real `DATABASE_URL`, no mocking layer — see
-`backend/CLAUDE.md` for why):
+Run the test suite. Tests never touch the real `DATABASE_URL` — they run
+against an ephemeral Postgres container (Docker must be running), or
+`TEST_DATABASE_URL` if Docker isn't available (see `backend/CLAUDE.md`):
 
 ```bash
 pytest
@@ -50,12 +51,31 @@ Architecture / Risk).
 
 `npm run build` type-checks and produces a production bundle in `frontend/dist/`.
 
+## Development setup
+
+This repo uses `ruff` + `black` + `mypy` (backend) and `oxlint` + `prettier`
+(frontend), wired together with [pre-commit](https://pre-commit.com):
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Hooks run automatically on `git commit`. To check everything by hand:
+
+```bash
+pre-commit run --all-files
+```
+
+See `backend/CLAUDE.md` for the full lint/format/typecheck/test command
+reference, and how to write a new database-backed test.
+
 ## Status
 
 Release A complete: ingestion pipeline, job system, Change-Coupling +
 Architecture + hidden-dependency-overlay engines, heuristic Risk + composite
 Health engines behind a swappable `BaselineProvider`, a unified ranked
 Findings stream, and a working React dashboard wired end-to-end against the
-API. Corpus-based calibration (Release C) and portfolio/security features
-(Releases B–D) are not built yet — see `master-context.md` §11 for the full
-roadmap.
+API. The project is now moving to a dual-mode (Onboard + Audit) platform —
+see `COMPASS_PLAN.md` for the roadmap and `master-context.md` §12 for the
+six-stage build plan.
