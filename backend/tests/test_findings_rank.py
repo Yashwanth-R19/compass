@@ -5,11 +5,11 @@ from sqlalchemy import insert, select
 
 from app.db.models import (
     Commit,
-    CommitFile,
     Dependency,
     File,
     Finding,
     Repo,
+    RepoPath,
     RepoStatus,
     Severity,
 )
@@ -28,56 +28,73 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     return repo.id
 
 
+def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
+    existing = {
+        row.path: row.id
+        for row in db_session.execute(
+            select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+    new_paths = [p for p in paths if p not in existing]
+    if new_paths:
+        db_session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": p} for p in new_paths])
+        db_session.flush()
+        existing = {
+            row.path: row.id
+            for row in db_session.execute(
+                select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+            ).all()
+        }
+    return existing
+
+
 def test_global_rank_orders_by_severity_then_confidence(db_session):
     """Findings from different categories interleave correctly: severity is
     the primary key (a low-confidence high finding still beats a
     high-confidence med finding), confidence only breaks ties within the
     same severity."""
     repo_id = _make_repo(db_session, "https://github.com/fixture/findings-rank-basic")
+    path_ids = _intern_paths(db_session, repo_id, ["hot.py", "hotter.py"])
     rows = [
         {
-            "id": uuid.uuid4(),
             "repo_id": repo_id,
             "category": "architecture",
             "severity": Severity.med,
             "confidence": 0.95,
-            "file_path": None,
+            "path_id": None,
             "evidence_sha": None,
             "title": "med-high-confidence",
             "detail": "",
             "rank": 0,
         },
         {
-            "id": uuid.uuid4(),
             "repo_id": repo_id,
             "category": "risk",
             "severity": Severity.high,
             "confidence": 0.1,
-            "file_path": "hot.py",
+            "path_id": path_ids["hot.py"],
             "evidence_sha": "abc123",
             "title": "high-low-confidence",
             "detail": "",
             "rank": 0,
         },
         {
-            "id": uuid.uuid4(),
             "repo_id": repo_id,
             "category": "hidden_dependency",
             "severity": Severity.low,
             "confidence": 0.9,
-            "file_path": None,
+            "path_id": None,
             "evidence_sha": None,
             "title": "low-high-confidence",
             "detail": "",
             "rank": 0,
         },
         {
-            "id": uuid.uuid4(),
             "repo_id": repo_id,
             "category": "risk",
             "severity": Severity.high,
             "confidence": 0.8,
-            "file_path": "hotter.py",
+            "path_id": path_ids["hotter.py"],
             "evidence_sha": "def456",
             "title": "high-high-confidence",
             "detail": "",
@@ -120,6 +137,7 @@ def test_no_findings_is_a_harmless_noop(db_session):
 
 
 def _add_commit(db_session, repo_id: uuid.UUID, sha: str, file_paths: list[str]) -> None:
+    path_ids = _intern_paths(db_session, repo_id, file_paths)
     commit = Commit(
         repo_id=repo_id,
         sha=sha,
@@ -132,12 +150,26 @@ def _add_commit(db_session, repo_id: uuid.UUID, sha: str, file_paths: list[str])
         files_changed=len(file_paths),
         insertions=0,
         deletions=0,
+        changed_path_ids=[path_ids[p] for p in file_paths],
+        added_lines=[0 for _ in file_paths],
+        deleted_lines=[0 for _ in file_paths],
     )
     db_session.add(commit)
     db_session.flush()
+
+
+def _add_dependency(db_session, repo_id: uuid.UUID, from_path: str, to_path: str) -> None:
+    path_ids = _intern_paths(db_session, repo_id, [from_path, to_path])
     db_session.execute(
-        insert(CommitFile),
-        [{"id": uuid.uuid4(), "commit_id": commit.id, "file_path": p} for p in file_paths],
+        insert(Dependency),
+        [
+            {
+                "repo_id": repo_id,
+                "from_path_id": path_ids[from_path],
+                "to_path_id": path_ids[to_path],
+                "dep_type": "import",
+            }
+        ],
     )
 
 
@@ -149,10 +181,12 @@ def _add_file(
     complexity: float,
     commit_count: int,
 ) -> None:
+    path_id = _intern_paths(db_session, repo_id, [path])[path]
     now = datetime.now(UTC)
     db_session.add(
         File(
             repo_id=repo_id,
+            path_id=path_id,
             path=path,
             language="python",
             current_loc=10,
@@ -181,25 +215,8 @@ def test_full_pipeline_produces_one_globally_ranked_stream(db_session):
     db_session.commit()
 
     # Planted structural cycle x<->y -> architecture finding.
-    db_session.execute(
-        insert(Dependency),
-        [
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": "x.py",
-                "to_path": "y.py",
-                "dep_type": "import",
-            },
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": "y.py",
-                "to_path": "x.py",
-                "dep_type": "import",
-            },
-        ],
-    )
+    _add_dependency(db_session, repo_id, "x.py", "y.py")
+    _add_dependency(db_session, repo_id, "y.py", "x.py")
 
     # Files so RiskEngine has something to score/rank/emit.
     _add_file(db_session, repo_id, "a.py", churn_total=50, complexity=10.0, commit_count=6)
@@ -225,10 +242,25 @@ def test_full_pipeline_produces_one_globally_ranked_stream(db_session):
     assert "architecture" in categories
     assert "risk" in categories
 
+    path_by_id = {
+        row.id: row.path
+        for row in db_session.execute(
+            select(RepoPath.id, RepoPath.path).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+
     for f in findings:
         assert f.severity in Severity
         assert 0.0 <= f.confidence <= 1.0
-        if f.category == "risk" and f.file_path in ("a.py", "c.py"):
+        if (
+            f.category == "risk"
+            and f.path_id is not None
+            and path_by_id[f.path_id]
+            in (
+                "a.py",
+                "c.py",
+            )
+        ):
             # a.py/c.py have real commits in this fixture; x.py/y.py don't.
             assert f.evidence_sha is not None
 

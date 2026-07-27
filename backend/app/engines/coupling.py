@@ -1,12 +1,12 @@
 import itertools
 import uuid
-from collections import defaultdict
+from collections import Counter
 from typing import Any
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Commit, CommitFile, Coupling
+from app.db.models import Commit, Coupling
 from app.engines.base import Engine
 
 # ---- Config (module-level, documented; not per-caller knobs) ----
@@ -40,55 +40,54 @@ silently returning an empty list on a small repo (master-context.md sec
 not a count, so it stays meaningful regardless of history depth."""
 
 
-def load_kept_changesets(repo_id: uuid.UUID, session: Session) -> list[list[str]]:
-    """Per-commit file-path changesets for ``repo_id``, with mega-commits
-    (> MAX_CHANGESET_SIZE distinct files) already dropped.
+def load_kept_changesets(repo_id: uuid.UUID, session: Session) -> list[list[int]]:
+    """Per-commit changesets (as sorted, deduped lists of repo_paths.id) for
+    ``repo_id``, with mega-commits (> MAX_CHANGESET_SIZE distinct files) and
+    empty changesets already dropped.
 
-    Exposed (not engine-private) so the coupling API/OverlayEngine can
-    independently derive the same "how much history did we actually
-    analyze" signal used for the low-confidence flag, without duplicating
-    the query/threshold.
+    Reads ``commits.changed_path_ids`` directly -- no commit_files join
+    (Phase 1 schema diet). Exposed (not engine-private) so the coupling
+    API/OverlayEngine can independently derive the same "how much history
+    did we actually analyze" signal used for the low-confidence flag,
+    without duplicating the query/threshold.
     """
-    commit_ids = session.scalars(select(Commit.id).where(Commit.repo_id == repo_id)).all()
-    if not commit_ids:
-        return []
+    rows = session.scalars(select(Commit.changed_path_ids).where(Commit.repo_id == repo_id)).all()
 
-    rows = session.execute(
-        select(CommitFile.commit_id, CommitFile.file_path).where(
-            CommitFile.commit_id.in_(commit_ids)
-        )
-    ).all()
-
-    by_commit: dict[uuid.UUID, set[str]] = defaultdict(set)
-    for commit_id, file_path in rows:
-        by_commit[commit_id].add(file_path)
-
-    return [sorted(paths) for paths in by_commit.values() if len(paths) <= MAX_CHANGESET_SIZE]
+    changesets: list[list[int]] = []
+    for path_ids in rows:
+        unique_ids = sorted(set(path_ids))
+        if not unique_ids:
+            continue
+        if len(unique_ids) <= MAX_CHANGESET_SIZE:
+            changesets.append(unique_ids)
+    return changesets
 
 
-def _pair_stats(changesets: list[list[str]]) -> tuple[dict[tuple[str, str], int], dict[str, int]]:
-    shared_revs: dict[tuple[str, str], int] = defaultdict(int)
-    file_revs: dict[str, int] = defaultdict(int)
-    for paths in changesets:
-        for path in paths:
-            file_revs[path] += 1
-        for a, b in itertools.combinations(paths, 2):
-            shared_revs[(a, b)] += 1
+def _pair_stats(changesets: list[list[int]]) -> tuple[Counter[tuple[int, int]], Counter[int]]:
+    shared_revs: Counter[tuple[int, int]] = Counter()
+    file_revs: Counter[int] = Counter()
+    for path_ids in changesets:
+        file_revs.update(path_ids)
+        # path_ids is already sorted, so combinations() always produces the
+        # same (lower_id, higher_id) key for a given pair regardless of
+        # which commit it came from -- what makes shared_revs accumulate
+        # correctly across commits.
+        shared_revs.update(itertools.combinations(path_ids, 2))
     return shared_revs, file_revs
 
 
 def _build_rows(
     repo_id: uuid.UUID,
-    shared_revs: dict[tuple[str, str], int],
-    file_revs: dict[str, int],
+    shared_revs: Counter[tuple[int, int]],
+    file_revs: Counter[int],
     min_shared_revs: int,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for (file_a, file_b), shared in shared_revs.items():
+    for (path_a, path_b), shared in shared_revs.items():
         if shared < min_shared_revs:
             continue
 
-        revs_a, revs_b = file_revs[file_a], file_revs[file_b]
+        revs_a, revs_b = file_revs[path_a], file_revs[path_b]
 
         # LOCKED FORMULA -- coupling_degree(A, B) = shared_revs / min(revs(A), revs(B))
         # This exact formula is used nowhere else and must never drift to a
@@ -111,10 +110,9 @@ def _build_rows(
 
         rows.append(
             {
-                "id": uuid.uuid4(),
                 "repo_id": repo_id,
-                "file_a_path": file_a,
-                "file_b_path": file_b,
+                "path_a_id": path_a,
+                "path_b_id": path_b,
                 "shared_revs": shared,
                 "coupling_degree": coupling_degree,
                 "avg_revs": avg_revs,
@@ -181,9 +179,10 @@ string."""
 class CouplingEngine(Engine):
     """Mines logical/change coupling from persisted commit history.
 
-    Reads only ``commits``/``commit_files`` for ``repo_id`` -- no git, no
-    network (master-context.md sec 5, the flagship feature). Coupling rows
-    for this repo_id are already cleared by the wipe_repo_data() call made
+    Reads only ``commits.changed_path_ids`` for ``repo_id`` -- no join, no
+    git, no network (master-context.md sec 5, the flagship feature; Phase 1
+    schema diet removed the commit_files join table). Coupling rows for
+    this repo_id are already cleared by the wipe_repo_data() call made
     earlier in the ingestion/persist step; this engine only inserts, it does
     not delete-first itself, so wipe_repo_data stays the single place that
     defines what a re-run wipes.

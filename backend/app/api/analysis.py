@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import get_db
 from app.db.models import Coupling, File, FileMetrics, Finding, Health, Repo
+from app.db.paths import load_path_map
 from app.engines.architecture import (
     build_graph,
     cycle_severity,
@@ -65,11 +66,12 @@ def get_coupling(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> CouplingR
         .where(Coupling.repo_id == repo_id)
         .order_by(Coupling.coupling_degree.desc())
     ).all()
+    path_map = load_path_map(repo_id, db)
 
     pairs = [
         CouplingPairOut(
-            file_a_path=row.file_a_path,
-            file_b_path=row.file_b_path,
+            file_a_path=path_map[row.path_a_id],
+            file_b_path=path_map[row.path_b_id],
             coupling_degree=row.coupling_degree,
             shared_revs=row.shared_revs,
             avg_revs=row.avg_revs,
@@ -208,13 +210,14 @@ def get_findings(
     query = query.order_by(Finding.rank)
 
     rows = db.scalars(query).all()
+    path_map = load_path_map(repo_id, db)
     findings = [
         FindingOut(
             id=f.id,
             category=f.category,
             severity=f.severity,
             confidence=f.confidence,
-            file_path=f.file_path,
+            file_path=path_map.get(f.path_id) if f.path_id is not None else None,
             evidence_sha=f.evidence_sha,
             title=f.title,
             detail=f.detail,

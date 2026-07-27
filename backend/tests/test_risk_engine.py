@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import insert, select
 
-from app.db.models import Commit, CommitFile, Coupling, File, FileMetrics, Finding, Repo, RepoStatus
+from app.db.models import Commit, Coupling, File, FileMetrics, Finding, Repo, RepoPath, RepoStatus
 from app.engines.risk import MAX_RISK_FINDINGS, RiskEngine
 
 
@@ -13,6 +13,26 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     db_session.add(repo)
     db_session.commit()
     return repo.id
+
+
+def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
+    existing = {
+        row.path: row.id
+        for row in db_session.execute(
+            select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+    new_paths = [p for p in paths if p not in existing]
+    if new_paths:
+        db_session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": p} for p in new_paths])
+        db_session.flush()
+        existing = {
+            row.path: row.id
+            for row in db_session.execute(
+                select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+            ).all()
+        }
+    return existing
 
 
 def _add_file(
@@ -25,9 +45,11 @@ def _add_file(
     commit_count: int,
     language: str = "python",
 ) -> uuid.UUID:
+    path_id = _intern_paths(db_session, repo_id, [path])[path]
     now = datetime.now(UTC)
     file = File(
         repo_id=repo_id,
+        path_id=path_id,
         path=path,
         language=language,
         current_loc=100,
@@ -43,9 +65,27 @@ def _add_file(
     return file.id
 
 
+def _add_coupling(db_session, repo_id: uuid.UUID, path_a: str, path_b: str, degree: float) -> None:
+    path_ids = _intern_paths(db_session, repo_id, [path_a, path_b])
+    db_session.execute(
+        insert(Coupling),
+        [
+            {
+                "repo_id": repo_id,
+                "path_a_id": path_ids[path_a],
+                "path_b_id": path_ids[path_b],
+                "shared_revs": 9,
+                "coupling_degree": degree,
+                "avg_revs": 9.5,
+            }
+        ],
+    )
+
+
 def _add_commit(
     db_session, repo_id: uuid.UUID, sha: str, file_paths: list[str], is_fix: bool = False
 ) -> None:
+    path_ids = _intern_paths(db_session, repo_id, file_paths)
     commit = Commit(
         repo_id=repo_id,
         sha=sha,
@@ -58,13 +98,12 @@ def _add_commit(
         files_changed=len(file_paths),
         insertions=0,
         deletions=0,
+        changed_path_ids=[path_ids[p] for p in file_paths],
+        added_lines=[0 for _ in file_paths],
+        deleted_lines=[0 for _ in file_paths],
     )
     db_session.add(commit)
     db_session.flush()
-    db_session.execute(
-        insert(CommitFile),
-        [{"id": uuid.uuid4(), "commit_id": commit.id, "file_path": p} for p in file_paths],
-    )
 
 
 def test_hotspot_ranking_matches_locked_formula(db_session):
@@ -81,20 +120,7 @@ def test_hotspot_ranking_matches_locked_formula(db_session):
     db_session.flush()
 
     # max_coupling_degree: a=0.9, b=0.9, c=0.0 (no pairs) -> min=0, max=0.9
-    db_session.execute(
-        insert(Coupling),
-        [
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "file_a_path": "a.py",
-                "file_b_path": "b.py",
-                "shared_revs": 9,
-                "coupling_degree": 0.9,
-                "avg_revs": 9.5,
-            }
-        ],
-    )
+    _add_coupling(db_session, repo_id, "a.py", "b.py", 0.9)
     db_session.commit()
 
     metadata = RiskEngine().run(repo_id, db_session)
@@ -157,7 +183,14 @@ def test_top_finding_uses_most_recent_fix_commit_as_evidence(db_session):
         select(Finding).where(Finding.repo_id == repo_id, Finding.category == "risk")
     ).all()
     assert len(findings) == 2
-    top = next(f for f in findings if f.file_path == "hot.py")
+
+    path_by_id = {
+        row.id: row.path
+        for row in db_session.execute(
+            select(RepoPath.id, RepoPath.path).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+    top = next(f for f in findings if path_by_id[f.path_id] == "hot.py")
     assert top.evidence_sha == "c2-fix"
     assert 0.0 <= top.confidence <= 1.0
     assert top.severity is not None

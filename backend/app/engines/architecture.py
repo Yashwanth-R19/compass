@@ -4,9 +4,10 @@ from typing import Any
 
 import networkx as nx
 from sqlalchemy import insert, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
-from app.db.models import Dependency, Finding, Severity
+from app.db.models import Dependency, Finding, RepoPath, Severity
+from app.db.paths import load_path_id_map
 from app.engines.base import Engine
 
 MAX_CYCLE_LENGTH = 10
@@ -63,12 +64,19 @@ def infer_layer(path: str) -> str | None:
 
 
 def load_edges(repo_id: uuid.UUID, session: Session) -> list[tuple[str, str]]:
-    return [
-        (row.from_path, row.to_path)
-        for row in session.execute(
-            select(Dependency.from_path, Dependency.to_path).where(Dependency.repo_id == repo_id)
-        ).all()
-    ]
+    """(from_path, to_path) string pairs -- resolved via a join through
+    repo_paths (Phase 1 schema diet stores only from_path_id/to_path_id),
+    since layer inference and cycle-finding both key off path strings."""
+    from_path = aliased(RepoPath)
+    to_path = aliased(RepoPath)
+    rows = session.execute(
+        select(from_path.path, to_path.path)
+        .select_from(Dependency)
+        .join(from_path, from_path.id == Dependency.from_path_id)
+        .join(to_path, to_path.id == Dependency.to_path_id)
+        .where(Dependency.repo_id == repo_id)
+    ).all()
+    return [(row[0], row[1]) for row in rows]
 
 
 def build_graph(edges: list[tuple[str, str]]) -> nx.DiGraph:
@@ -108,10 +116,13 @@ class ArchEngine(Engine):
         graph = build_graph(edges)
         cycles = find_cycles(graph)
         violations = layering_violations(edges)
+        path_id_map = load_path_id_map(repo_id, session)
 
-        findings: list[dict[str, Any]] = [_cycle_finding(repo_id, cycle) for cycle in cycles]
+        findings: list[dict[str, Any]] = [
+            _cycle_finding(repo_id, cycle, path_id_map) for cycle in cycles
+        ]
         findings += [
-            _layering_finding(repo_id, from_path, to_path, kind)
+            _layering_finding(repo_id, from_path, to_path, kind, path_id_map)
             for from_path, to_path, kind in violations
         ]
 
@@ -151,17 +162,18 @@ def layering_violations(edges: list[tuple[str, str]]) -> list[tuple[str, str, st
     return violations
 
 
-def _cycle_finding(repo_id: uuid.UUID, cycle: list[str]) -> dict[str, Any]:
+def _cycle_finding(
+    repo_id: uuid.UUID, cycle: list[str], path_id_map: dict[str, int]
+) -> dict[str, Any]:
     length = len(cycle)
     severity = cycle_severity(length)
     chain = " -> ".join([*cycle, cycle[0]])
     return {
-        "id": uuid.uuid4(),
         "repo_id": repo_id,
         "category": "architecture",
         "severity": severity,
         "confidence": 1.0,  # exact graph computation, not a statistical estimate
-        "file_path": cycle[0],
+        "path_id": path_id_map[cycle[0]],
         "evidence_sha": None,
         "title": f"Circular dependency among {length} files",
         "detail": f"Import cycle: {chain}",
@@ -175,7 +187,7 @@ def layering_violation_severity(kind: str) -> Severity:
 
 
 def _layering_finding(
-    repo_id: uuid.UUID, from_path: str, to_path: str, kind: str
+    repo_id: uuid.UUID, from_path: str, to_path: str, kind: str, path_id_map: dict[str, int]
 ) -> dict[str, Any]:
     severity = layering_violation_severity(kind)
     if kind == "skip":
@@ -186,12 +198,11 @@ def _layering_finding(
         detail = f"{from_path} imports {to_path}, but that dependency runs backwards through the ui/service/db layering."
 
     return {
-        "id": uuid.uuid4(),
         "repo_id": repo_id,
         "category": "architecture",
         "severity": severity,
         "confidence": 0.75,  # heuristic layer classification, not exact
-        "file_path": from_path,
+        "path_id": path_id_map[from_path],
         "evidence_sha": None,
         "title": title,
         "detail": detail,

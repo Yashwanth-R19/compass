@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
-from app.db.models import Commit, CommitFile, File, Job, JobStatus, Repo, RepoStatus
+from app.db.models import Commit, File, Job, JobStatus, Repo, RepoPath, RepoStatus
 from app.ingestion.cloner import clone_repo
 from app.ingestion.miner import mine_repo
 from app.jobs.runner import run_ingestion_job
@@ -75,9 +75,6 @@ def test_mine_and_persist_fixture_repo(fixture_repo, db_session, monkeypatch):
 
     commits = db_session.scalars(select(Commit).where(Commit.repo_id == repo_id)).all()
     files = db_session.scalars(select(File).where(File.repo_id == repo_id)).all()
-    commit_files = db_session.scalars(
-        select(CommitFile).where(CommitFile.commit_id.in_([c.id for c in commits]))
-    ).all()
 
     assert len(commits) == 3
 
@@ -87,8 +84,19 @@ def test_mine_and_persist_fixture_repo(fixture_repo, db_session, monkeypatch):
     assert files_by_path["a.py"].is_deleted is False
     assert files_by_path["a.py"].commit_count == 2
 
-    # commit1 touches a.py; commit2 touches a.py+b.py; commit3 touches b.py
-    assert len(commit_files) == 4
+    # commit1 touches a.py; commit2 touches a.py+b.py; commit3 touches b.py --
+    # changed_path_ids replaces the old commit_files join table (Phase 1).
+    total_touches = sum(len(c.changed_path_ids) for c in commits)
+    assert total_touches == 4
+
+    for c in commits:
+        assert len(c.changed_path_ids) == len(c.added_lines) == len(c.deleted_lines)
+
+    path_ids = {row for c in commits for row in c.changed_path_ids}
+    real_path_ids = set(
+        db_session.scalars(select(RepoPath.id).where(RepoPath.repo_id == repo_id)).all()
+    )
+    assert path_ids <= real_path_ids
 
     job = db_session.get(Job, job_id)
     assert job.status == JobStatus.done
@@ -98,6 +106,11 @@ def test_mine_and_persist_fixture_repo(fixture_repo, db_session, monkeypatch):
     repo = db_session.get(Repo, repo_id)
     assert repo.status == RepoStatus.ready
     assert repo.commit_count == 3
+
+
+def _touch_count(db_session, repo_id) -> int:
+    commits = db_session.scalars(select(Commit).where(Commit.repo_id == repo_id)).all()
+    return sum(len(c.changed_path_ids) for c in commits)
 
 
 def test_reingestion_is_idempotent_full_replace(fixture_repo, db_session):
@@ -111,12 +124,10 @@ def test_reingestion_is_idempotent_full_replace(fixture_repo, db_session):
     files_after_first = db_session.scalar(
         select(func.count()).select_from(File).where(File.repo_id == repo_id)
     )
-    commit_files_after_first = db_session.scalar(
-        select(func.count())
-        .select_from(CommitFile)
-        .join(Commit, Commit.id == CommitFile.commit_id)
-        .where(Commit.repo_id == repo_id)
+    repo_paths_after_first = db_session.scalar(
+        select(func.count()).select_from(RepoPath).where(RepoPath.repo_id == repo_id)
     )
+    touches_after_first = _touch_count(db_session, repo_id)
 
     job2 = Job(repo_id=repo_id, job_type="ingestion", status=JobStatus.queued, progress=0)
     db_session.add(job2)
@@ -130,28 +141,27 @@ def test_reingestion_is_idempotent_full_replace(fixture_repo, db_session):
     files_after_second = db_session.scalar(
         select(func.count()).select_from(File).where(File.repo_id == repo_id)
     )
-    commit_files_after_second = db_session.scalar(
-        select(func.count())
-        .select_from(CommitFile)
-        .join(Commit, Commit.id == CommitFile.commit_id)
-        .where(Commit.repo_id == repo_id)
+    repo_paths_after_second = db_session.scalar(
+        select(func.count()).select_from(RepoPath).where(RepoPath.repo_id == repo_id)
     )
+    touches_after_second = _touch_count(db_session, repo_id)
 
     assert commits_after_first == 3
     assert commits_after_second == commits_after_first
     assert files_after_second == files_after_first
-    assert commit_files_after_second == commit_files_after_first
+    assert repo_paths_after_second == repo_paths_after_first
+    assert touches_after_second == touches_after_first
 
 
 def test_mined_paths_are_posix_even_on_windows(tmp_path):
-    """Regression test: PyDriller/GitPython hand back OS-native path
-    separators (backslashes on Windows), which -- for files in a
-    subdirectory -- silently broke `is_deleted` (comparing a backslash path
-    against `_final_tree_paths`' posix set never matches) and would have
-    broken the hidden-dependency overlay too, since
-    app/languages/scanner.py always produces posix paths. The original
-    fixture repo (top-level a.py/b.py only) never caught this because a
-    bare filename has no separator to get mangled.
+    """Regression test: the miner normalizes every path to forward slashes
+    (app/ingestion/miner.py's ``_normalize_path``) even though git's own
+    --numstat output is already posix -- defense in depth, since a backslash
+    path would silently break `is_deleted` (comparing it against
+    `_final_tree_paths`' posix set never matches) and the hidden-dependency
+    overlay too, since app/languages/scanner.py always produces posix paths.
+    The original fixture repo (top-level a.py/b.py only) never caught this
+    because a bare filename has no separator to get mangled.
     """
     repo_dir = tmp_path / "nested-fixture-repo"
     repo_dir.mkdir()

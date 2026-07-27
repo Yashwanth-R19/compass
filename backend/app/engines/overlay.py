@@ -5,6 +5,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Coupling, Dependency, Finding, Severity
+from app.db.paths import load_path_map
 from app.engines.base import Engine
 from app.engines.coupling import CONFIDENCE_SCORE, confidence_hint, is_low_confidence
 
@@ -18,6 +19,8 @@ the floor for a pair to exist at all -- see app/engines/coupling.py)."""
 class HiddenDependency(TypedDict):
     file_a_path: str
     file_b_path: str
+    path_a_id: int
+    path_b_id: int
     shared_revs: int
     coupling_degree: float
     severity: Severity
@@ -29,16 +32,20 @@ def compute_hidden_dependencies(repo_id: uuid.UUID, session: Session) -> list[Hi
     """Coupling pairs with no structural edge between them (in either
     direction), sorted by coupling_degree desc.
 
-    Pure join over `coupling` and `dependencies`, recomputing neither.
-    Shared by OverlayEngine (persists these as findings) and the
+    Pure join over `coupling` and `dependencies`, recomputing neither. The
+    membership check itself runs entirely in integer path-id space (no
+    string join needed); path strings are only resolved, via
+    ``load_path_map``, for the pairs that actually surface as hidden --
+    used for a finding's title/detail text and the hidden-dependencies API
+    response. Shared by OverlayEngine (persists these as findings) and the
     hidden-dependencies API endpoint (returns them directly, structured --
     the findings row's free-text title/detail isn't meant to be parsed back
     by a client).
     """
     coupling_rows = session.execute(
         select(
-            Coupling.file_a_path,
-            Coupling.file_b_path,
+            Coupling.path_a_id,
+            Coupling.path_b_id,
             Coupling.shared_revs,
             Coupling.coupling_degree,
         ).where(Coupling.repo_id == repo_id)
@@ -47,17 +54,20 @@ def compute_hidden_dependencies(repo_id: uuid.UUID, session: Session) -> list[Hi
         return []
 
     structural_pairs = {
-        frozenset((row.from_path, row.to_path))
+        frozenset((row.from_path_id, row.to_path_id))
         for row in session.execute(
-            select(Dependency.from_path, Dependency.to_path).where(Dependency.repo_id == repo_id)
+            select(Dependency.from_path_id, Dependency.to_path_id).where(
+                Dependency.repo_id == repo_id
+            )
         ).all()
     }
 
     low_confidence_repo = is_low_confidence(repo_id, session)
+    path_map = load_path_map(repo_id, session)
 
     hidden: list[HiddenDependency] = []
     for row in coupling_rows:
-        if frozenset((row.file_a_path, row.file_b_path)) in structural_pairs:
+        if frozenset((row.path_a_id, row.path_b_id)) in structural_pairs:
             continue  # a real import exists between them -- not hidden
 
         if row.coupling_degree >= HIGH_DEGREE:
@@ -70,8 +80,10 @@ def compute_hidden_dependencies(repo_id: uuid.UUID, session: Session) -> list[Hi
         hint = confidence_hint(row.shared_revs, low_confidence_repo)
         hidden.append(
             {
-                "file_a_path": row.file_a_path,
-                "file_b_path": row.file_b_path,
+                "file_a_path": path_map[row.path_a_id],
+                "file_b_path": path_map[row.path_b_id],
+                "path_a_id": row.path_a_id,
+                "path_b_id": row.path_b_id,
                 "shared_revs": row.shared_revs,
                 "coupling_degree": row.coupling_degree,
                 "severity": severity,
@@ -101,12 +113,11 @@ class OverlayEngine(Engine):
 
         findings = [
             {
-                "id": uuid.uuid4(),
                 "repo_id": repo_id,
                 "category": "hidden_dependency",
                 "severity": h["severity"],
                 "confidence": h["confidence_score"],
-                "file_path": h["file_a_path"],
+                "path_id": h["path_a_id"],
                 "evidence_sha": None,
                 "title": f"Hidden dependency: {h['file_a_path']} <-> {h['file_b_path']}",
                 "detail": (

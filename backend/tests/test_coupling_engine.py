@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import insert, select
 
-from app.db.models import Commit, CommitFile, Coupling, Repo, RepoStatus
+from app.db.models import Commit, Coupling, Repo, RepoPath, RepoStatus
 from app.engines.coupling import (
     FALLBACK_MIN_SHARED_REVS,
     MIN_SHARED_REVS,
@@ -21,13 +21,34 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     return repo.id
 
 
+def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
+    """Path-string -> repo_paths.id map, inserting any paths not already
+    interned for ``repo_id``. Bypasses persist.py entirely -- CouplingEngine
+    is pure over commits.changed_path_ids, so it doesn't care how those ids
+    got assigned."""
+    existing = {
+        row.path: row.id
+        for row in db_session.execute(
+            select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+    new_paths = [p for p in paths if p not in existing]
+    if new_paths:
+        db_session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": p} for p in new_paths])
+        db_session.flush()
+        existing = {
+            row.path: row.id
+            for row in db_session.execute(
+                select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+            ).all()
+        }
+    return existing
+
+
 def _add_commit(
     db_session, repo_id: uuid.UUID, sha: str, file_paths: list[str], when: datetime
-) -> uuid.UUID:
-    """Insert a synthetic commit + its changeset directly, bypassing git/PyDriller
-    entirely -- CouplingEngine is pure over commits/commit_files, so it doesn't
-    care how those rows got there.
-    """
+) -> None:
+    path_ids = _intern_paths(db_session, repo_id, file_paths)
     commit = Commit(
         repo_id=repo_id,
         sha=sha,
@@ -40,14 +61,21 @@ def _add_commit(
         files_changed=len(file_paths),
         insertions=0,
         deletions=0,
+        changed_path_ids=[path_ids[p] for p in file_paths],
+        added_lines=[0 for _ in file_paths],
+        deleted_lines=[0 for _ in file_paths],
     )
     db_session.add(commit)
     db_session.flush()
-    db_session.execute(
-        insert(CommitFile),
-        [{"id": uuid.uuid4(), "commit_id": commit.id, "file_path": p} for p in file_paths],
-    )
-    return commit.id
+
+
+def _path_by_id(db_session, repo_id: uuid.UUID) -> dict[int, str]:
+    return {
+        row.id: row.path
+        for row in db_session.execute(
+            select(RepoPath.id, RepoPath.path).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
 
 
 def test_coupled_files_detected_and_uncoupled_file_excluded(db_session):
@@ -69,10 +97,13 @@ def test_coupled_files_detected_and_uncoupled_file_excluded(db_session):
     assert metadata["commits_analyzed"] == 12
 
     rows = db_session.scalars(select(Coupling).where(Coupling.repo_id == repo_id)).all()
+    path_by_id = _path_by_id(db_session, repo_id)
 
-    assert not any("c.py" in (r.file_a_path, r.file_b_path) for r in rows)
+    assert not any("c.py" in (path_by_id[r.path_a_id], path_by_id[r.path_b_id]) for r in rows)
 
-    ab = next(r for r in rows if {r.file_a_path, r.file_b_path} == {"a.py", "b.py"})
+    ab = next(
+        r for r in rows if {path_by_id[r.path_a_id], path_by_id[r.path_b_id]} == {"a.py", "b.py"}
+    )
     assert ab.shared_revs == 6
     # revs(a) == revs(b) == 6 -> coupling_degree = 6 / min(6, 6) = 1.0
     assert ab.coupling_degree == pytest.approx(1.0)
@@ -97,13 +128,41 @@ def test_asymmetric_coupling_divides_by_the_less_active_file(db_session):
     CouplingEngine().run(repo_id, db_session)
     db_session.commit()
 
-    row = db_session.scalar(
-        select(Coupling).where(Coupling.repo_id == repo_id, Coupling.file_a_path == "a.py")
+    path_ids = _intern_paths(db_session, repo_id, ["a.py", "b.py"])
+    rows = db_session.scalars(select(Coupling).where(Coupling.repo_id == repo_id)).all()
+    row = next(
+        r for r in rows if {r.path_a_id, r.path_b_id} == {path_ids["a.py"], path_ids["b.py"]}
     )
     assert row.shared_revs == 5
     # revs(a)=10, revs(b)=5 -> 5 / min(10, 5) = 1.0, not 5/10 = 0.5
     assert row.coupling_degree == pytest.approx(1.0)
     assert row.avg_revs == pytest.approx(7.5)
+
+
+def test_asymmetric_coupling_at_larger_scale_still_divides_by_less_active_file(db_session):
+    """Same locked-formula regression as above, at the scale explicitly
+    called out for Phase 1: B has 6 commits total and all 6 also touch A,
+    while A has 60 commits total. coupling_degree must still be
+    6 / min(60, 6) = 1.0, not 6/60 = 0.1."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/coupling-asymmetric-large")
+    now = datetime.now(UTC)
+    for i in range(6):
+        _add_commit(db_session, repo_id, f"ab{i}", ["a.py", "b.py"], now)
+    for i in range(54):
+        _add_commit(db_session, repo_id, f"a_only{i}", ["a.py"], now)
+    db_session.commit()
+
+    CouplingEngine().run(repo_id, db_session)
+    db_session.commit()
+
+    path_ids = _intern_paths(db_session, repo_id, ["a.py", "b.py"])
+    rows = db_session.scalars(select(Coupling).where(Coupling.repo_id == repo_id)).all()
+    row = next(
+        r for r in rows if {r.path_a_id, r.path_b_id} == {path_ids["a.py"], path_ids["b.py"]}
+    )
+    assert row.shared_revs == 6
+    assert row.coupling_degree == pytest.approx(1.0)
+    assert row.avg_revs == pytest.approx((60 + 6) / 2)
 
 
 def test_mega_commit_is_dropped_as_noise(db_session):
@@ -123,10 +182,13 @@ def test_mega_commit_is_dropped_as_noise(db_session):
     assert metadata["commits_analyzed"] == 6  # the 40-file commit was dropped
 
     rows = db_session.scalars(select(Coupling).where(Coupling.repo_id == repo_id)).all()
-    xy = next(r for r in rows if {r.file_a_path, r.file_b_path} == {"x.py", "y.py"})
+    path_by_id = _path_by_id(db_session, repo_id)
+    xy = next(
+        r for r in rows if {path_by_id[r.path_a_id], path_by_id[r.path_b_id]} == {"x.py", "y.py"}
+    )
     assert xy.shared_revs == 6
 
-    assert not any("noise0.py" in (r.file_a_path, r.file_b_path) for r in rows)
+    assert not any("noise0.py" in (path_by_id[r.path_a_id], path_by_id[r.path_b_id]) for r in rows)
 
 
 def test_small_repo_fallback_marks_low_confidence_instead_of_empty(db_session):

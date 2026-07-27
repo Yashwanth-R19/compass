@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import insert, select
 
-from app.db.models import Commit, CommitFile, Dependency, Finding, Repo, RepoStatus
+from app.db.models import Commit, Dependency, Finding, Repo, RepoPath, RepoStatus
 from app.engines.architecture import ArchEngine
 from app.engines.coupling import CouplingEngine
 from app.engines.overlay import OverlayEngine, compute_hidden_dependencies
@@ -18,9 +18,30 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     return repo.id
 
 
+def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
+    existing = {
+        row.path: row.id
+        for row in db_session.execute(
+            select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+    new_paths = [p for p in paths if p not in existing]
+    if new_paths:
+        db_session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": p} for p in new_paths])
+        db_session.flush()
+        existing = {
+            row.path: row.id
+            for row in db_session.execute(
+                select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+            ).all()
+        }
+    return existing
+
+
 def _add_commit(
     db_session, repo_id: uuid.UUID, sha: str, file_paths: list[str], when: datetime
 ) -> None:
+    path_ids = _intern_paths(db_session, repo_id, file_paths)
     commit = Commit(
         repo_id=repo_id,
         sha=sha,
@@ -33,12 +54,26 @@ def _add_commit(
         files_changed=len(file_paths),
         insertions=0,
         deletions=0,
+        changed_path_ids=[path_ids[p] for p in file_paths],
+        added_lines=[0 for _ in file_paths],
+        deleted_lines=[0 for _ in file_paths],
     )
     db_session.add(commit)
     db_session.flush()
+
+
+def _add_dependency(db_session, repo_id: uuid.UUID, from_path: str, to_path: str) -> None:
+    path_ids = _intern_paths(db_session, repo_id, [from_path, to_path])
     db_session.execute(
-        insert(CommitFile),
-        [{"id": uuid.uuid4(), "commit_id": commit.id, "file_path": p} for p in file_paths],
+        insert(Dependency),
+        [
+            {
+                "repo_id": repo_id,
+                "from_path_id": path_ids[from_path],
+                "to_path_id": path_ids[to_path],
+                "dep_type": "import",
+            }
+        ],
     )
 
 
@@ -66,19 +101,8 @@ def test_import_edge_found_cycle_detected_hidden_dependency_surfaced(tmp_path, d
     assert ("y.py", "x.py") in edge_pairs
 
     repo_id = _make_repo(db_session, "https://github.com/fixture/architecture-basic")
-    db_session.execute(
-        insert(Dependency),
-        [
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": e.from_path,
-                "to_path": e.to_path,
-                "dep_type": e.dep_type,
-            }
-            for e in edges
-        ],
-    )
+    for from_path, to_path in edge_pairs:
+        _add_dependency(db_session, repo_id, from_path, to_path)
 
     now = datetime.now(UTC)
     # a.py and c.py co-change repeatedly with NO import between them -> hidden dependency.
@@ -127,18 +151,7 @@ def test_import_edge_found_cycle_detected_hidden_dependency_surfaced(tmp_path, d
 
 def test_layering_violation_flagged_for_ui_importing_db_directly(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/architecture-layering")
-    db_session.execute(
-        insert(Dependency),
-        [
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": "ui/widget.py",
-                "to_path": "db/models.py",
-                "dep_type": "import",
-            }
-        ],
-    )
+    _add_dependency(db_session, repo_id, "ui/widget.py", "db/models.py")
     db_session.commit()
 
     metadata = ArchEngine().run(repo_id, db_session)
@@ -150,5 +163,12 @@ def test_layering_violation_flagged_for_ui_importing_db_directly(db_session):
         select(Finding).where(Finding.repo_id == repo_id, Finding.category == "architecture")
     ).all()
     assert len(findings) == 1
-    assert findings[0].file_path == "ui/widget.py"
+
+    path_by_id = {
+        row.id: row.path
+        for row in db_session.execute(
+            select(RepoPath.id, RepoPath.path).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+    assert path_by_id[findings[0].path_id] == "ui/widget.py"
     assert "UI imports DB" in findings[0].title

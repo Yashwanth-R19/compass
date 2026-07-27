@@ -88,7 +88,7 @@ class HealthResponse(BaseModel):
 
 
 class FindingOut(BaseModel):
-    id: uuid.UUID
+    id: int
     category: str
     severity: Severity
     confidence: float

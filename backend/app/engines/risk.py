@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.baseline.base import BaselineProvider
 from app.baseline.heuristic import HeuristicBaseline, size_bucket_for
-from app.db.models import Commit, CommitFile, Coupling, File, FileMetrics, Finding, Severity
+from app.db.models import Commit, Coupling, File, FileMetrics, Finding, Severity
+from app.db.paths import load_path_map
 from app.engines.base import Engine
 
 MAX_RISK_FINDINGS = 10
@@ -24,32 +25,46 @@ Heuristic, documented, same style as overlay.py's HIGH_DEGREE/MED_DEGREE."""
 
 
 def max_coupling_by_path(repo_id: uuid.UUID, session: Session) -> dict[str, float]:
-    """Max coupling_degree across each file's pairs -- 0.0 for a file with no
-    coupling pairs at all (per the risk-formula spec, not just "missing")."""
+    """Max coupling_degree across each file's pairs, keyed by path STRING --
+    0.0 for a file with no coupling pairs at all (per the risk-formula spec,
+    not just "missing"). ``coupling`` stores integer path ids (Phase 1
+    schema diet); resolved back to strings here via ``load_path_map`` since
+    callers (RiskEngine, the risk/architecture API) match against
+    ``File.path``.
+    """
     rows = session.execute(
-        select(Coupling.file_a_path, Coupling.file_b_path, Coupling.coupling_degree).where(
+        select(Coupling.path_a_id, Coupling.path_b_id, Coupling.coupling_degree).where(
             Coupling.repo_id == repo_id
         )
     ).all()
+    if not rows:
+        return {}
+
+    path_map = load_path_map(repo_id, session)
     max_degree: dict[str, float] = {}
-    for a, b, degree in rows:
+    for a_id, b_id, degree in rows:
+        a, b = path_map[a_id], path_map[b_id]
         max_degree[a] = max(max_degree.get(a, 0.0), degree)
         max_degree[b] = max(max_degree.get(b, 0.0), degree)
     return max_degree
 
 
 def _most_recent_significant_commit_sha(
-    repo_id: uuid.UUID, path: str, session: Session
+    repo_id: uuid.UUID, path_id: int, session: Session
 ) -> str | None:
     """Evidence commit for a risk finding: the most recent commit touching
     this file, preferring an ``is_fix`` commit over a merely-recent one when
     both exist -- "significant" here means "looks like it was fixing
     something", the same conservative is_fix regex flag the miner already
-    computes (app/ingestion/miner.py), not a fabricated judgment."""
+    computes (app/ingestion/miner.py), not a fabricated judgment. Matches via
+    ``changed_path_ids`` array containment (Phase 1 schema diet) instead of
+    the old commit_files join."""
     row = session.execute(
         select(Commit.sha)
-        .join(CommitFile, CommitFile.commit_id == Commit.id)
-        .where(Commit.repo_id == repo_id, CommitFile.file_path == path)
+        .where(
+            Commit.repo_id == repo_id,
+            Commit.changed_path_ids.any(path_id),  # type: ignore[arg-type]
+        )
         .order_by(Commit.is_fix.desc(), Commit.committed_at.desc())
         .limit(1)
     ).first()
@@ -149,7 +164,6 @@ class RiskEngine(Engine):
 
         metrics_rows = [
             {
-                "id": uuid.uuid4(),
                 "file_id": files[i].id,
                 "risk_score": risk_scores[i],
                 "risk_confidence": risk_confidences[i],
@@ -163,15 +177,14 @@ class RiskEngine(Engine):
         findings = []
         for rank, i in enumerate(top_indices):
             f = files[i]
-            evidence_sha = _most_recent_significant_commit_sha(repo_id, f.path, session)
+            evidence_sha = _most_recent_significant_commit_sha(repo_id, f.path_id, session)
             findings.append(
                 {
-                    "id": uuid.uuid4(),
                     "repo_id": repo_id,
                     "category": "risk",
                     "severity": _risk_severity(risk_scores[i]),
                     "confidence": risk_confidences[i],
-                    "file_path": f.path,
+                    "path_id": f.path_id,
                     "evidence_sha": evidence_sha,
                     "title": f"Hotspot: {f.path}",
                     "detail": (

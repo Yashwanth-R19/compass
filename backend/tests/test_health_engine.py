@@ -2,9 +2,9 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 
-from app.db.models import Coupling, Dependency, File, FileMetrics, Repo, RepoStatus
+from app.db.models import Coupling, Dependency, File, FileMetrics, Repo, RepoPath, RepoStatus
 from app.engines.health import (
     CYCLE_PENALTY_CAP,
     CYCLE_PENALTY_PER_CYCLE,
@@ -22,10 +22,32 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     return repo.id
 
 
+def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
+    existing = {
+        row.path: row.id
+        for row in db_session.execute(
+            select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+        ).all()
+    }
+    new_paths = [p for p in paths if p not in existing]
+    if new_paths:
+        db_session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": p} for p in new_paths])
+        db_session.flush()
+        existing = {
+            row.path: row.id
+            for row in db_session.execute(
+                select(RepoPath.path, RepoPath.id).where(RepoPath.repo_id == repo_id)
+            ).all()
+        }
+    return existing
+
+
 def _add_file_with_risk_score(db_session, repo_id: uuid.UUID, path: str, risk_score: float) -> None:
+    path_id = _intern_paths(db_session, repo_id, [path])[path]
     now = datetime.now(UTC)
     file = File(
         repo_id=repo_id,
+        path_id=path_id,
         path=path,
         language="python",
         current_loc=10,
@@ -40,6 +62,38 @@ def _add_file_with_risk_score(db_session, repo_id: uuid.UUID, path: str, risk_sc
     db_session.flush()
     db_session.add(
         FileMetrics(file_id=file.id, risk_score=risk_score, risk_confidence=0.5, hotspot_rank=0)
+    )
+
+
+def _add_dependency(db_session, repo_id: uuid.UUID, from_path: str, to_path: str) -> None:
+    path_ids = _intern_paths(db_session, repo_id, [from_path, to_path])
+    db_session.execute(
+        insert(Dependency),
+        [
+            {
+                "repo_id": repo_id,
+                "from_path_id": path_ids[from_path],
+                "to_path_id": path_ids[to_path],
+                "dep_type": "import",
+            }
+        ],
+    )
+
+
+def _add_coupling(db_session, repo_id: uuid.UUID, path_a: str, path_b: str) -> None:
+    path_ids = _intern_paths(db_session, repo_id, [path_a, path_b])
+    db_session.execute(
+        insert(Coupling),
+        [
+            {
+                "repo_id": repo_id,
+                "path_a_id": path_ids[path_a],
+                "path_b_id": path_ids[path_b],
+                "shared_revs": 6,
+                "coupling_degree": 0.9,
+                "avg_revs": 6.0,
+            }
+        ],
     )
 
 
@@ -67,41 +121,11 @@ def test_penalties_apply_and_are_uncapped_below_threshold(db_session):
     _add_file_with_risk_score(db_session, repo_id, "ok2.py", risk_score=0.3)
 
     # One 2-file cycle: x.py <-> y.py
-    db_session.execute(
-        insert(Dependency),
-        [
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": "x.py",
-                "to_path": "y.py",
-                "dep_type": "import",
-            },
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": "y.py",
-                "to_path": "x.py",
-                "dep_type": "import",
-            },
-        ],
-    )
+    _add_dependency(db_session, repo_id, "x.py", "y.py")
+    _add_dependency(db_session, repo_id, "y.py", "x.py")
 
     # One hidden dependency: m.py/n.py coupled, no structural edge between them.
-    db_session.execute(
-        insert(Coupling),
-        [
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "file_a_path": "m.py",
-                "file_b_path": "n.py",
-                "shared_revs": 6,
-                "coupling_degree": 0.9,
-                "avg_revs": 6.0,
-            }
-        ],
-    )
+    _add_coupling(db_session, repo_id, "m.py", "n.py")
     db_session.commit()
 
     result = HealthEngine().run(repo_id, db_session)
@@ -126,43 +150,14 @@ def test_penalties_are_capped_and_score_floors_at_zero(db_session):
 
     # Many small planted cycles so CYCLE_PENALTY_PER_CYCLE * count exceeds the cap.
     cycles_needed = int(CYCLE_PENALTY_CAP // CYCLE_PENALTY_PER_CYCLE) + 3
-    dep_rows = []
     for i in range(cycles_needed):
-        dep_rows.append(
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": f"p{i}.py",
-                "to_path": f"q{i}.py",
-                "dep_type": "import",
-            }
-        )
-        dep_rows.append(
-            {
-                "id": uuid.uuid4(),
-                "repo_id": repo_id,
-                "from_path": f"q{i}.py",
-                "to_path": f"p{i}.py",
-                "dep_type": "import",
-            }
-        )
-    db_session.execute(insert(Dependency), dep_rows)
+        _add_dependency(db_session, repo_id, f"p{i}.py", f"q{i}.py")
+        _add_dependency(db_session, repo_id, f"q{i}.py", f"p{i}.py")
 
     # Many hidden-dependency pairs so their penalty also exceeds its cap.
     pairs_needed = int(HIDDEN_DEP_PENALTY_CAP // HIDDEN_DEP_PENALTY_PER_PAIR) + 3
-    coupling_rows = [
-        {
-            "id": uuid.uuid4(),
-            "repo_id": repo_id,
-            "file_a_path": f"m{i}.py",
-            "file_b_path": f"n{i}.py",
-            "shared_revs": 6,
-            "coupling_degree": 0.9,
-            "avg_revs": 6.0,
-        }
-        for i in range(pairs_needed)
-    ]
-    db_session.execute(insert(Coupling), coupling_rows)
+    for i in range(pairs_needed):
+        _add_coupling(db_session, repo_id, f"m{i}.py", f"n{i}.py")
     db_session.commit()
 
     result = HealthEngine().run(repo_id, db_session)
