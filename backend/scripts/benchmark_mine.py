@@ -13,12 +13,13 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import ClassVar
 
 # Allow running this script directly (`python backend/scripts/benchmark_mine.py`)
 # without having installed the package first.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.ingestion.miner import mine_repo  # noqa: E402
+from app.ingestion.miner import mine_repo
 
 try:
     import resource
@@ -27,11 +28,12 @@ try:
         # ru_maxrss is KB on Linux, bytes on macOS -- KB is the common case
         # for the ubuntu-latest CI runner this budget targets.
         return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+
 except ImportError:  # Windows has no `resource` module
     import ctypes
 
     class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-        _fields_ = [
+        _fields_: ClassVar[list[tuple[str, object]]] = [
             ("cb", ctypes.c_ulong),
             ("PageFaultCount", ctypes.c_ulong),
             ("PeakWorkingSetSize", ctypes.c_size_t),
