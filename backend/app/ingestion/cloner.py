@@ -3,6 +3,19 @@ import tempfile
 import git
 
 
+def get_remote_head_sha(url: str) -> str:
+    """Resolve the remote default branch's HEAD commit sha WITHOUT a full
+    clone -- a single `git ls-remote <url> HEAD` network call.
+
+    Used by the job runner to decide whether Facts (repo_paths/commits/
+    files/dependencies) can be reused as-is: if this matches the repo's
+    already-persisted ``repos.head_sha``, cloning and mining are skipped
+    entirely (Phase 02 progressive reveal / near-instant re-analysis).
+    """
+    output = git.Git().ls_remote(url, "HEAD")
+    return output.split()[0]
+
+
 def clone_repo(url: str) -> str:
     """Clone the default branch's full commit history into a fresh temp dir.
 

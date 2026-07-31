@@ -4,7 +4,16 @@ from pathlib import Path
 
 from sqlalchemy import insert, select
 
-from app.db.models import Commit, Dependency, Finding, Repo, RepoPath, RepoStatus
+from app.db.models import (
+    AnalysisRun,
+    AnalysisRunStatus,
+    Commit,
+    Dependency,
+    Finding,
+    Repo,
+    RepoPath,
+    RepoStatus,
+)
 from app.engines.architecture import ArchEngine
 from app.engines.coupling import CouplingEngine
 from app.engines.overlay import OverlayEngine, compute_hidden_dependencies
@@ -16,6 +25,13 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     db_session.add(repo)
     db_session.commit()
     return repo.id
+
+
+def _make_run(db_session, repo_id: uuid.UUID) -> uuid.UUID:
+    run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.running, head_sha="test-sha")
+    db_session.add(run)
+    db_session.commit()
+    return run.id
 
 
 def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
@@ -114,11 +130,13 @@ def test_import_edge_found_cycle_detected_hidden_dependency_surfaced(tmp_path, d
         _add_commit(db_session, repo_id, f"ab{i}", ["a.py", "b.py"], now)
     db_session.commit()
 
-    CouplingEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+
+    CouplingEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     # 2. ArchEngine: the planted x<->y cycle must be detected.
-    arch_metadata = ArchEngine().run(repo_id, db_session)
+    arch_metadata = ArchEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert arch_metadata["cycles_found"] == 1
@@ -132,12 +150,12 @@ def test_import_edge_found_cycle_detected_hidden_dependency_surfaced(tmp_path, d
 
     # 3. OverlayEngine: (a, c) is a hidden dependency; (a, b) is not,
     # because a real import edge already accounts for it.
-    overlay_metadata = OverlayEngine().run(repo_id, db_session)
+    overlay_metadata = OverlayEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert overlay_metadata["hidden_dependencies_found"] == 1
 
-    hidden = compute_hidden_dependencies(repo_id, db_session)
+    hidden = compute_hidden_dependencies(repo_id, run_id, db_session)
     hidden_pairs = {frozenset((h["file_a_path"], h["file_b_path"])) for h in hidden}
     assert frozenset({"a.py", "c.py"}) in hidden_pairs
     assert frozenset({"a.py", "b.py"}) not in hidden_pairs
@@ -154,7 +172,8 @@ def test_layering_violation_flagged_for_ui_importing_db_directly(db_session):
     _add_dependency(db_session, repo_id, "ui/widget.py", "db/models.py")
     db_session.commit()
 
-    metadata = ArchEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = ArchEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["layering_violations_found"] == 1

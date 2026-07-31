@@ -4,7 +4,15 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import insert, select
 
-from app.db.models import Commit, Coupling, Repo, RepoPath, RepoStatus
+from app.db.models import (
+    AnalysisRun,
+    AnalysisRunStatus,
+    Commit,
+    Coupling,
+    Repo,
+    RepoPath,
+    RepoStatus,
+)
 from app.engines.coupling import (
     FALLBACK_MIN_SHARED_REVS,
     MIN_SHARED_REVS,
@@ -19,6 +27,13 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     db_session.add(repo)
     db_session.commit()
     return repo.id
+
+
+def _make_run(db_session, repo_id: uuid.UUID) -> uuid.UUID:
+    run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.running, head_sha="test-sha")
+    db_session.add(run)
+    db_session.commit()
+    return run.id
 
 
 def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
@@ -90,7 +105,8 @@ def test_coupled_files_detected_and_uncoupled_file_excluded(db_session):
         _add_commit(db_session, repo_id, f"c{i}", ["c.py"], now)
     db_session.commit()
 
-    metadata = CouplingEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = CouplingEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["low_confidence"] is False
@@ -125,7 +141,8 @@ def test_asymmetric_coupling_divides_by_the_less_active_file(db_session):
         _add_commit(db_session, repo_id, f"a_only{i}", ["a.py"], now)
     db_session.commit()
 
-    CouplingEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    CouplingEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     path_ids = _intern_paths(db_session, repo_id, ["a.py", "b.py"])
@@ -152,7 +169,8 @@ def test_asymmetric_coupling_at_larger_scale_still_divides_by_less_active_file(d
         _add_commit(db_session, repo_id, f"a_only{i}", ["a.py"], now)
     db_session.commit()
 
-    CouplingEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    CouplingEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     path_ids = _intern_paths(db_session, repo_id, ["a.py", "b.py"])
@@ -176,7 +194,8 @@ def test_mega_commit_is_dropped_as_noise(db_session):
     _add_commit(db_session, repo_id, "mega", mega_files, now)
     db_session.commit()
 
-    metadata = CouplingEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = CouplingEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["commits_analyzed"] == 6  # the 40-file commit was dropped
@@ -202,7 +221,8 @@ def test_small_repo_fallback_marks_low_confidence_instead_of_empty(db_session):
         _add_commit(db_session, repo_id, f"ab{i}", ["a.py", "b.py"], now)
     db_session.commit()
 
-    metadata = CouplingEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = CouplingEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["low_confidence"] is True
@@ -243,7 +263,8 @@ def test_fallback_triggers_when_no_pair_meets_the_floor_even_with_enough_commits
     # wrong trigger would never have engaged the fallback here.
     assert MIN_SHARED_REVS <= 2 + 13
 
-    metadata = CouplingEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = CouplingEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["commits_analyzed"] == 15

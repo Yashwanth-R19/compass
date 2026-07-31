@@ -4,7 +4,17 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import insert, select
 
-from app.db.models import Coupling, Dependency, File, FileMetrics, Repo, RepoPath, RepoStatus
+from app.db.models import (
+    AnalysisRun,
+    AnalysisRunStatus,
+    Coupling,
+    Dependency,
+    File,
+    FileMetrics,
+    Repo,
+    RepoPath,
+    RepoStatus,
+)
 from app.engines.health import (
     CYCLE_PENALTY_CAP,
     CYCLE_PENALTY_PER_CYCLE,
@@ -20,6 +30,13 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     db_session.add(repo)
     db_session.commit()
     return repo.id
+
+
+def _make_run(db_session, repo_id: uuid.UUID) -> uuid.UUID:
+    run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.running, head_sha="test-sha")
+    db_session.add(run)
+    db_session.commit()
+    return run.id
 
 
 def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
@@ -42,7 +59,9 @@ def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str,
     return existing
 
 
-def _add_file_with_risk_score(db_session, repo_id: uuid.UUID, path: str, risk_score: float) -> None:
+def _add_file_with_risk_score(
+    db_session, repo_id: uuid.UUID, run_id: uuid.UUID, path: str, risk_score: float
+) -> None:
     path_id = _intern_paths(db_session, repo_id, [path])[path]
     now = datetime.now(UTC)
     file = File(
@@ -61,7 +80,14 @@ def _add_file_with_risk_score(db_session, repo_id: uuid.UUID, path: str, risk_sc
     db_session.add(file)
     db_session.flush()
     db_session.add(
-        FileMetrics(file_id=file.id, risk_score=risk_score, risk_confidence=0.5, hotspot_rank=0)
+        FileMetrics(
+            analysis_run_id=run_id,
+            repo_id=repo_id,
+            path_id=path_id,
+            risk_score=risk_score,
+            risk_confidence=0.5,
+            hotspot_rank=0,
+        )
     )
 
 
@@ -80,12 +106,15 @@ def _add_dependency(db_session, repo_id: uuid.UUID, from_path: str, to_path: str
     )
 
 
-def _add_coupling(db_session, repo_id: uuid.UUID, path_a: str, path_b: str) -> None:
+def _add_coupling(
+    db_session, repo_id: uuid.UUID, run_id: uuid.UUID, path_a: str, path_b: str
+) -> None:
     path_ids = _intern_paths(db_session, repo_id, [path_a, path_b])
     db_session.execute(
         insert(Coupling),
         [
             {
+                "analysis_run_id": run_id,
                 "repo_id": repo_id,
                 "path_a_id": path_ids[path_a],
                 "path_b_id": path_ids[path_b],
@@ -99,11 +128,12 @@ def _add_coupling(db_session, repo_id: uuid.UUID, path_a: str, path_b: str) -> N
 
 def test_healthy_repo_scores_100(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/health-perfect")
+    run_id = _make_run(db_session, repo_id)
     for i in range(4):
-        _add_file_with_risk_score(db_session, repo_id, f"f{i}.py", risk_score=0.1)
+        _add_file_with_risk_score(db_session, repo_id, run_id, f"f{i}.py", risk_score=0.1)
     db_session.commit()
 
-    result = HealthEngine().run(repo_id, db_session)
+    result = HealthEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert result["score"] == pytest.approx(100.0)
@@ -114,21 +144,22 @@ def test_healthy_repo_scores_100(db_session):
 
 def test_penalties_apply_and_are_uncapped_below_threshold(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/health-penalized")
+    run_id = _make_run(db_session, repo_id)
     # 2 of 4 files are high-risk (>= 0.60) -> high_risk_ratio = 0.5
-    _add_file_with_risk_score(db_session, repo_id, "hot1.py", risk_score=0.8)
-    _add_file_with_risk_score(db_session, repo_id, "hot2.py", risk_score=0.7)
-    _add_file_with_risk_score(db_session, repo_id, "ok1.py", risk_score=0.2)
-    _add_file_with_risk_score(db_session, repo_id, "ok2.py", risk_score=0.3)
+    _add_file_with_risk_score(db_session, repo_id, run_id, "hot1.py", risk_score=0.8)
+    _add_file_with_risk_score(db_session, repo_id, run_id, "hot2.py", risk_score=0.7)
+    _add_file_with_risk_score(db_session, repo_id, run_id, "ok1.py", risk_score=0.2)
+    _add_file_with_risk_score(db_session, repo_id, run_id, "ok2.py", risk_score=0.3)
 
     # One 2-file cycle: x.py <-> y.py
     _add_dependency(db_session, repo_id, "x.py", "y.py")
     _add_dependency(db_session, repo_id, "y.py", "x.py")
 
     # One hidden dependency: m.py/n.py coupled, no structural edge between them.
-    _add_coupling(db_session, repo_id, "m.py", "n.py")
+    _add_coupling(db_session, repo_id, run_id, "m.py", "n.py")
     db_session.commit()
 
-    result = HealthEngine().run(repo_id, db_session)
+    result = HealthEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert result["high_risk_ratio"] == pytest.approx(0.5)
@@ -143,9 +174,10 @@ def test_penalties_apply_and_are_uncapped_below_threshold(db_session):
 
 def test_penalties_are_capped_and_score_floors_at_zero(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/health-floor")
+    run_id = _make_run(db_session, repo_id)
     # All files high-risk -> high_risk_ratio = 1.0 -> risk_penalty = 40 (uncapped, <=100)
     for i in range(3):
-        _add_file_with_risk_score(db_session, repo_id, f"hot{i}.py", risk_score=0.9)
+        _add_file_with_risk_score(db_session, repo_id, run_id, f"hot{i}.py", risk_score=0.9)
     db_session.commit()
 
     # Many small planted cycles so CYCLE_PENALTY_PER_CYCLE * count exceeds the cap.
@@ -157,10 +189,10 @@ def test_penalties_are_capped_and_score_floors_at_zero(db_session):
     # Many hidden-dependency pairs so their penalty also exceeds its cap.
     pairs_needed = int(HIDDEN_DEP_PENALTY_CAP // HIDDEN_DEP_PENALTY_PER_PAIR) + 3
     for i in range(pairs_needed):
-        _add_coupling(db_session, repo_id, f"m{i}.py", f"n{i}.py")
+        _add_coupling(db_session, repo_id, run_id, f"m{i}.py", f"n{i}.py")
     db_session.commit()
 
-    result = HealthEngine().run(repo_id, db_session)
+    result = HealthEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert result["cycle_count"] == cycles_needed

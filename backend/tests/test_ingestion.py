@@ -4,10 +4,24 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
-from app.db.models import Commit, File, Job, JobStatus, Repo, RepoPath, RepoStatus
+from app.db.models import (
+    AnalysisRun,
+    AnalysisRunStatus,
+    AnalysisStage,
+    Commit,
+    File,
+    Health,
+    Job,
+    JobStatus,
+    Repo,
+    RepoPath,
+    RepoStatus,
+    StageStatus,
+)
 from app.ingestion.cloner import clone_repo
 from app.ingestion.miner import mine_repo
 from app.jobs.runner import run_ingestion_job
+from app.jobs.stages import ALL_STAGES, FACT_STAGES, INSIGHT_STAGES
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -52,6 +66,18 @@ def _make_repo_and_job(db_session, url: str) -> tuple:
     db_session.add(job)
     db_session.commit()
     return repo.id, job.id
+
+
+def _new_job(db_session, repo_id):
+    job = Job(repo_id=repo_id, job_type="ingestion", status=JobStatus.queued, progress=0)
+    db_session.add(job)
+    db_session.commit()
+    return job.id
+
+
+def _stage_statuses(db_session, run_id) -> dict[str, StageStatus]:
+    rows = db_session.scalars(select(AnalysisStage).where(AnalysisStage.run_id == run_id)).all()
+    return {s.name: s.status for s in rows}
 
 
 def test_mine_and_persist_fixture_repo(fixture_repo, db_session, monkeypatch):
@@ -106,6 +132,18 @@ def test_mine_and_persist_fixture_repo(fixture_repo, db_session, monkeypatch):
     repo = db_session.get(Repo, repo_id)
     assert repo.status == RepoStatus.ready
     assert repo.commit_count == 3
+    assert repo.head_sha  # resolved via `git ls-remote`, non-empty
+    assert repo.current_run_id is not None
+
+    # Phase 02: a fresh repo's first-ever run computes everything -- no
+    # stage is skipped, and every stage (fact + insight) reached done.
+    run = db_session.get(AnalysisRun, repo.current_run_id)
+    assert run.status == AnalysisRunStatus.ready
+    assert run.head_sha == repo.head_sha
+
+    statuses = _stage_statuses(db_session, run.id)
+    assert set(statuses) == {s.name for s in ALL_STAGES}
+    assert all(status == StageStatus.done for status in statuses.values())
 
 
 def _touch_count(db_session, repo_id) -> int:
@@ -113,11 +151,20 @@ def _touch_count(db_session, repo_id) -> int:
     return sum(len(c.changed_path_ids) for c in commits)
 
 
-def test_reingestion_is_idempotent_full_replace(fixture_repo, db_session):
+def test_reanalysis_with_unchanged_head_sha_skips_fact_stages(fixture_repo, db_session):
+    """Part G: re-running ingestion against an unchanged head_sha must skip
+    the four FACT stages entirely (near-instant re-analysis, Part C step 3)
+    while still producing a fresh, correctly-computed set of Insight rows for
+    the new run -- and must never duplicate Facts (the older
+    "idempotent re-ingestion" invariant, now achieved via skip rather than
+    wipe-and-reinsert)."""
     repo_id, job1_id = _make_repo_and_job(db_session, str(fixture_repo))
 
     run_ingestion_job(repo_id, job1_id)
     db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    first_run_id = repo.current_run_id
     commits_after_first = db_session.scalar(
         select(func.count()).select_from(Commit).where(Commit.repo_id == repo_id)
     )
@@ -129,12 +176,14 @@ def test_reingestion_is_idempotent_full_replace(fixture_repo, db_session):
     )
     touches_after_first = _touch_count(db_session, repo_id)
 
-    job2 = Job(repo_id=repo_id, job_type="ingestion", status=JobStatus.queued, progress=0)
-    db_session.add(job2)
-    db_session.commit()
-
-    run_ingestion_job(repo_id, job2.id)
+    job2_id = _new_job(db_session, repo_id)
+    run_ingestion_job(repo_id, job2_id)
     db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    second_run_id = repo.current_run_id
+    assert second_run_id != first_run_id
+
     commits_after_second = db_session.scalar(
         select(func.count()).select_from(Commit).where(Commit.repo_id == repo_id)
     )
@@ -151,6 +200,144 @@ def test_reingestion_is_idempotent_full_replace(fixture_repo, db_session):
     assert files_after_second == files_after_first
     assert repo_paths_after_second == repo_paths_after_first
     assert touches_after_second == touches_after_first
+
+    # The FACT stages were skipped outright on the second run...
+    second_run_statuses = _stage_statuses(db_session, second_run_id)
+    for s in FACT_STAGES:
+        assert second_run_statuses[s.name] == StageStatus.skipped
+    # ...but every INSIGHT stage still ran fresh for the new run_id.
+    for s in INSIGHT_STAGES:
+        assert second_run_statuses[s.name] == StageStatus.done
+
+    # Results are versioned, not overwritten: two distinct runs now each have
+    # their own Health row for the same repo_id (HealthEngine always writes
+    # exactly one row per run, unconditionally -- unlike Coupling, which this
+    # particular 3-commit fixture never produces a single pair for, since no
+    # pair of files ever co-changes even FALLBACK_MIN_SHARED_REVS times).
+    run_ids_with_health = set(
+        db_session.scalars(
+            select(Health.analysis_run_id).where(Health.repo_id == repo_id).distinct()
+        ).all()
+    )
+    assert run_ids_with_health == {first_run_id, second_run_id}
+
+    # The first run is superseded, not deleted -- its rows are untouched.
+    first_run = db_session.get(AnalysisRun, first_run_id)
+    assert first_run.status == AnalysisRunStatus.superseded
+    second_run = db_session.get(AnalysisRun, second_run_id)
+    assert second_run.status == AnalysisRunStatus.ready
+
+
+def test_full_replace_when_head_sha_changes_and_old_run_stays_intact(fixture_repo, db_session):
+    """When a repo genuinely gets new commits, the FACT stages must run for
+    real (not skip), Facts get fully replaced, and -- the load-bearing
+    correctness property behind leaving repo_paths out of wipe_facts (see
+    app/db/wipe.py) -- a path that exists both before and after the change
+    keeps the SAME repo_paths.id, so the FIRST run's Insight rows (which
+    reference that id) are still valid and readable after the second run.
+    """
+    repo_id, job1_id = _make_repo_and_job(db_session, str(fixture_repo))
+    run_ingestion_job(repo_id, job1_id)
+    db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    first_run_id = repo.current_run_id
+    first_head_sha = repo.head_sha
+    a_py_id_before = db_session.scalar(
+        select(RepoPath.id).where(RepoPath.repo_id == repo_id, RepoPath.path == "a.py")
+    )
+
+    # A genuinely new commit -- head_sha must change.
+    (fixture_repo / "a.py").write_text("def foo():\n    return 42\n")
+    _git(fixture_repo, "add", "a.py")
+    _git(fixture_repo, "commit", "-m", "change foo again")
+
+    job2_id = _new_job(db_session, repo_id)
+    run_ingestion_job(repo_id, job2_id)
+    db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    second_run_id = repo.current_run_id
+    assert repo.head_sha != first_head_sha
+    assert repo.commit_count == 4
+
+    second_run_statuses = _stage_statuses(db_session, second_run_id)
+    for s in FACT_STAGES:
+        assert second_run_statuses[s.name] == StageStatus.done  # not skipped this time
+
+    a_py_id_after = db_session.scalar(
+        select(RepoPath.id).where(RepoPath.repo_id == repo_id, RepoPath.path == "a.py")
+    )
+    assert a_py_id_after == a_py_id_before
+
+    # The first run's own Insight rows must still exist and still resolve
+    # -- nothing cascaded away when Facts were replaced.
+    first_run = db_session.get(AnalysisRun, first_run_id)
+    assert first_run.status == AnalysisRunStatus.superseded
+    first_run_stage_rows = db_session.scalars(
+        select(AnalysisStage).where(AnalysisStage.run_id == first_run_id)
+    ).all()
+    assert len(first_run_stage_rows) == len(ALL_STAGES)
+
+
+def test_failed_insight_stage_leaves_current_run_id_on_previous_good_run(
+    fixture_repo, db_session, monkeypatch
+):
+    """Part G: a failure inside an Insight stage on a re-analysis must never
+    blank out a repo that already had a good run -- repos.current_run_id/
+    head_sha stay pointed at the last successful run, the new run and its
+    failing stage are marked failed, and repos.status flips to failed."""
+    repo_id, job1_id = _make_repo_and_job(db_session, str(fixture_repo))
+    run_ingestion_job(repo_id, job1_id)
+    db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    good_run_id = repo.current_run_id
+    good_head_sha = repo.head_sha
+
+    def _broken_max_coupling_by_path(repo_id, run_id, session):
+        raise RuntimeError("synthetic risk engine failure")
+
+    monkeypatch.setattr("app.engines.risk.max_coupling_by_path", _broken_max_coupling_by_path)
+
+    job2_id = _new_job(db_session, repo_id)
+    with pytest.raises(RuntimeError, match="synthetic risk engine failure"):
+        run_ingestion_job(repo_id, job2_id)
+    db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    assert repo.status == RepoStatus.failed
+    # CRUCIAL: the repo must still point at the previous good run.
+    assert repo.current_run_id == good_run_id
+    assert repo.head_sha == good_head_sha
+
+    job2 = db_session.get(Job, job2_id)
+    assert job2.status == JobStatus.failed
+    assert "synthetic risk engine failure" in job2.error
+
+    failed_runs = db_session.scalars(
+        select(AnalysisRun).where(AnalysisRun.repo_id == repo_id, AnalysisRun.id != good_run_id)
+    ).all()
+    assert len(failed_runs) == 1
+    failed_run = failed_runs[0]
+    assert failed_run.status == AnalysisRunStatus.failed
+    assert failed_run.error and "synthetic risk engine failure" in failed_run.error
+
+    # The FACT stages were skipped (head_sha unchanged); risk failed; health
+    # and rank, which run after risk, never even started.
+    statuses = _stage_statuses(db_session, failed_run.id)
+    for s in FACT_STAGES:
+        assert statuses[s.name] == StageStatus.skipped
+    assert statuses["coupling"] == StageStatus.done
+    assert statuses["architecture"] == StageStatus.done
+    assert statuses["overlay"] == StageStatus.done
+    assert statuses["risk"] == StageStatus.failed
+    assert statuses["health"] == StageStatus.pending
+    assert statuses["rank"] == StageStatus.pending
+
+    # The previous good run's own data is untouched.
+    good_run = db_session.get(AnalysisRun, good_run_id)
+    assert good_run.status == AnalysisRunStatus.ready
 
 
 def test_mined_paths_are_posix_even_on_windows(tmp_path):

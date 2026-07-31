@@ -6,6 +6,21 @@ export type RepoStatus = "pending" | "mining" | "analyzing" | "ready" | "failed"
 export type JobStatus = "queued" | "running" | "done" | "failed";
 export type Severity = "low" | "med" | "high";
 
+// Phase 02: Facts/Insight split + progressive reveal (CLAUDE.md).
+export type AnalysisRunStatus = "running" | "ready" | "failed" | "superseded";
+export type StageName =
+  | "clone"
+  | "mine"
+  | "structure"
+  | "persist_facts"
+  | "coupling"
+  | "architecture"
+  | "overlay"
+  | "risk"
+  | "health"
+  | "rank";
+export type StageStatus = "pending" | "running" | "done" | "failed" | "skipped";
+
 export interface RepoCreateResponse {
   repo_id: string;
   job_id: string;
@@ -132,4 +147,37 @@ export interface FindingOut {
 export interface FindingsResponse {
   repo_id: string;
   findings: FindingOut[];
+}
+
+export interface StageOut {
+  name: StageName;
+  status: StageStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  summary: Record<string, unknown> | null;
+}
+
+export interface RepoStatusResponse {
+  repo_id: string;
+  repo_status: RepoStatus;
+  current_run_id: string | null;
+  run_id: string | null;
+  run_status: AnalysisRunStatus | null;
+  run_error: string | null;
+  stages: StageOut[];
+}
+
+export interface AnalysisRunOut {
+  id: string;
+  status: AnalysisRunStatus;
+  head_sha: string;
+  engine_version: number;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface AnalysisRunsResponse {
+  repo_id: string;
+  runs: AnalysisRunOut[];
 }

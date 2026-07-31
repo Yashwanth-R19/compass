@@ -111,7 +111,7 @@ class ArchEngine(Engine):
     before the clone is deleted -- this engine only ever reads that table.
     """
 
-    def run(self, repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
+    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
         edges = load_edges(repo_id, session)
         graph = build_graph(edges)
         cycles = find_cycles(graph)
@@ -119,10 +119,10 @@ class ArchEngine(Engine):
         path_id_map = load_path_id_map(repo_id, session)
 
         findings: list[dict[str, Any]] = [
-            _cycle_finding(repo_id, cycle, path_id_map) for cycle in cycles
+            _cycle_finding(repo_id, run_id, cycle, path_id_map) for cycle in cycles
         ]
         findings += [
-            _layering_finding(repo_id, from_path, to_path, kind, path_id_map)
+            _layering_finding(repo_id, run_id, from_path, to_path, kind, path_id_map)
             for from_path, to_path, kind in violations
         ]
 
@@ -163,12 +163,13 @@ def layering_violations(edges: list[tuple[str, str]]) -> list[tuple[str, str, st
 
 
 def _cycle_finding(
-    repo_id: uuid.UUID, cycle: list[str], path_id_map: dict[str, int]
+    repo_id: uuid.UUID, run_id: uuid.UUID, cycle: list[str], path_id_map: dict[str, int]
 ) -> dict[str, Any]:
     length = len(cycle)
     severity = cycle_severity(length)
     chain = " -> ".join([*cycle, cycle[0]])
     return {
+        "analysis_run_id": run_id,
         "repo_id": repo_id,
         "category": "architecture",
         "severity": severity,
@@ -187,7 +188,12 @@ def layering_violation_severity(kind: str) -> Severity:
 
 
 def _layering_finding(
-    repo_id: uuid.UUID, from_path: str, to_path: str, kind: str, path_id_map: dict[str, int]
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID,
+    from_path: str,
+    to_path: str,
+    kind: str,
+    path_id_map: dict[str, int],
 ) -> dict[str, Any]:
     severity = layering_violation_severity(kind)
     if kind == "skip":
@@ -198,6 +204,7 @@ def _layering_finding(
         detail = f"{from_path} imports {to_path}, but that dependency runs backwards through the ui/service/db layering."
 
     return {
+        "analysis_run_id": run_id,
         "repo_id": repo_id,
         "category": "architecture",
         "severity": severity,

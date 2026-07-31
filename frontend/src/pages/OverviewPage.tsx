@@ -5,9 +5,7 @@ import { useFindings, useHealth, useRisk } from "../api/hooks";
 import { Card } from "../components/Card";
 import { ScoreGauge } from "../components/ScoreGauge";
 import { FindingItem } from "../components/FindingItem";
-import { LoadingState } from "../components/LoadingState";
-import { ErrorState } from "../components/ErrorState";
-import { EmptyState } from "../components/EmptyState";
+import { StageGate } from "../components/StageGate";
 import type { RepoOutletContext } from "./RepoLayout";
 
 const TOP_FINDINGS_LIMIT = 10;
@@ -28,16 +26,18 @@ export function OverviewPage() {
   const findings = useFindings(repo.id);
   const risk = useRisk(repo.id);
 
+  const riskData = risk.data?.kind === "data" ? risk.data.data : undefined;
+
   const languageMix = useMemo(() => {
-    if (!risk.data) return [];
+    if (!riskData) return [];
     const counts = new Map<string, number>();
-    for (const file of risk.data.files) {
+    for (const file of riskData.files) {
       counts.set(file.language, (counts.get(file.language) ?? 0) + 1);
     }
     return [...counts.entries()]
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [risk.data]);
+  }, [riskData]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -47,43 +47,38 @@ export function OverviewPage() {
           subtitle="Composite of risk, cycles, and hidden dependencies"
           className="lg:col-span-1"
         >
-          {health.isPending ? (
-            <LoadingState />
-          ) : health.isError ? (
-            <EmptyState
-              title="Not computed yet"
-              message="Health is computed once analysis finishes."
-            />
-          ) : (
-            <div className="flex flex-col items-center gap-4">
-              <ScoreGauge score={health.data.score} />
-              <p className="rounded-md bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                Heuristic score — not yet corpus-calibrated. Weights are documented,
-                literature-informed defaults (see master-context.md §8.1), not a statistically
-                fitted model.
-              </p>
-              <dl className="grid w-full grid-cols-3 gap-2 text-center text-xs">
-                <div>
-                  <dt className="text-slate-400 dark:text-slate-500">High-risk files</dt>
-                  <dd className="font-medium text-slate-700 dark:text-slate-200">
-                    {Math.round(health.data.high_risk_ratio * 100)}%
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-slate-400 dark:text-slate-500">Cycles</dt>
-                  <dd className="font-medium text-slate-700 dark:text-slate-200">
-                    {health.data.cycle_count}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-slate-400 dark:text-slate-500">Hidden deps</dt>
-                  <dd className="font-medium text-slate-700 dark:text-slate-200">
-                    {health.data.hidden_dependency_count}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          )}
+          <StageGate query={health} loadingLabel="Computing health…">
+            {(data) => (
+              <div className="flex flex-col items-center gap-4">
+                <ScoreGauge score={data.score} />
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                  Heuristic score — not yet corpus-calibrated. Weights are documented,
+                  literature-informed defaults (see master-context.md §8.1), not a statistically
+                  fitted model.
+                </p>
+                <dl className="grid w-full grid-cols-3 gap-2 text-center text-xs">
+                  <div>
+                    <dt className="text-slate-400 dark:text-slate-500">High-risk files</dt>
+                    <dd className="font-medium text-slate-700 dark:text-slate-200">
+                      {Math.round(data.high_risk_ratio * 100)}%
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400 dark:text-slate-500">Cycles</dt>
+                    <dd className="font-medium text-slate-700 dark:text-slate-200">
+                      {data.cycle_count}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400 dark:text-slate-500">Hidden deps</dt>
+                    <dd className="font-medium text-slate-700 dark:text-slate-200">
+                      {data.hidden_dependency_count}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+          </StageGate>
         </Card>
 
         <Card title="Repo vitals" className="lg:col-span-2">
@@ -115,36 +110,42 @@ export function OverviewPage() {
               </div>
             </dl>
             <div className="h-40">
-              {risk.isPending ? (
-                <LoadingState label="Loading language mix…" />
-              ) : risk.isError || languageMix.length === 0 ? (
-                <EmptyState title="No language data" />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={languageMix}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={32}
-                      outerRadius={56}
-                      paddingAngle={2}
-                    >
-                      {languageMix.map((entry, i) => (
-                        <Cell key={entry.name} fill={LANGUAGE_COLORS[i % LANGUAGE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value, name) => [`${value} files`, String(name)]} />
-                    <Legend
-                      verticalAlign="middle"
-                      align="right"
-                      layout="vertical"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: 12 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
+              <StageGate
+                query={risk}
+                loadingLabel="Loading language mix…"
+                emptyTitle="No language data"
+                isEmpty={() => languageMix.length === 0}
+              >
+                {() => (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={languageMix}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={32}
+                        outerRadius={56}
+                        paddingAngle={2}
+                      >
+                        {languageMix.map((entry, i) => (
+                          <Cell
+                            key={entry.name}
+                            fill={LANGUAGE_COLORS[i % LANGUAGE_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value, name) => [`${value} files`, String(name)]} />
+                      <Legend
+                        verticalAlign="middle"
+                        align="right"
+                        layout="vertical"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 12 }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </StageGate>
             </div>
           </div>
         </Card>
@@ -154,22 +155,20 @@ export function OverviewPage() {
         title="Top findings"
         subtitle="Ranked by impact across every category — the anti-alert-fatigue spine"
       >
-        {findings.isPending ? (
-          <LoadingState />
-        ) : findings.isError ? (
-          <ErrorState error={findings.error} onRetry={() => void findings.refetch()} />
-        ) : findings.data.findings.length === 0 ? (
-          <EmptyState
-            title="No findings"
-            message="Nothing rose above the noise floor for this repo yet."
-          />
-        ) : (
-          <ul>
-            {findings.data.findings.slice(0, TOP_FINDINGS_LIMIT).map((f) => (
-              <FindingItem key={f.id} finding={f} repoUrl={repo.url} />
-            ))}
-          </ul>
-        )}
+        <StageGate
+          query={findings}
+          emptyTitle="No findings"
+          emptyMessage="Nothing rose above the noise floor for this repo yet."
+          isEmpty={(data) => data.findings.length === 0}
+        >
+          {(data) => (
+            <ul>
+              {data.findings.slice(0, TOP_FINDINGS_LIMIT).map((f) => (
+                <FindingItem key={f.id} finding={f} repoUrl={repo.url} />
+              ))}
+            </ul>
+          )}
+        </StageGate>
       </Card>
     </div>
   );

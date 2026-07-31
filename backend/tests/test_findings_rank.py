@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from sqlalchemy import insert, select
 
 from app.db.models import (
+    AnalysisRun,
+    AnalysisRunStatus,
     Commit,
     Dependency,
     File,
@@ -26,6 +28,13 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     db_session.add(repo)
     db_session.commit()
     return repo.id
+
+
+def _make_run(db_session, repo_id: uuid.UUID) -> uuid.UUID:
+    run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.running, head_sha="test-sha")
+    db_session.add(run)
+    db_session.commit()
+    return run.id
 
 
 def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
@@ -54,9 +63,11 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
     high-confidence med finding), confidence only breaks ties within the
     same severity."""
     repo_id = _make_repo(db_session, "https://github.com/fixture/findings-rank-basic")
+    run_id = _make_run(db_session, repo_id)
     path_ids = _intern_paths(db_session, repo_id, ["hot.py", "hotter.py"])
     rows = [
         {
+            "analysis_run_id": run_id,
             "repo_id": repo_id,
             "category": "architecture",
             "severity": Severity.med,
@@ -68,6 +79,7 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
             "rank": 0,
         },
         {
+            "analysis_run_id": run_id,
             "repo_id": repo_id,
             "category": "risk",
             "severity": Severity.high,
@@ -79,6 +91,7 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
             "rank": 0,
         },
         {
+            "analysis_run_id": run_id,
             "repo_id": repo_id,
             "category": "hidden_dependency",
             "severity": Severity.low,
@@ -90,6 +103,7 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
             "rank": 0,
         },
         {
+            "analysis_run_id": run_id,
             "repo_id": repo_id,
             "category": "risk",
             "severity": Severity.high,
@@ -104,7 +118,7 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
     db_session.execute(insert(Finding), rows)
     db_session.commit()
 
-    metadata = FindingsRankEngine().run(repo_id, db_session)
+    metadata = FindingsRankEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["findings_ranked"] == 4
@@ -131,7 +145,8 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
 
 def test_no_findings_is_a_harmless_noop(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/findings-rank-empty")
-    metadata = FindingsRankEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = FindingsRankEngine().run(repo_id, run_id, db_session)
     db_session.commit()
     assert metadata == {"findings_ranked": 0}
 
@@ -225,12 +240,13 @@ def test_full_pipeline_produces_one_globally_ranked_stream(db_session):
     _add_file(db_session, repo_id, "y.py", churn_total=1, complexity=1.0, commit_count=1)
     db_session.commit()
 
-    CouplingEngine().run(repo_id, db_session)
-    ArchEngine().run(repo_id, db_session)
-    OverlayEngine().run(repo_id, db_session)
-    RiskEngine().run(repo_id, db_session)
-    HealthEngine().run(repo_id, db_session)
-    FindingsRankEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    CouplingEngine().run(repo_id, run_id, db_session)
+    ArchEngine().run(repo_id, run_id, db_session)
+    OverlayEngine().run(repo_id, run_id, db_session)
+    RiskEngine().run(repo_id, run_id, db_session)
+    HealthEngine().run(repo_id, run_id, db_session)
+    FindingsRankEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     findings = db_session.scalars(

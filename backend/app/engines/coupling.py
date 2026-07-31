@@ -134,6 +134,12 @@ def compute_coupling(
     count cutoff). Single source of truth for CouplingEngine (persists these
     rows) and for is_low_confidence()/the coupling API (read the flag
     without re-deciding the threshold logic separately).
+
+    Reads only Facts (``commits.changed_path_ids``) -- no ``run_id``
+    parameter needed, unlike most other engines' compute_* helpers, because
+    this one never reads the run-scoped ``coupling`` table itself, only
+    writes to it (CouplingEngine tags ``analysis_run_id`` onto these rows
+    before inserting).
     """
     changesets = load_kept_changesets(repo_id, session)
     if not changesets:
@@ -181,18 +187,18 @@ class CouplingEngine(Engine):
 
     Reads only ``commits.changed_path_ids`` for ``repo_id`` -- no join, no
     git, no network (master-context.md sec 5, the flagship feature; Phase 1
-    schema diet removed the commit_files join table). Coupling rows for
-    this repo_id are already cleared by the wipe_repo_data() call made
-    earlier in the ingestion/persist step; this engine only inserts, it does
-    not delete-first itself, so wipe_repo_data stays the single place that
-    defines what a re-run wipes.
+    schema diet removed the commit_files join table). Writes rows tagged
+    ``analysis_run_id=run_id``; a fresh run_id has no coupling rows of its
+    own yet by construction (Facts/Insight split, Phase 02), so this engine
+    only inserts, it never deletes-first.
     """
 
-    def run(self, repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
+    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
         rows, low_confidence, commits_analyzed = compute_coupling(repo_id, session)
 
         if rows:
-            session.execute(insert(Coupling), rows)
+            tagged_rows = [{"analysis_run_id": run_id, **row} for row in rows]
+            session.execute(insert(Coupling), tagged_rows)
 
         return {
             "pairs_found": len(rows),

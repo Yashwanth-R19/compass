@@ -24,17 +24,20 @@ RISK_MED_SEVERITY = 0.40
 Heuristic, documented, same style as overlay.py's HIGH_DEGREE/MED_DEGREE."""
 
 
-def max_coupling_by_path(repo_id: uuid.UUID, session: Session) -> dict[str, float]:
+def max_coupling_by_path(
+    repo_id: uuid.UUID, run_id: uuid.UUID, session: Session
+) -> dict[str, float]:
     """Max coupling_degree across each file's pairs, keyed by path STRING --
     0.0 for a file with no coupling pairs at all (per the risk-formula spec,
     not just "missing"). ``coupling`` stores integer path ids (Phase 1
-    schema diet); resolved back to strings here via ``load_path_map`` since
-    callers (RiskEngine, the risk/architecture API) match against
-    ``File.path``.
+    schema diet) AND holds rows from every past run of this repo (Phase 02),
+    so this filters to ``run_id`` too, not just ``repo_id`` -- resolved back
+    to strings here via ``load_path_map`` since callers (RiskEngine, the
+    risk/architecture API) match against ``File.path``.
     """
     rows = session.execute(
         select(Coupling.path_a_id, Coupling.path_b_id, Coupling.coupling_degree).where(
-            Coupling.repo_id == repo_id
+            Coupling.repo_id == repo_id, Coupling.analysis_run_id == run_id
         )
     ).all()
     if not rows:
@@ -93,14 +96,14 @@ class RiskEngine(Engine):
     def __init__(self, baseline: BaselineProvider | None = None) -> None:
         self._baseline = baseline or HeuristicBaseline()
 
-    def run(self, repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
+    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
         files = session.scalars(
             select(File).where(File.repo_id == repo_id, File.is_deleted.is_(False))
         ).all()
         if not files:
             return {"files_scored": 0, "findings_emitted": 0}
 
-        max_coupling = max_coupling_by_path(repo_id, session)
+        max_coupling = max_coupling_by_path(repo_id, run_id, session)
 
         churn_x_complexity = [f.churn_total * f.complexity for f in files]
         coupling_degrees = [max_coupling.get(f.path, 0.0) for f in files]
@@ -164,7 +167,9 @@ class RiskEngine(Engine):
 
         metrics_rows = [
             {
-                "file_id": files[i].id,
+                "analysis_run_id": run_id,
+                "repo_id": repo_id,
+                "path_id": files[i].path_id,
                 "risk_score": risk_scores[i],
                 "risk_confidence": risk_confidences[i],
                 "hotspot_rank": hotspot_rank[i],
@@ -180,6 +185,7 @@ class RiskEngine(Engine):
             evidence_sha = _most_recent_significant_commit_sha(repo_id, f.path_id, session)
             findings.append(
                 {
+                    "analysis_run_id": run_id,
                     "repo_id": repo_id,
                     "category": "risk",
                     "severity": _risk_severity(risk_scores[i]),

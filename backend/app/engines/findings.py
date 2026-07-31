@@ -34,14 +34,17 @@ class FindingsRankEngine(Engine):
     Every emitter (Risk, ArchEngine, OverlayEngine) writes its findings with
     a LOCAL rank (0..n-1 within its own category) because it runs before the
     others and has no view of the rest. This runs last, after every other
-    engine has written its findings for repo_id, and overwrites ``rank`` with
-    one global ordering by impact_score across all categories -- so the
+    engine has written its findings for this run_id, and overwrites ``rank``
+    with one global ordering by impact_score across all categories -- so the
     findings API can return "top findings" as a single ranked list without
-    the client ever needing to know about categories.
+    the client ever needing to know about categories. Filters by
+    ``analysis_run_id``, not ``repo_id`` -- findings holds rows from every
+    past run of this repo too (Phase 02), and ranking must stay scoped to
+    the run currently being computed.
     """
 
-    def run(self, repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        findings = session.scalars(select(Finding).where(Finding.repo_id == repo_id)).all()
+    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
+        findings = session.scalars(select(Finding).where(Finding.analysis_run_id == run_id)).all()
         if not findings:
             return {"findings_ranked": 0}
 

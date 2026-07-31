@@ -4,7 +4,18 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import insert, select
 
-from app.db.models import Commit, Coupling, File, FileMetrics, Finding, Repo, RepoPath, RepoStatus
+from app.db.models import (
+    AnalysisRun,
+    AnalysisRunStatus,
+    Commit,
+    Coupling,
+    File,
+    FileMetrics,
+    Finding,
+    Repo,
+    RepoPath,
+    RepoStatus,
+)
 from app.engines.risk import MAX_RISK_FINDINGS, RiskEngine
 
 
@@ -13,6 +24,13 @@ def _make_repo(db_session, url: str) -> uuid.UUID:
     db_session.add(repo)
     db_session.commit()
     return repo.id
+
+
+def _make_run(db_session, repo_id: uuid.UUID) -> uuid.UUID:
+    run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.running, head_sha="test-sha")
+    db_session.add(run)
+    db_session.commit()
+    return run.id
 
 
 def _intern_paths(db_session, repo_id: uuid.UUID, paths: list[str]) -> dict[str, int]:
@@ -65,12 +83,15 @@ def _add_file(
     return file.id
 
 
-def _add_coupling(db_session, repo_id: uuid.UUID, path_a: str, path_b: str, degree: float) -> None:
+def _add_coupling(
+    db_session, repo_id: uuid.UUID, run_id: uuid.UUID, path_a: str, path_b: str, degree: float
+) -> None:
     path_ids = _intern_paths(db_session, repo_id, [path_a, path_b])
     db_session.execute(
         insert(Coupling),
         [
             {
+                "analysis_run_id": run_id,
                 "repo_id": repo_id,
                 "path_a_id": path_ids[path_a],
                 "path_b_id": path_ids[path_b],
@@ -119,25 +140,24 @@ def test_hotspot_ranking_matches_locked_formula(db_session):
     _add_file(db_session, repo_id, "c.py", churn_total=5, complexity=5.0, commit_count=5)
     db_session.flush()
 
+    run_id = _make_run(db_session, repo_id)
     # max_coupling_degree: a=0.9, b=0.9, c=0.0 (no pairs) -> min=0, max=0.9
-    _add_coupling(db_session, repo_id, "a.py", "b.py", 0.9)
+    _add_coupling(db_session, repo_id, run_id, "a.py", "b.py", 0.9)
     db_session.commit()
 
-    metadata = RiskEngine().run(repo_id, db_session)
+    metadata = RiskEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["files_scored"] == 3
 
     rows = {
-        m.file_id: m
+        m.path_id: m
         for m in db_session.scalars(
-            select(FileMetrics)
-            .join(File, File.id == FileMetrics.file_id)
-            .where(File.repo_id == repo_id)
+            select(FileMetrics).where(FileMetrics.analysis_run_id == run_id)
         ).all()
     }
     by_path = {
-        f.path: rows[f.id]
+        f.path: rows[f.path_id]
         for f in db_session.scalars(select(File).where(File.repo_id == repo_id)).all()
     }
 
@@ -176,7 +196,8 @@ def test_top_finding_uses_most_recent_fix_commit_as_evidence(db_session):
     _add_commit(db_session, repo_id, "c2-fix", ["hot.py"], is_fix=True)
     db_session.commit()
 
-    RiskEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    RiskEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     findings = db_session.scalars(
@@ -204,7 +225,8 @@ def test_findings_capped_at_max_risk_findings(db_session):
         )
     db_session.commit()
 
-    metadata = RiskEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = RiskEngine().run(repo_id, run_id, db_session)
     db_session.commit()
 
     assert metadata["files_scored"] == MAX_RISK_FINDINGS + 5
@@ -216,15 +238,14 @@ def test_findings_capped_at_max_risk_findings(db_session):
     assert len(findings) == MAX_RISK_FINDINGS
 
     all_metrics = db_session.scalars(
-        select(FileMetrics)
-        .join(File, File.id == FileMetrics.file_id)
-        .where(File.repo_id == repo_id)
+        select(FileMetrics).where(FileMetrics.analysis_run_id == run_id)
     ).all()
     assert len(all_metrics) == MAX_RISK_FINDINGS + 5
 
 
 def test_no_files_is_a_harmless_noop(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/risk-empty")
-    metadata = RiskEngine().run(repo_id, db_session)
+    run_id = _make_run(db_session, repo_id)
+    metadata = RiskEngine().run(repo_id, run_id, db_session)
     db_session.commit()
     assert metadata == {"files_scored": 0, "findings_emitted": 0}

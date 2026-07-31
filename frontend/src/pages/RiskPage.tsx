@@ -2,11 +2,9 @@ import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useRisk } from "../api/hooks";
 import { Card } from "../components/Card";
-import { LoadingState } from "../components/LoadingState";
-import { ErrorState } from "../components/ErrorState";
-import { EmptyState } from "../components/EmptyState";
+import { StageGate } from "../components/StageGate";
 import { confidenceLabel, formatPercent, formatScore } from "../lib/format";
-import type { RiskFileOut } from "../api/types";
+import type { RiskFileOut, RiskResponse } from "../api/types";
 import type { RepoOutletContext } from "./RepoLayout";
 
 type SortKey =
@@ -34,15 +32,17 @@ export function RiskPage() {
   const [sortKey, setSortKey] = useState<SortKey>("hotspot_rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
+  const riskData = risk.data?.kind === "data" ? risk.data.data : undefined;
+
   const sorted = useMemo(() => {
-    if (!risk.data) return [];
-    const rows = [...risk.data.files];
+    if (!riskData) return [];
+    const rows = [...riskData.files];
     rows.sort((a, b) => {
       const diff = a[sortKey] - b[sortKey];
       return sortDir === "asc" ? diff : -diff;
     });
     return rows;
-  }, [risk.data, sortKey, sortDir]);
+  }, [riskData, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) {
@@ -53,44 +53,48 @@ export function RiskPage() {
     }
   }
 
-  if (risk.isPending) return <LoadingState label="Loading risk data…" />;
-  if (risk.isError) return <ErrorState error={risk.error} onRetry={() => void risk.refetch()} />;
-  if (risk.data.files.length === 0) {
-    return <EmptyState title="No scored files" message="This repo has no analyzed files yet." />;
-  }
-
   return (
-    <Card
-      title="Files by risk"
-      subtitle={`${risk.data.files.length} ${risk.data.files.length === 1 ? "file" : "files"} — heuristic score, not yet corpus-calibrated`}
+    <StageGate
+      query={risk}
+      loadingLabel="Loading risk data…"
+      emptyTitle="No scored files"
+      emptyMessage="This repo has no analyzed files yet."
+      isEmpty={(data: RiskResponse) => data.files.length === 0}
     >
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              <th className="py-2 pr-3 font-medium">File</th>
-              {COLUMNS.map((col) => (
-                <th key={col.key} className="py-2 pr-3 font-medium">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort(col.key)}
-                    className="inline-flex items-center gap-1 hover:text-slate-800 dark:hover:text-slate-200"
-                  >
-                    {col.label}
-                    {sortKey === col.key ? <span>{sortDir === "asc" ? "↑" : "↓"}</span> : null}
-                  </button>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((file) => (
-              <RiskRow key={file.file_path} file={file} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+      {(data) => (
+        <Card
+          title="Files by risk"
+          subtitle={`${data.files.length} ${data.files.length === 1 ? "file" : "files"} — heuristic score, not yet corpus-calibrated`}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                  <th className="py-2 pr-3 font-medium">File</th>
+                  {COLUMNS.map((col) => (
+                    <th key={col.key} className="py-2 pr-3 font-medium">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(col.key)}
+                        className="inline-flex items-center gap-1 hover:text-slate-800 dark:hover:text-slate-200"
+                      >
+                        {col.label}
+                        {sortKey === col.key ? <span>{sortDir === "asc" ? "↑" : "↓"}</span> : null}
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((file) => (
+                  <RiskRow key={file.file_path} file={file} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </StageGate>
   );
 }
 

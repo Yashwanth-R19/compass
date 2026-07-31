@@ -43,7 +43,7 @@ structural findings alone.
 """
 
 
-def _high_risk_ratio(repo_id: uuid.UUID, session: Session) -> float:
+def _high_risk_ratio(repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> float:
     total = (
         session.scalar(select(func.count()).select_from(File).where(File.repo_id == repo_id)) or 0
     )
@@ -53,23 +53,29 @@ def _high_risk_ratio(repo_id: uuid.UUID, session: Session) -> float:
         session.scalar(
             select(func.count())
             .select_from(FileMetrics)
-            .join(File, File.id == FileMetrics.file_id)
-            .where(File.repo_id == repo_id, FileMetrics.risk_score >= HIGH_RISK_THRESHOLD)
+            .where(
+                FileMetrics.repo_id == repo_id,
+                FileMetrics.analysis_run_id == run_id,
+                FileMetrics.risk_score >= HIGH_RISK_THRESHOLD,
+            )
         )
         or 0
     )
     return high_risk / total
 
 
-def compute_health(repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
+def compute_health(repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
     """Pure computation of the composite health score and its inputs -- no
     writes. Shared by HealthEngine (persists it) and available to callers
     that want it recomputed fresh, same "pure function over mined facts"
-    shape as every other engine's compute_* helper.
+    shape as every other engine's compute_* helper. ``run_id`` scopes the
+    two Insight-table reads (file_metrics via ``_high_risk_ratio``,
+    coupling via ``compute_hidden_dependencies``) to this run only --
+    both tables hold rows from every past run of this repo (Phase 02).
     """
-    high_risk_ratio = _high_risk_ratio(repo_id, session)
+    high_risk_ratio = _high_risk_ratio(repo_id, run_id, session)
     cycle_count = len(find_cycles(build_graph(load_edges(repo_id, session))))
-    hidden_dependency_count = len(compute_hidden_dependencies(repo_id, session))
+    hidden_dependency_count = len(compute_hidden_dependencies(repo_id, run_id, session))
 
     risk_penalty = min(100.0, RISK_PENALTY_WEIGHT * high_risk_ratio)
     cycle_penalty = min(CYCLE_PENALTY_CAP, CYCLE_PENALTY_PER_CYCLE * cycle_count)
@@ -96,14 +102,15 @@ class HealthEngine(Engine):
     find_cycles/compute_hidden_dependencies helpers.
     """
 
-    def run(self, repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        result = compute_health(repo_id, session)
+    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
+        result = compute_health(repo_id, run_id, session)
 
         session.execute(
             insert(Health),
             [
                 {
                     "id": uuid.uuid4(),
+                    "analysis_run_id": run_id,
                     "repo_id": repo_id,
                     "score": result["score"],
                     "high_risk_ratio": result["high_risk_ratio"],

@@ -4,36 +4,40 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Commit, Dependency, File, RepoPath
-from app.db.wipe import wipe_repo_data
+from app.db.wipe import wipe_facts
 from app.ingestion.miner import MinedRepo
 from app.languages.base import DependencyEdge
 
 
-def persist_mined_repo(
+def persist_facts(
     repo_id: uuid.UUID, mined: MinedRepo, dependencies: list[DependencyEdge], session: Session
 ) -> None:
     """Bulk-write mined commits/files and structural dependency edges for
-    ``repo_id``, interning every distinct path into ``repo_paths`` first so
-    everything downstream references paths by integer id (Phase 1 schema
-    diet).
+    ``repo_id`` -- the "persist_facts" stage (app/jobs/stages.py), run only
+    when the miner actually ran (i.e. head_sha changed; see
+    app/jobs/runner.py's reuse-facts check).
+
+    Wipes and fully replaces commits/files/dependencies via ``wipe_facts``,
+    but INTERNS PATHS IDEMPOTENTLY: only paths not already present for this
+    repo_id are inserted into ``repo_paths``, and existing paths keep their
+    existing ids. This is what makes ``repo_paths`` safe to leave out of
+    ``wipe_facts`` (see its docstring) -- older analysis runs' Insight rows
+    (coupling/findings/file_metrics) reference paths by these same, stable
+    ids, so a path that exists in both the old and new head_sha must resolve
+    to the same integer id across runs, or every old run's Insight data
+    would silently point at the wrong (or a deleted) file.
 
     ``dependencies`` is already-parsed by app/languages/scanner.py while the
     clone still existed (this function itself never touches the filesystem)
     -- see jobs/runner.py's clone -> mine -> parse structure -> persist ->
-    delete clone sequence. Always wipes existing repo-scoped rows first, in
-    the same transaction as the inserts, so a re-run is a clean full replace
-    rather than an accumulating merge -- true on the very first ingestion
-    too, where the wipe is a no-op. Caller commits; this function only
-    stages the writes. This single wipe is also what makes it safe for the
-    Coupling/Architecture/Overlay engines that run right after this, in the
-    same job, to only INSERT -- coupling/dependencies/findings for this
-    repo_id are already empty by the time they run.
+    delete clone sequence. Caller commits; this function only stages the
+    writes.
 
     Uses SQLAlchemy Core ``insert()`` with lists of dicts (bulk), not ORM
     object-per-row -- at 25k commits the ORM overhead is significant. Every
     identity-PK row omits ``id`` entirely and lets Postgres assign it.
     """
-    wipe_repo_data(repo_id, session)
+    wipe_facts(repo_id, session)
 
     all_paths: set[str] = set()
     for c in mined.commits:
@@ -44,8 +48,12 @@ def persist_mined_repo(
         all_paths.add(edge.from_path)
         all_paths.add(edge.to_path)
 
-    if all_paths:
-        session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": p} for p in all_paths])
+    existing_paths = set(
+        session.scalars(select(RepoPath.path).where(RepoPath.repo_id == repo_id)).all()
+    )
+    new_paths = all_paths - existing_paths
+    if new_paths:
+        session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": p} for p in new_paths])
 
     path_id_by_path: dict[str, int] = {
         row.path: row.id

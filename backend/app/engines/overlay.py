@@ -28,19 +28,23 @@ class HiddenDependency(TypedDict):
     confidence_score: float
 
 
-def compute_hidden_dependencies(repo_id: uuid.UUID, session: Session) -> list[HiddenDependency]:
+def compute_hidden_dependencies(
+    repo_id: uuid.UUID, run_id: uuid.UUID, session: Session
+) -> list[HiddenDependency]:
     """Coupling pairs with no structural edge between them (in either
     direction), sorted by coupling_degree desc.
 
-    Pure join over `coupling` and `dependencies`, recomputing neither. The
-    membership check itself runs entirely in integer path-id space (no
-    string join needed); path strings are only resolved, via
-    ``load_path_map``, for the pairs that actually surface as hidden --
-    used for a finding's title/detail text and the hidden-dependencies API
-    response. Shared by OverlayEngine (persists these as findings) and the
-    hidden-dependencies API endpoint (returns them directly, structured --
-    the findings row's free-text title/detail isn't meant to be parsed back
-    by a client).
+    Pure join over `coupling` (filtered to this ``run_id`` -- the table
+    holds rows from every past run of this repo, see Coupling's docstring in
+    app/db/models.py) and `dependencies` (Facts, repo_id-scoped only),
+    recomputing neither. The membership check itself runs entirely in
+    integer path-id space (no string join needed); path strings are only
+    resolved, via ``load_path_map``, for the pairs that actually surface as
+    hidden -- used for a finding's title/detail text and the
+    hidden-dependencies API response. Shared by OverlayEngine (persists
+    these as findings) and the hidden-dependencies API endpoint (returns
+    them directly, structured -- the findings row's free-text title/detail
+    isn't meant to be parsed back by a client).
     """
     coupling_rows = session.execute(
         select(
@@ -48,7 +52,7 @@ def compute_hidden_dependencies(repo_id: uuid.UUID, session: Session) -> list[Hi
             Coupling.path_b_id,
             Coupling.shared_revs,
             Coupling.coupling_degree,
-        ).where(Coupling.repo_id == repo_id)
+        ).where(Coupling.repo_id == repo_id, Coupling.analysis_run_id == run_id)
     ).all()
     if not coupling_rows:
         return []
@@ -108,11 +112,12 @@ class OverlayEngine(Engine):
     and ArchEngine have persisted their outputs, recomputes neither.
     """
 
-    def run(self, repo_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        hidden = compute_hidden_dependencies(repo_id, session)
+    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
+        hidden = compute_hidden_dependencies(repo_id, run_id, session)
 
         findings = [
             {
+                "analysis_run_id": run_id,
                 "repo_id": repo_id,
                 "category": "hidden_dependency",
                 "severity": h["severity"],

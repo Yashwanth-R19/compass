@@ -6,10 +6,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
-from app.db.models import File, Job, JobStatus, Repo, RepoStatus
+from app.db.models import AnalysisRun, AnalysisStage, File, Job, JobStatus, Repo, RepoStatus
+from app.db.runs import get_latest_run
 from app.ingestion.guardrails import validate_repo_url
 from app.jobs.runner import run_ingestion_job
-from app.schemas.repo import RepoCreate, RepoCreateResponse, RepoOut
+from app.schemas.repo import (
+    AnalysisRunOut,
+    AnalysisRunsResponse,
+    RepoCreate,
+    RepoCreateResponse,
+    RepoOut,
+    RepoStatusResponse,
+    StageOut,
+)
 
 router = APIRouter()
 
@@ -76,4 +85,80 @@ def get_repo(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> RepoOut:
         analyzed_at=repo.analyzed_at,
         created_at=repo.created_at,
         file_count=file_count,
+    )
+
+
+@router.get("/repos/{repo_id}/status", response_model=RepoStatusResponse)
+def get_repo_status(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> RepoStatusResponse:
+    """The single endpoint the frontend polls for progressive reveal (Part
+    E, Phase 02): repo status, the LATEST run for this repo (which may still
+    be running, or may have just failed -- not necessarily
+    ``repo.current_run_id``, which only ever points at the last run that
+    reached "ready"), and every stage's status/summary for that run.
+    Deliberately cheap: one row lookup for the repo, one for the latest run,
+    one query on ``analysis_stages`` -- no joins into any result table.
+    """
+    repo = db.get(Repo, repo_id)
+    if repo is None:
+        raise HTTPException(status_code=404, detail="Repo not found.")
+
+    latest_run = get_latest_run(repo_id, db)
+
+    stages: list[StageOut] = []
+    if latest_run is not None:
+        stage_rows = db.scalars(
+            select(AnalysisStage)
+            .where(AnalysisStage.run_id == latest_run.id)
+            .order_by(AnalysisStage.id)
+        ).all()
+        stages = [
+            StageOut(
+                name=s.name,
+                status=s.status,
+                started_at=s.started_at,
+                finished_at=s.finished_at,
+                error=s.error,
+                summary=s.summary,
+            )
+            for s in stage_rows
+        ]
+
+    return RepoStatusResponse(
+        repo_id=repo_id,
+        repo_status=repo.status,
+        current_run_id=repo.current_run_id,
+        run_id=latest_run.id if latest_run is not None else None,
+        run_status=latest_run.status if latest_run is not None else None,
+        run_error=latest_run.error if latest_run is not None else None,
+        stages=stages,
+    )
+
+
+@router.get("/repos/{repo_id}/runs", response_model=AnalysisRunsResponse)
+def get_repo_runs(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> AnalysisRunsResponse:
+    """Every past analysis run for this repo, newest first. Not consumed by
+    the frontend yet -- Phase 17's A/B compare will pick a pair of these --
+    but exposed now per the Phase 02 spec."""
+    if db.get(Repo, repo_id) is None:
+        raise HTTPException(status_code=404, detail="Repo not found.")
+
+    rows = db.scalars(
+        select(AnalysisRun)
+        .where(AnalysisRun.repo_id == repo_id)
+        .order_by(AnalysisRun.started_at.desc())
+    ).all()
+
+    return AnalysisRunsResponse(
+        repo_id=repo_id,
+        runs=[
+            AnalysisRunOut(
+                id=r.id,
+                status=r.status,
+                head_sha=r.head_sha,
+                engine_version=r.engine_version,
+                started_at=r.started_at,
+                finished_at=r.finished_at,
+            )
+            for r in rows
+        ],
     )

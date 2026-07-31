@@ -1,12 +1,23 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
-from app.db.models import Coupling, File, FileMetrics, Finding, Health, Repo
+from app.db.models import (
+    AnalysisStage,
+    Coupling,
+    File,
+    FileMetrics,
+    Finding,
+    Health,
+    Repo,
+    StageStatus,
+)
 from app.db.paths import load_path_map
+from app.db.runs import resolve_run_id
 from app.engines.architecture import (
     build_graph,
     cycle_severity,
@@ -51,19 +62,57 @@ def _get_repo_or_404(repo_id: uuid.UUID, db: Session) -> Repo:
     return repo
 
 
+def _resolve_run_or_404(repo: Repo, run_id: uuid.UUID | None, db: Session) -> uuid.UUID:
+    """Resolves the run an analysis endpoint should read (see
+    app/db/runs.py::resolve_run_id). Raises 404 -- not 202 -- when there is
+    no run to resolve to at all (a brand new repo whose ingestion job
+    hasn't even created its first analysis_runs row yet); 202 is reserved
+    for "a run exists but this particular stage hasn't finished computing
+    for it" (see _pending_response)."""
+    resolved = resolve_run_id(repo, run_id, db)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="No analysis run exists for this repo yet.")
+    return resolved
+
+
+def _pending_response(run_id: uuid.UUID, stage_name: str, db: Session) -> JSONResponse | None:
+    """Gate for the ``?run_id=`` contract (Part E): returns a 202 response
+    with ``{"stage": ..., "status": ...}`` if the stage that produces this
+    endpoint's data hasn't reached ``done``/``skipped`` for ``run_id`` yet --
+    the frontend's signal to distinguish "not computed yet" from "computed
+    and genuinely empty" -- or ``None`` when the caller should proceed and
+    read the real data.
+    """
+    stage_row = db.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == run_id, AnalysisStage.name == stage_name
+        )
+    )
+    status = stage_row.status if stage_row is not None else StageStatus.pending
+    if status in (StageStatus.done, StageStatus.skipped):
+        return None
+    return JSONResponse(status_code=202, content={"stage": stage_name, "status": status.value})
+
+
 @router.get("/repos/{repo_id}/coupling", response_model=CouplingResponse)
-def get_coupling(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> CouplingResponse:
+def get_coupling(
+    repo_id: uuid.UUID, run_id: uuid.UUID | None = None, db: Session = Depends(get_db)
+) -> CouplingResponse | JSONResponse:
     """Ranked change-coupling pairs (master-context.md sec 5, the flagship
     feature). ``low_confidence`` mirrors CouplingEngine's small-repo
     fallback (app/engines/coupling.py) -- true whenever this repo didn't
     have enough analyzed history for a pair to reach the normal
     MIN_SHARED_REVS floor, in which case every pair's confidence is "low"."""
-    _get_repo_or_404(repo_id, db)
+    repo = _get_repo_or_404(repo_id, db)
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "coupling", db)
+    if pending is not None:
+        return pending
 
     low_confidence = is_low_confidence(repo_id, db)
     rows = db.scalars(
         select(Coupling)
-        .where(Coupling.repo_id == repo_id)
+        .where(Coupling.repo_id == repo_id, Coupling.analysis_run_id == resolved_run_id)
         .order_by(Coupling.coupling_degree.desc())
     ).all()
     path_map = load_path_map(repo_id, db)
@@ -83,13 +132,23 @@ def get_coupling(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> CouplingR
 
 
 @router.get("/repos/{repo_id}/architecture", response_model=ArchitectureResponse)
-def get_architecture(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> ArchitectureResponse:
-    """The structural dependency graph: nodes/edges from `dependencies`,
-    plus cycles and layering violations recomputed fresh from those same
-    edges (app/engines/architecture.py) -- a cheap, deterministic, pure-DB
+def get_architecture(
+    repo_id: uuid.UUID, run_id: uuid.UUID | None = None, db: Session = Depends(get_db)
+) -> ArchitectureResponse | JSONResponse:
+    """The structural dependency graph: nodes/edges from `dependencies`
+    (Facts -- unaffected by which run is selected), plus cycles and layering
+    violations recomputed fresh from those same edges
+    (app/engines/architecture.py) -- a cheap, deterministic, pure-DB
     computation, so there's no need to parse ArchEngine's persisted finding
-    text back into structured data."""
-    _get_repo_or_404(repo_id, db)
+    text back into structured data. Still gated on the "architecture" stage
+    for this run, same as every other endpoint, so the frontend's
+    progressive-reveal treatment is consistent across tabs even though this
+    particular response doesn't itself depend on run-scoped Insight rows."""
+    repo = _get_repo_or_404(repo_id, db)
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "architecture", db)
+    if pending is not None:
+        return pending
 
     edges = load_edges(repo_id, db)
     graph = build_graph(edges)
@@ -112,14 +171,20 @@ def get_architecture(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> Archi
 
 @router.get("/repos/{repo_id}/hidden-dependencies", response_model=HiddenDependencyResponse)
 def get_hidden_dependencies(
-    repo_id: uuid.UUID, db: Session = Depends(get_db)
-) -> HiddenDependencyResponse:
+    repo_id: uuid.UUID, run_id: uuid.UUID | None = None, db: Session = Depends(get_db)
+) -> HiddenDependencyResponse | JSONResponse:
     """Coupled-but-not-imported pairs, ranked by coupling_degree desc -- the
     money insight (master-context.md sec 5): files that co-change without
-    any import between them, recomputed fresh via app/engines/overlay.py."""
-    _get_repo_or_404(repo_id, db)
+    any import between them, recomputed fresh via app/engines/overlay.py.
+    Gated on the "overlay" stage, which is what actually needs coupling
+    (run-scoped) to have finished."""
+    repo = _get_repo_or_404(repo_id, db)
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "overlay", db)
+    if pending is not None:
+        return pending
 
-    hidden = compute_hidden_dependencies(repo_id, db)
+    hidden = compute_hidden_dependencies(repo_id, resolved_run_id, db)
     pairs = [
         HiddenDependencyOut(
             file_a_path=h["file_a_path"],
@@ -135,23 +200,35 @@ def get_hidden_dependencies(
 
 
 @router.get("/repos/{repo_id}/risk", response_model=RiskResponse)
-def get_risk(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> RiskResponse:
+def get_risk(
+    repo_id: uuid.UUID, run_id: uuid.UUID | None = None, db: Session = Depends(get_db)
+) -> RiskResponse | JSONResponse:
     """Every scored file, ranked by hotspot_rank -- RiskEngine's persisted
     file_metrics rows (app/engines/risk.py), read straight rather than
     recomputed (unlike coupling/architecture, this isn't cheap enough or
     pure-graph enough to casually recompute per request, and the whole point
     of hotspot_rank is that it was decided once, deterministically, at
-    analysis time)."""
-    _get_repo_or_404(repo_id, db)
+    analysis time). file_metrics is joined to files by path_id, not file_id
+    -- see FileMetrics's docstring in app/db/models.py -- and filtered to
+    this run_id, since the table holds rows from every past run."""
+    repo = _get_repo_or_404(repo_id, db)
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "risk", db)
+    if pending is not None:
+        return pending
 
     rows = db.execute(
         select(File, FileMetrics)
-        .join(FileMetrics, FileMetrics.file_id == File.id)
+        .join(
+            FileMetrics,
+            (FileMetrics.path_id == File.path_id)
+            & (FileMetrics.analysis_run_id == resolved_run_id),
+        )
         .where(File.repo_id == repo_id)
         .order_by(FileMetrics.hotspot_rank)
     ).all()
 
-    max_coupling = max_coupling_by_path(repo_id, db)
+    max_coupling = max_coupling_by_path(repo_id, resolved_run_id, db)
 
     files = [
         RiskFileOut(
@@ -171,15 +248,22 @@ def get_risk(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> RiskResponse:
 
 
 @router.get("/repos/{repo_id}/health", response_model=HealthResponse)
-def get_health(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> HealthResponse:
+def get_health(
+    repo_id: uuid.UUID, run_id: uuid.UUID | None = None, db: Session = Depends(get_db)
+) -> HealthResponse | JSONResponse:
     """The single composite health score (app/engines/health.py) -- read
     straight, not recomputed, since it's already a persisted aggregate of
-    the other engines' output for this analysis run."""
-    _get_repo_or_404(repo_id, db)
+    the other engines' output for this analysis run. One row per run_id now
+    (Phase 02), not per repo_id."""
+    repo = _get_repo_or_404(repo_id, db)
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "health", db)
+    if pending is not None:
+        return pending
 
-    health = db.scalar(select(Health).where(Health.repo_id == repo_id))
+    health = db.scalar(select(Health).where(Health.analysis_run_id == resolved_run_id))
     if health is None:
-        raise HTTPException(status_code=404, detail="Health not computed for this repo yet.")
+        raise HTTPException(status_code=404, detail="Health not computed for this run.")
 
     return HealthResponse(
         repo_id=repo_id,
@@ -194,17 +278,26 @@ def get_health(repo_id: uuid.UUID, db: Session = Depends(get_db)) -> HealthRespo
 
 @router.get("/repos/{repo_id}/findings", response_model=FindingsResponse)
 def get_findings(
-    repo_id: uuid.UUID, category: str | None = None, db: Session = Depends(get_db)
-) -> FindingsResponse:
+    repo_id: uuid.UUID,
+    category: str | None = None,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+) -> FindingsResponse | JSONResponse:
     """The single ranked findings stream (master-context.md sec 7 / sec 9
     decision 5) -- one global rank across every category (risk, architecture,
     hidden_dependency), finalized once per analysis run by
     FindingsRankEngine. Optionally filtered to a single category, but even
     filtered the ordering is still the global rank, not a re-rank within the
-    filtered subset."""
-    _get_repo_or_404(repo_id, db)
+    filtered subset. Gated on the "rank" stage -- findings exist as soon as
+    each emitting engine runs, but ``rank`` isn't final until FindingsRank
+    has run last."""
+    repo = _get_repo_or_404(repo_id, db)
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "rank", db)
+    if pending is not None:
+        return pending
 
-    query = select(Finding).where(Finding.repo_id == repo_id)
+    query = select(Finding).where(Finding.analysis_run_id == resolved_run_id)
     if category is not None:
         query = query.where(Finding.category == category)
     query = query.order_by(Finding.rank)
