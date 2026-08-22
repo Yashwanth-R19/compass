@@ -97,11 +97,20 @@ blueprint is created (**Environment** tab on the `compass-api` service):
 defaults in `render.yaml` and don't need dashboard values unless you want to
 override them.
 
-**Migrations run via Render's pre-deploy command** (`alembic upgrade head`,
-already set in `render.yaml`), never inside the container's start command —
-two instances racing `alembic upgrade head` against the same database at
-boot is a real failure mode with a shared Postgres, and the pre-deploy
-command runs exactly once before traffic is routed to the new instance.
+**Migrations run via `render.yaml`'s `dockerCommand`** (`alembic upgrade
+head && uvicorn ...`), not a separate pre-deploy step — Render's **free**
+plan rejects a Blueprint with `preDeployCommand` set outright ("pre-deploy
+command is not supported for free tier services"). The reason
+migrations are normally kept out of the container's own start command is to
+avoid two instances racing `alembic upgrade head` against the same database
+at boot — but Render's free tier never runs more than one instance of a
+service at a time, so that race can't happen here, and folding the
+migration into `dockerCommand` is safe specifically because of that
+constraint. **If you ever upgrade this service to a paid plan that scales
+beyond one instance**, switch `render.yaml` back to a real
+`preDeployCommand: alembic upgrade head` and drop the migration out of
+`dockerCommand` — see the comment directly above `dockerCommand` in
+`render.yaml`.
 
 ---
 
@@ -166,7 +175,8 @@ complete successfully rather than just prove the dispatch fires).
 |---|---|---|
 | Browser console shows CORS errors | `FRONTEND_ORIGIN`/`COMPASS_CORS_ORIGINS` on Render doesn't match the Vercel URL exactly (scheme, no trailing slash) | Update the Render env var to the exact origin, redeploy |
 | First request after idle takes 30–60s | Render free-tier cold start | Confirm the cron-job.org ping (step 6) is actually running and hitting `/health` every ≤14 minutes |
-| API returns 500s referencing a missing column/table | Migration didn't run, or ran against the wrong database | Check the Render pre-deploy command logs for the deploy; confirm `DATABASE_URL` points at the same Neon branch in both the pre-deploy command's environment and the running service |
+| API returns 500s referencing a missing column/table | Migration didn't run, or ran against the wrong database | Check the deploy's logs for the `alembic upgrade head` line (it runs as the first thing `dockerCommand` does, before uvicorn starts); confirm `DATABASE_URL` is set correctly on the service |
+| Blueprint deploy fails with "pre-deploy command is not supported for free tier services" | `render.yaml` still has `preDeployCommand` set (a paid-tier-only field) instead of the free-tier-safe `dockerCommand` | Use the `dockerCommand` form already in this repo's `render.yaml`; only switch back to `preDeployCommand` if you upgrade off the free plan |
 | `repository_dispatch` curl/API call returns `404` | Either `COMPASS_WORKER_REPO` is wrong, or the PAT's repository selection/Actions permission is wrong — **GitHub returns 404 for both cases, you cannot tell which from the status code alone** | Double-check `COMPASS_WORKER_REPO` is exactly `{owner}/{repo}` (case-sensitive) and that the PAT (step 3) has Actions: Read and write scoped to that exact repository |
 | Dispatch succeeds (204) but no workflow run appears | `mine.yml` is not on the repository's **default branch** — `repository_dispatch` only ever triggers workflows defined on the default branch, silently, with no error | Merge `mine.yml`/`reaper.yml` to the default branch (usually `main`) |
 | Runner OOM / killed mid-run | A very large repo, or a runner-level infra failure | `mine.yml`'s `if: failure()` step marks the run failed immediately; if it also died before that step could run, `reaper.yml` catches it within 15 minutes regardless |

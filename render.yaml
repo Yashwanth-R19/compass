@@ -11,11 +11,24 @@ services:
     plan: free
     healthCheckPath: /health
 
-    # Migrations run here, NOT in the container's start command -- Render
-    # runs the pre-deploy command once, before traffic is routed to the new
-    # instance, so there is never a race between two instances both trying
-    # to `alembic upgrade head` against the same database at boot.
-    preDeployCommand: alembic upgrade head
+    # `preDeployCommand` is rejected outright on Render's free plan ("Blueprint
+    # ... pre-deploy command is not supported for free tier services"). The
+    # original design (migrations in a pre-deploy step, never in the
+    # container's own start command) exists to avoid two instances racing
+    # `alembic upgrade head` against the same database at boot -- but
+    # Render's FREE tier never runs more than one instance of a service at a
+    # time (no horizontal scaling on free), so that race can't actually
+    # happen here, and folding the migration into `dockerCommand` (which
+    # overrides the Dockerfile's CMD for a `runtime: docker` service -- NOT
+    # `startCommand`, which is for non-Docker runtimes only) is safe
+    # specifically because of that constraint. If you ever upgrade this
+    # service to a paid plan that scales beyond one instance, switch back to
+    # `preDeployCommand: alembic upgrade head` and drop
+    # `alembic upgrade head &&` from the line below -- never run both, and
+    # never leave migrations in the container's own command on a
+    # multi-instance plan.
+    dockerCommand: >-
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
     envVars:
       - key: DATABASE_URL
