@@ -20,11 +20,17 @@ from app.db.runs import resolve_run_id
 
 
 def has_repo_scope(user: User) -> bool:
-    """Whether ``user`` has completed the repo-scoped consent (CLAUDE.md's
-    two-step scope escalation) -- read from the space-separated
-    ``token_scopes`` GitHub actually granted, never assumed from whether a
-    token exists at all (a basic-scope login also has a stored token)."""
-    return bool(user.token_scopes and "repo" in user.token_scopes.split())
+    """Whether the user has the GitHub repo scope."""
+    if not user.token_scopes:
+        return False
+
+    scopes = {
+        scope.strip()
+        for scope in user.token_scopes.replace(",", " ").split()
+        if scope.strip()
+    }
+
+    return "repo" in scopes
 
 
 def current_user_optional(request: Request, db: Session = Depends(get_db)) -> User | None:
