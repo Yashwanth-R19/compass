@@ -31,10 +31,12 @@ export function useSubmitRepo() {
   });
 }
 
-export function useRepo(repoId: string | undefined) {
+export function useRepo(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
   return useQuery({
-    queryKey: ["repo", repoId],
-    queryFn: () => apiGet<RepoOut>(`/repos/${repoId}`),
+    queryKey: ["repo", repoId, share ?? null],
+    queryFn: () => apiGet<RepoOut>(`/repos/${repoId}${qs}`),
     enabled: Boolean(repoId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
@@ -50,10 +52,12 @@ export function useRepo(repoId: string | undefined) {
  * "failed" from a bad re-analysis while still showing a previously-ready
  * run's data (see RepoLayout).
  */
-export function useRepoStatus(repoId: string | undefined) {
+export function useRepoStatus(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
   return useQuery({
-    queryKey: ["repo-status", repoId],
-    queryFn: () => apiGet<RepoStatusResponse>(`/repos/${repoId}/status`),
+    queryKey: ["repo-status", repoId, share ?? null],
+    queryFn: () => apiGet<RepoStatusResponse>(`/repos/${repoId}/status${qs}`),
     enabled: Boolean(repoId),
     refetchInterval: (query) => {
       const runStatus = query.state.data?.run_status;
@@ -63,58 +67,83 @@ export function useRepoStatus(repoId: string | undefined) {
   });
 }
 
-export function useCoupling(repoId: string | undefined) {
+export function useCoupling(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
   return useQuery({
-    queryKey: ["coupling", repoId],
-    queryFn: () => apiGetOrPending<CouplingResponse>(`/repos/${repoId}/coupling`),
+    queryKey: ["coupling", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<CouplingResponse>(`/repos/${repoId}/coupling${qs}`),
     enabled: Boolean(repoId),
   });
 }
 
-export function useArchitecture(repoId: string | undefined) {
-  return useQuery({
-    queryKey: ["architecture", repoId],
-    queryFn: () => apiGetOrPending<ArchitectureResponse>(`/repos/${repoId}/architecture`),
-    enabled: Boolean(repoId),
-  });
-}
+export function useArchitecture(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
 
-export function useHiddenDeps(repoId: string | undefined) {
   return useQuery({
-    queryKey: ["hidden-dependencies", repoId],
+    queryKey: ["architecture", repoId, share ?? null],
     queryFn: () =>
-      apiGetOrPending<HiddenDependencyResponse>(`/repos/${repoId}/hidden-dependencies`),
+      apiGetOrPending<ArchitectureResponse>(`/repos/${repoId}/architecture${qs}`),
     enabled: Boolean(repoId),
   });
 }
 
-export function useRisk(repoId: string | undefined) {
+export function useHiddenDeps(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
   return useQuery({
-    queryKey: ["risk", repoId],
-    queryFn: () => apiGetOrPending<RiskResponse>(`/repos/${repoId}/risk`),
+    queryKey: ["hidden-dependencies", repoId, share ?? null],
+    queryFn: () =>
+      apiGetOrPending<HiddenDependencyResponse>(
+        `/repos/${repoId}/hidden-dependencies${qs}`,
+      ),
     enabled: Boolean(repoId),
   });
 }
 
-export function useHealth(repoId: string | undefined) {
+export function useRisk(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
   return useQuery({
-    queryKey: ["health", repoId],
-    queryFn: () => apiGetOrPending<HealthResponse>(`/repos/${repoId}/health`),
+    queryKey: ["risk", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<RiskResponse>(`/repos/${repoId}/risk${qs}`),
     enabled: Boolean(repoId),
   });
 }
 
-export function useFindings(repoId: string | undefined, category?: string) {
+export function useHealth(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
   return useQuery({
-    queryKey: ["findings", repoId, category ?? null],
+    queryKey: ["health", repoId, share ?? null],
+    queryFn: () =>
+      apiGetOrPending<HealthResponse>(`/repos/${repoId}/health${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useFindings(
+  repoId: string | undefined,
+  category?: string,
+  share?: string,
+) {
+  return useQuery({
+    queryKey: ["findings", repoId, category ?? null, share ?? null],
     queryFn: () => {
-      const qs = category ? `?category=${encodeURIComponent(category)}` : "";
-      return apiGetOrPending<FindingsResponse>(`/repos/${repoId}/findings${qs}`);
+      const params = new URLSearchParams();
+
+      if (category) params.set("category", category);
+      if (share) params.set("share", share);
+
+      const qs = params.toString() ? `?${params.toString()}` : "";
+
+      return apiGetOrPending<FindingsResponse>(
+        `/repos/${repoId}/findings${qs}`,
+      );
     },
     enabled: Boolean(repoId),
   });
 }
-
 // --- Session 02: auth, history, sharing ------------------------------------
 
 /** The current session's user, or `null` when logged out -- never throws for

@@ -26,5 +26,11 @@ export function SharedRedirectPage() {
   if (isPending) return <LoadingState label="Resolving shared link…" />;
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
 
-  return <Navigate to={`/repos/${data.repo_id}/overview`} replace />;
+  return (
+  <Navigate
+    to={`/repos/${data.repo_id}/overview?share=${encodeURIComponent(slug!)}`
+    }
+    replace
+  />
+);
 }

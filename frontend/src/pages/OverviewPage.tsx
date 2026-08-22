@@ -21,10 +21,10 @@ const LANGUAGE_COLORS = [
 ];
 
 export function OverviewPage() {
-  const { repo } = useOutletContext<RepoOutletContext>();
-  const health = useHealth(repo.id);
-  const findings = useFindings(repo.id);
-  const risk = useRisk(repo.id);
+  const { repo, share } = useOutletContext<RepoOutletContext>();
+  const health = useHealth(repo.id, share);
+  const findings = useFindings(repo.id, undefined, share);
+  const risk = useRisk(repo.id, share);
 
   const riskData = risk.data?.kind === "data" ? risk.data.data : undefined;
 

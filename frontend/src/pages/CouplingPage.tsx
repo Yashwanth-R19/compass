@@ -19,9 +19,9 @@ const HIDDEN_COLOR = "#f97316"; // amber-500
 const NORMAL_COLOR = "#6366f1"; // indigo-500
 
 export function CouplingPage() {
-  const { repo } = useOutletContext<RepoOutletContext>();
-  const coupling = useCoupling(repo.id);
-  const hiddenDeps = useHiddenDeps(repo.id);
+  const { repo, share } = useOutletContext<RepoOutletContext>();
+  const coupling = useCoupling(repo.id, share)
+  const hiddenDeps = useHiddenDeps(repo.id, share);
   const [highlightHidden, setHighlightHidden] = useState(true);
 
   const couplingData = coupling.data?.kind === "data" ? coupling.data.data : undefined;

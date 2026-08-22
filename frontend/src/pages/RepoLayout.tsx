@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { NavLink, Outlet, useParams, useSearchParams } from "react-router-dom";
 import {
   useCreateShareLink,
   useMe,
@@ -64,12 +64,18 @@ const STAGE_STATUS_CLASSES: Record<StageStatus, string> = {
   skipped: "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500",
 };
 
-export type RepoOutletContext = { repo: RepoOut };
+export type RepoOutletContext = {
+  repo: RepoOut;
+  share?: string;
+};
 
 export function RepoLayout() {
   const { repoId } = useParams<{ repoId: string }>();
-  const { data: repo, isPending, isError, error, refetch } = useRepo(repoId);
-  const status = useRepoStatus(repoId);
+const [searchParams] = useSearchParams();
+const share = searchParams.get("share") ?? undefined;
+
+const { data: repo, isPending, isError, error, refetch } = useRepo(repoId, share);
+const status = useRepoStatus(repoId, share);
   const me = useMe();
 
   if (isPending) return <LoadingState label="Loading repo…" />;
@@ -156,7 +162,7 @@ export function RepoLayout() {
       </div>
 
       {showTabs ? (
-        <Outlet context={{ repo } satisfies RepoOutletContext} />
+        <Outlet context={{ repo, share } satisfies RepoOutletContext} />
       ) : blockingFailure ? (
         <EmptyState
           title="Analysis failed"

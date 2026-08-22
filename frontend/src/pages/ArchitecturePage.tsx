@@ -19,8 +19,8 @@ const NORMAL_COLOR = "#6366f1"; // indigo-500
 const DIMMED_COLOR = "rgba(148, 163, 184, 0.25)"; // slate-400 @ low opacity
 
 export function ArchitecturePage() {
-  const { repo } = useOutletContext<RepoOutletContext>();
-  const arch = useArchitecture(repo.id);
+  const { repo, share } = useOutletContext<RepoOutletContext>();
+  const arch = useArchitecture(repo.id, share)
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
   const archData = arch.data?.kind === "data" ? arch.data.data : undefined;
