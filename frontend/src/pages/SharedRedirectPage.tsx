@@ -27,10 +27,6 @@ export function SharedRedirectPage() {
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
 
   return (
-  <Navigate
-    to={`/repos/${data.repo_id}/overview?share=${encodeURIComponent(slug!)}`
-    }
-    replace
-  />
-);
+    <Navigate to={`/repos/${data.repo_id}/overview?share=${encodeURIComponent(slug!)}`} replace />
+  );
 }

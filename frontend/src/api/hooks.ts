@@ -82,8 +82,7 @@ export function useArchitecture(repoId: string | undefined, share?: string) {
 
   return useQuery({
     queryKey: ["architecture", repoId, share ?? null],
-    queryFn: () =>
-      apiGetOrPending<ArchitectureResponse>(`/repos/${repoId}/architecture${qs}`),
+    queryFn: () => apiGetOrPending<ArchitectureResponse>(`/repos/${repoId}/architecture${qs}`),
     enabled: Boolean(repoId),
   });
 }
@@ -94,9 +93,7 @@ export function useHiddenDeps(repoId: string | undefined, share?: string) {
   return useQuery({
     queryKey: ["hidden-dependencies", repoId, share ?? null],
     queryFn: () =>
-      apiGetOrPending<HiddenDependencyResponse>(
-        `/repos/${repoId}/hidden-dependencies${qs}`,
-      ),
+      apiGetOrPending<HiddenDependencyResponse>(`/repos/${repoId}/hidden-dependencies${qs}`),
     enabled: Boolean(repoId),
   });
 }
@@ -116,17 +113,12 @@ export function useHealth(repoId: string | undefined, share?: string) {
 
   return useQuery({
     queryKey: ["health", repoId, share ?? null],
-    queryFn: () =>
-      apiGetOrPending<HealthResponse>(`/repos/${repoId}/health${qs}`),
+    queryFn: () => apiGetOrPending<HealthResponse>(`/repos/${repoId}/health${qs}`),
     enabled: Boolean(repoId),
   });
 }
 
-export function useFindings(
-  repoId: string | undefined,
-  category?: string,
-  share?: string,
-) {
+export function useFindings(repoId: string | undefined, category?: string, share?: string) {
   return useQuery({
     queryKey: ["findings", repoId, category ?? null, share ?? null],
     queryFn: () => {
@@ -137,9 +129,7 @@ export function useFindings(
 
       const qs = params.toString() ? `?${params.toString()}` : "";
 
-      return apiGetOrPending<FindingsResponse>(
-        `/repos/${repoId}/findings${qs}`,
-      );
+      return apiGetOrPending<FindingsResponse>(`/repos/${repoId}/findings${qs}`);
     },
     enabled: Boolean(repoId),
   });

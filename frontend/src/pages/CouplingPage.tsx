@@ -20,7 +20,7 @@ const NORMAL_COLOR = "#6366f1"; // indigo-500
 
 export function CouplingPage() {
   const { repo, share } = useOutletContext<RepoOutletContext>();
-  const coupling = useCoupling(repo.id, share)
+  const coupling = useCoupling(repo.id, share);
   const hiddenDeps = useHiddenDeps(repo.id, share);
   const [highlightHidden, setHighlightHidden] = useState(true);
 

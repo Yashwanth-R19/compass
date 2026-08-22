@@ -71,11 +71,11 @@ export type RepoOutletContext = {
 
 export function RepoLayout() {
   const { repoId } = useParams<{ repoId: string }>();
-const [searchParams] = useSearchParams();
-const share = searchParams.get("share") ?? undefined;
+  const [searchParams] = useSearchParams();
+  const share = searchParams.get("share") ?? undefined;
 
-const { data: repo, isPending, isError, error, refetch } = useRepo(repoId, share);
-const status = useRepoStatus(repoId, share);
+  const { data: repo, isPending, isError, error, refetch } = useRepo(repoId, share);
+  const status = useRepoStatus(repoId, share);
   const me = useMe();
 
   if (isPending) return <LoadingState label="Loading repo…" />;

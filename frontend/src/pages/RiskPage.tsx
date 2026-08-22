@@ -27,8 +27,8 @@ const COLUMNS: { key: SortKey; label: string }[] = [
 ];
 
 export function RiskPage() {
- const { repo, share } = useOutletContext<RepoOutletContext>();
-  const risk = useRisk(repo.id, share)
+  const { repo, share } = useOutletContext<RepoOutletContext>();
+  const risk = useRisk(repo.id, share);
   const [sortKey, setSortKey] = useState<SortKey>("hotspot_rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
