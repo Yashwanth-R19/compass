@@ -27,8 +27,6 @@ services:
     # `alembic upgrade head &&` from the line below -- never run both, and
     # never leave migrations in the container's own command on a
     # multi-instance plan.
-    dockerCommand: >-
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
     envVars:
       - key: DATABASE_URL

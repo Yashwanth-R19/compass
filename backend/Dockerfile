@@ -31,9 +31,4 @@ RUN git --version
 
 USER compass
 
-# The default CMD just serves the API -- render.yaml's dockerCommand
-# overrides this to run `alembic upgrade head` first (see its comment for
-# why that's safe specifically on Render's free tier). Local `docker run`
-# without an override will NOT run migrations; run them yourself first via
-# `alembic upgrade head` against the target database.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
