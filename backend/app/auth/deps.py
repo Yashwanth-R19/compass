@@ -25,9 +25,7 @@ def has_repo_scope(user: User) -> bool:
         return False
 
     scopes = {
-        scope.strip()
-        for scope in user.token_scopes.replace(",", " ").split()
-        if scope.strip()
+        scope.strip() for scope in user.token_scopes.replace(",", " ").split() if scope.strip()
     }
 
     return "repo" in scopes

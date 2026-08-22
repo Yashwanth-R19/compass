@@ -51,9 +51,7 @@ def _fetch_github_repo(owner: str, name: str, token: str | None) -> dict:
         return json.loads(response.read().decode("utf-8"))  # type: ignore[no-any-return]
 
 
-def check_github_repo_size(
-    owner: str, name: str, max_mb: int, token: str | None = None
-) -> None:
+def check_github_repo_size(owner: str, name: str, max_mb: int, token: str | None = None) -> None:
     """Rejects repos over ``max_mb`` (plan/RULES.md sec 14: "reject cleanly
     rather than analyse slowly") by calling the GitHub API for the
     repository's reported size (in KB) BEFORE any clone starts.
