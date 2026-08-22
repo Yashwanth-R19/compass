@@ -5,7 +5,6 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
 
-
 database_url = settings.DATABASE_URL
 
 if database_url.startswith("postgres://"):
