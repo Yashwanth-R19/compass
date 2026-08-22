@@ -84,7 +84,7 @@ def create_repo(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
-            check_github_repo_size(owner, name, settings.COMPASS_MAX_REPO_MB)
+            check_github_repo_size(owner,name,settings.COMPASS_MAX_REPO_MB,token=token,)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

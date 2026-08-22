@@ -51,7 +51,9 @@ def _fetch_github_repo(owner: str, name: str, token: str | None) -> dict:
         return json.loads(response.read().decode("utf-8"))  # type: ignore[no-any-return]
 
 
-def check_github_repo_size(owner: str, name: str, max_mb: int) -> None:
+def check_github_repo_size(
+    owner: str, name: str, max_mb: int, token: str | None = None
+) -> None:
     """Rejects repos over ``max_mb`` (plan/RULES.md sec 14: "reject cleanly
     rather than analyse slowly") by calling the GitHub API for the
     repository's reported size (in KB) BEFORE any clone starts.
@@ -73,7 +75,7 @@ def check_github_repo_size(owner: str, name: str, max_mb: int) -> None:
     any other lookup hiccup.
     """
     try:
-        data = _fetch_github_repo(owner, name, token=None)
+        data = _fetch_github_repo(owner, name, token=token)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             raise ValueError(f"Repository {owner}/{name} was not found on GitHub.") from exc
