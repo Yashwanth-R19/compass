@@ -97,7 +97,7 @@ def _fetch_user_repos_page(token: str, page: int) -> list[dict]:
         },
     )
     with urllib.request.urlopen(request, timeout=_GITHUB_TIMEOUT_SECONDS) as response:
-        return json.loads(response.read().decode("utf-8"))  # type: ignore[no-any-return]
+        return json.loads(response.read().decode("utf-8"))
 
 
 @router.get("/me/github/repos", response_model=MyGithubReposResponse)

@@ -48,7 +48,7 @@ def _fetch_github_repo(owner: str, name: str, token: str | None) -> dict:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=_GITHUB_API_TIMEOUT_SECONDS) as response:
-        return json.loads(response.read().decode("utf-8"))  # type: ignore[no-any-return]
+        return json.loads(response.read().decode("utf-8"))
 
 
 def check_github_repo_size(owner: str, name: str, max_mb: int, token: str | None = None) -> None:
