@@ -1,4 +1,3 @@
-import uuid
 from typing import Any
 
 from sqlalchemy import select
@@ -6,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Finding, Severity
 from app.engines.base import Engine
+from app.engines.context import RunContext
 
 SEVERITY_WEIGHT: dict[Severity, int] = {Severity.high: 3, Severity.med: 2, Severity.low: 1}
 """Primary sort key for the global, cross-category findings rank (the
@@ -43,8 +43,10 @@ class FindingsRankEngine(Engine):
     the run currently being computed.
     """
 
-    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        findings = session.scalars(select(Finding).where(Finding.analysis_run_id == run_id)).all()
+    def run(self, ctx: RunContext, session: Session) -> dict[str, Any]:
+        findings = session.scalars(
+            select(Finding).where(Finding.analysis_run_id == ctx.run_id)
+        ).all()
         if not findings:
             return {"findings_ranked": 0}
 

@@ -15,6 +15,7 @@ from app.db.models import (
     RepoPath,
     RepoStatus,
 )
+from app.engines.context import RunContext
 from app.engines.health import (
     CYCLE_PENALTY_CAP,
     CYCLE_PENALTY_PER_CYCLE,
@@ -91,6 +92,28 @@ def _add_file_with_risk_score(
     )
 
 
+def _add_deleted_file(db_session, repo_id: uuid.UUID, path: str) -> None:
+    """A file with no FileMetrics row -- RiskEngine never scores deleted
+    files, so this simulates real deletion history without a risk_score."""
+    path_id = _intern_paths(db_session, repo_id, [path])[path]
+    now = datetime.now(UTC)
+    db_session.add(
+        File(
+            repo_id=repo_id,
+            path_id=path_id,
+            path=path,
+            language="python",
+            current_loc=0,
+            complexity=0.0,
+            churn_total=1,
+            commit_count=1,
+            first_seen=now,
+            last_seen=now,
+            is_deleted=True,
+        )
+    )
+
+
 def _add_dependency(db_session, repo_id: uuid.UUID, from_path: str, to_path: str) -> None:
     path_ids = _intern_paths(db_session, repo_id, [from_path, to_path])
     db_session.execute(
@@ -133,7 +156,7 @@ def test_healthy_repo_scores_100(db_session):
         _add_file_with_risk_score(db_session, repo_id, run_id, f"f{i}.py", risk_score=0.1)
     db_session.commit()
 
-    result = HealthEngine().run(repo_id, run_id, db_session)
+    result = HealthEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert result["score"] == pytest.approx(100.0)
@@ -159,7 +182,7 @@ def test_penalties_apply_and_are_uncapped_below_threshold(db_session):
     _add_coupling(db_session, repo_id, run_id, "m.py", "n.py")
     db_session.commit()
 
-    result = HealthEngine().run(repo_id, run_id, db_session)
+    result = HealthEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert result["high_risk_ratio"] == pytest.approx(0.5)
@@ -192,10 +215,37 @@ def test_penalties_are_capped_and_score_floors_at_zero(db_session):
         _add_coupling(db_session, repo_id, run_id, f"m{i}.py", f"n{i}.py")
     db_session.commit()
 
-    result = HealthEngine().run(repo_id, run_id, db_session)
+    result = HealthEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert result["cycle_count"] == cycles_needed
     assert result["hidden_dependency_count"] == pairs_needed
     # 40 (risk) + 30 (cycle cap) + 30 (hidden-dep cap) = 100 -> floored at 0, not negative.
     assert result["score"] == pytest.approx(0.0)
+
+
+def test_high_risk_ratio_excludes_deleted_files_from_the_denominator(db_session):
+    """Part C: RiskEngine never scores deleted files (they get no
+    FileMetrics row), so _high_risk_ratio's denominator must be scoped the
+    same way -- otherwise a repo with real deletion history understates the
+    ratio. Fixture: 60 deleted files (never scored) + 4 live files, 3 of
+    them high-risk. The old, buggy behaviour would compute 3/64; the correct
+    behaviour is 3/4.
+    """
+    repo_id = _make_repo(db_session, "https://github.com/fixture/health-deleted-files")
+    run_id = _make_run(db_session, repo_id)
+
+    for i in range(60):
+        _add_deleted_file(db_session, repo_id, f"gone{i}.py")
+
+    _add_file_with_risk_score(db_session, repo_id, run_id, "hot1.py", risk_score=0.9)
+    _add_file_with_risk_score(db_session, repo_id, run_id, "hot2.py", risk_score=0.8)
+    _add_file_with_risk_score(db_session, repo_id, run_id, "hot3.py", risk_score=0.7)
+    _add_file_with_risk_score(db_session, repo_id, run_id, "ok1.py", risk_score=0.1)
+    db_session.commit()
+
+    result = HealthEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
+    db_session.commit()
+
+    # 3 of 4 LIVE files are high-risk, not 3 of 64 total-ever files.
+    assert result["high_risk_ratio"] == pytest.approx(0.75)

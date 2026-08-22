@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 from app.db.base import SessionLocal
 from app.db.models import AnalysisRun, AnalysisRunStatus, File, Job, JobStatus, Repo, RepoStatus
+from app.engines.context import RunContext
 from app.ingestion.cloner import clone_repo, get_remote_head_sha
 from app.ingestion.miner import mine_repo
 from app.ingestion.persist import persist_facts
@@ -21,7 +22,7 @@ from app.jobs.stages import (
 from app.languages.scanner import extract_structural_edges
 
 
-def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
+def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID, worker_mode: str = "inline") -> None:
     """Create a new ``analysis_runs`` row and drive it through the FACT
     stages (clone -> mine -> structure -> persist_facts, skipped entirely if
     the remote head_sha is unchanged) and then the INSIGHT stages (coupling
@@ -30,9 +31,15 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
     rows throughout (Phase 02: Facts/Insight split + progressive reveal,
     CLAUDE.md).
 
-    Transport-agnostic by design: called from FastAPI BackgroundTasks today,
-    but takes no FastAPI objects and can be invoked identically from a future
-    GitHub Actions worker. Always cleans up the clone, success or failure.
+    Transport-agnostic by design: called from FastAPI BackgroundTasks
+    (``worker_mode="inline"``/``"inline_fallback"``, app/jobs/dispatch.py) and
+    from the GitHub Actions worker (``worker_mode="actions"``,
+    app/jobs/worker.py) -- the exact same function either way, no branching
+    on transport inside it. ``worker_mode`` exists only because
+    ``analysis_runs.worker_mode`` (session 01, Part G) is set on the row this
+    function itself creates below, and the caller is the only one who knows
+    which transport actually ran it; nothing else about the function's
+    behavior depends on it. Always cleans up the clone, success or failure.
 
     On success: the run is marked ``ready``, ``repos.current_run_id``/
     ``head_sha`` move to point at it, and the previously-current run (if any)
@@ -59,7 +66,12 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
         # `git ls-remote` call, so a slow-to-respond remote never delays the
         # first status poll from seeing the full pending stage list -- the
         # "land on the repo page within ~2 seconds" requirement (Part F).
-        run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.running, head_sha="")
+        run = AnalysisRun(
+            repo_id=repo_id,
+            status=AnalysisRunStatus.running,
+            head_sha="",
+            worker_mode=worker_mode,
+        )
         session.add(run)
         session.flush()
         run_id = run.id
@@ -130,12 +142,20 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID) -> None:
         _update_repo(session, repo_id, status=RepoStatus.analyzing)
         session.commit()
 
+        # One RunContext per run, built once analysis_runs exists and shared
+        # across every insight stage -- it's what lets ArchEngine/OverlayEngine/
+        # HealthEngine stop re-deriving the same dependency graph/cycles/
+        # hidden-dependency list three times per run (session 01). Never
+        # constructed before this point and never reused across runs (see
+        # app/engines/context.py's docstring).
+        ctx = RunContext(repo_id=repo_id, run_id=run_id)
+
         # Engine order is fixed and load-bearing -- see app/jobs/stages.py's
         # INSIGHT_STAGES docstring for why each depends on the last.
         for s in INSIGHT_STAGES:
             with stage(run_id, s.name, session) as summary:
                 assert s.callable is not None  # every insight stage has one
-                summary.update(s.callable(repo_id, run_id, session))
+                summary.update(s.callable(ctx, session))
             session.commit()
         _update_job(session, job_id, progress=95)
         session.commit()

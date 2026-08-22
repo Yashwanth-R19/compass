@@ -15,6 +15,7 @@ from app.db.models import (
     RepoStatus,
 )
 from app.engines.architecture import ArchEngine
+from app.engines.context import RunContext
 from app.engines.coupling import CouplingEngine
 from app.engines.overlay import OverlayEngine, compute_hidden_dependencies
 from app.languages.scanner import extract_structural_edges
@@ -131,12 +132,13 @@ def test_import_edge_found_cycle_detected_hidden_dependency_surfaced(tmp_path, d
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
+    ctx = RunContext(repo_id=repo_id, run_id=run_id)
 
-    CouplingEngine().run(repo_id, run_id, db_session)
+    CouplingEngine().run(ctx, db_session)
     db_session.commit()
 
     # 2. ArchEngine: the planted x<->y cycle must be detected.
-    arch_metadata = ArchEngine().run(repo_id, run_id, db_session)
+    arch_metadata = ArchEngine().run(ctx, db_session)
     db_session.commit()
 
     assert arch_metadata["cycles_found"] == 1
@@ -150,7 +152,7 @@ def test_import_edge_found_cycle_detected_hidden_dependency_surfaced(tmp_path, d
 
     # 3. OverlayEngine: (a, c) is a hidden dependency; (a, b) is not,
     # because a real import edge already accounts for it.
-    overlay_metadata = OverlayEngine().run(repo_id, run_id, db_session)
+    overlay_metadata = OverlayEngine().run(ctx, db_session)
     db_session.commit()
 
     assert overlay_metadata["hidden_dependencies_found"] == 1
@@ -173,7 +175,7 @@ def test_layering_violation_flagged_for_ui_importing_db_directly(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    metadata = ArchEngine().run(repo_id, run_id, db_session)
+    metadata = ArchEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["layering_violations_found"] == 1

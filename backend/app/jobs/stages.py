@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AnalysisRun, AnalysisRunStatus, AnalysisStage, StageStatus
 from app.engines.architecture import ArchEngine
+from app.engines.context import RunContext
 from app.engines.coupling import CouplingEngine
 from app.engines.findings import FindingsRankEngine
 from app.engines.health import HealthEngine
@@ -18,7 +19,7 @@ from app.engines.risk import RiskEngine
 
 StageKind = Literal["fact", "insight"]
 
-EngineCallable = Callable[[uuid.UUID, uuid.UUID, Session], dict[str, Any]]
+EngineCallable = Callable[[RunContext, Session], dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -26,9 +27,9 @@ class Stage:
     """One entry in the canonical, ordered stage list (Phase 02, CLAUDE.md).
 
     ``callable`` is only populated for "insight" stages, where every engine
-    already shares the uniform ``Engine.run(repo_id, run_id, session) -> dict``
+    already shares the uniform ``Engine.run(ctx, session) -> dict``
     signature (app/engines/base.py) -- letting the runner drive them
-    generically: ``s.callable(repo_id, run_id, session)``. "fact" stages
+    generically: ``s.callable(ctx, session)``. "fact" stages
     (clone/mine/structure/persist_facts) have no such uniform signature --
     each one both consumes and produces different local state (a clone path,
     a MinedRepo, a dependency list) that has to thread through the next

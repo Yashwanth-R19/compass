@@ -1,13 +1,20 @@
+from __future__ import annotations
+
 import itertools
 import uuid
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Commit, Coupling
+from app.db.models import AnalysisRun, Commit, Coupling
 from app.engines.base import Engine
+
+if TYPE_CHECKING:
+    # See app/engines/base.py -- avoids the context/architecture/overlay
+    # import cycle; RunContext is only used as a type hint here.
+    from app.engines.context import RunContext
 
 # ---- Config (module-level, documented; not per-caller knobs) ----
 
@@ -155,11 +162,21 @@ def compute_coupling(
     return fallback_rows, True, len(changesets)
 
 
-def is_low_confidence(repo_id: uuid.UUID, session: Session) -> bool:
-    """True when CouplingEngine had to fall back to the lowered shared_revs
-    floor for this repo (see compute_coupling)."""
-    _, low_confidence, _ = compute_coupling(repo_id, session)
-    return low_confidence
+def is_low_confidence(run_id: uuid.UUID, session: Session) -> bool:
+    """True when CouplingEngine fell back to the lowered shared_revs floor
+    for this run. Reads the flag CouplingEngine persisted on the
+    analysis_runs row -- it is NOT re-derivable from a commit count (see
+    FALLBACK_MIN_SHARED_REVS), and re-deriving it by re-running
+    compute_coupling() is what this replaces.
+
+    Returns False when the column is NULL: a run whose coupling stage
+    hasn't completed yet (the caller is inside the 202 window and there is
+    nothing to be low-confidence about) has no flag to read.
+    """
+    flag = session.scalar(
+        select(AnalysisRun.coupling_low_confidence).where(AnalysisRun.id == run_id)
+    )
+    return bool(flag)
 
 
 def confidence_hint(shared_revs: int, low_confidence_repo: bool) -> str:
@@ -193,12 +210,16 @@ class CouplingEngine(Engine):
     only inserts, it never deletes-first.
     """
 
-    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        rows, low_confidence, commits_analyzed = compute_coupling(repo_id, session)
+    def run(self, ctx: RunContext, session: Session) -> dict[str, Any]:
+        rows, low_confidence, commits_analyzed = compute_coupling(ctx.repo_id, session)
 
         if rows:
-            tagged_rows = [{"analysis_run_id": run_id, **row} for row in rows]
+            tagged_rows = [{"analysis_run_id": ctx.run_id, **row} for row in rows]
             session.execute(insert(Coupling), tagged_rows)
+
+        run = session.get(AnalysisRun, ctx.run_id)
+        if run is not None:
+            run.coupling_low_confidence = low_confidence
 
         return {
             "pairs_found": len(rows),

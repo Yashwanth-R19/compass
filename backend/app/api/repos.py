@@ -5,11 +5,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.base import get_db
 from app.db.models import AnalysisRun, AnalysisStage, File, Job, JobStatus, Repo, RepoStatus
 from app.db.runs import get_latest_run
-from app.ingestion.guardrails import validate_repo_url
-from app.jobs.runner import run_ingestion_job
+from app.ingestion.guardrails import check_github_repo_size, validate_repo_url
+from app.jobs.dispatch import dispatch_run
 from app.schemas.repo import (
     AnalysisRunOut,
     AnalysisRunsResponse,
@@ -40,6 +41,8 @@ def create_repo(
     try:
         validate_repo_url(payload.url)
         owner, name = _parse_owner_name(payload.url)
+        if urlparse(payload.url).hostname == "github.com":
+            check_github_repo_size(owner, name, settings.COMPASS_MAX_REPO_MB)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -59,7 +62,7 @@ def create_repo(
     db.refresh(repo)
     db.refresh(job)
 
-    background_tasks.add_task(run_ingestion_job, repo.id, job.id)
+    dispatch_run(repo.id, job.id, db, background_tasks)
 
     return RepoCreateResponse(repo_id=repo.id, job_id=job.id)
 

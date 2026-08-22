@@ -19,15 +19,12 @@ from app.db.models import (
 from app.db.paths import load_path_map
 from app.db.runs import resolve_run_id
 from app.engines.architecture import (
-    build_graph,
     cycle_severity,
-    find_cycles,
     layering_violation_severity,
     layering_violations,
-    load_edges,
 )
+from app.engines.context import RunContext
 from app.engines.coupling import confidence_hint, is_low_confidence
-from app.engines.overlay import compute_hidden_dependencies
 from app.engines.risk import max_coupling_by_path
 from app.schemas.analysis import (
     ArchitectureResponse,
@@ -109,7 +106,7 @@ def get_coupling(
     if pending is not None:
         return pending
 
-    low_confidence = is_low_confidence(repo_id, db)
+    low_confidence = is_low_confidence(resolved_run_id, db)
     rows = db.scalars(
         select(Coupling)
         .where(Coupling.repo_id == repo_id, Coupling.analysis_run_id == resolved_run_id)
@@ -150,9 +147,10 @@ def get_architecture(
     if pending is not None:
         return pending
 
-    edges = load_edges(repo_id, db)
-    graph = build_graph(edges)
-    cycles = find_cycles(graph)
+    ctx = RunContext(repo_id=repo_id, run_id=resolved_run_id)
+    edges = ctx.dependency_edges(db)
+    graph = ctx.dependency_graph(db)
+    cycles = ctx.cycles(db)
     violations = layering_violations(edges)
 
     return ArchitectureResponse(
@@ -184,7 +182,8 @@ def get_hidden_dependencies(
     if pending is not None:
         return pending
 
-    hidden = compute_hidden_dependencies(repo_id, resolved_run_id, db)
+    ctx = RunContext(repo_id=repo_id, run_id=resolved_run_id)
+    hidden = ctx.hidden_dependencies(db)
     pairs = [
         HiddenDependencyOut(
             file_a_path=h["file_a_path"],

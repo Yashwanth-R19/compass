@@ -1,0 +1,38 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec). Deploy with
+# "New +" -> "Blueprint" in the Render dashboard, pointed at this repo.
+# See DEPLOY.md for the full step-by-step, including exact values.
+
+services:
+  - type: web
+    name: compass-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+
+    # Migrations run here, NOT in the container's start command -- Render
+    # runs the pre-deploy command once, before traffic is routed to the new
+    # instance, so there is never a race between two instances both trying
+    # to `alembic upgrade head` against the same database at boot.
+    preDeployCommand: alembic upgrade head
+
+    envVars:
+      - key: DATABASE_URL
+        sync: false # set in the Render dashboard -- the Neon pooled connection string
+      - key: ENV
+        value: production
+      - key: FRONTEND_ORIGIN
+        sync: false # the deployed Vercel URL, e.g. https://compass.vercel.app
+      - key: COMPASS_CORS_ORIGINS
+        sync: false # comma-separated extra allowed origins, e.g. Vercel preview URLs
+      - key: COMPASS_WORKER_MODE
+        value: actions
+      - key: COMPASS_WORKER_REPO
+        sync: false # "{owner}/{repo}" of the public mining-worker repository
+      - key: COMPASS_WORKER_PAT
+        sync: false # fine-grained PAT, Actions read/write on COMPASS_WORKER_REPO only
+      - key: COMPASS_MAX_REPO_MB
+        value: "300"
+      - key: COMPASS_VERSION
+        sync: false # bump per release so /health reports the running build

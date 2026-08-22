@@ -16,6 +16,7 @@ from app.db.models import (
     Severity,
 )
 from app.engines.architecture import ArchEngine
+from app.engines.context import RunContext
 from app.engines.coupling import CouplingEngine
 from app.engines.findings import FindingsRankEngine, impact_score
 from app.engines.health import HealthEngine
@@ -118,7 +119,7 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
     db_session.execute(insert(Finding), rows)
     db_session.commit()
 
-    metadata = FindingsRankEngine().run(repo_id, run_id, db_session)
+    metadata = FindingsRankEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["findings_ranked"] == 4
@@ -146,7 +147,7 @@ def test_global_rank_orders_by_severity_then_confidence(db_session):
 def test_no_findings_is_a_harmless_noop(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/findings-rank-empty")
     run_id = _make_run(db_session, repo_id)
-    metadata = FindingsRankEngine().run(repo_id, run_id, db_session)
+    metadata = FindingsRankEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
     assert metadata == {"findings_ranked": 0}
 
@@ -241,12 +242,13 @@ def test_full_pipeline_produces_one_globally_ranked_stream(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    CouplingEngine().run(repo_id, run_id, db_session)
-    ArchEngine().run(repo_id, run_id, db_session)
-    OverlayEngine().run(repo_id, run_id, db_session)
-    RiskEngine().run(repo_id, run_id, db_session)
-    HealthEngine().run(repo_id, run_id, db_session)
-    FindingsRankEngine().run(repo_id, run_id, db_session)
+    ctx = RunContext(repo_id=repo_id, run_id=run_id)
+    CouplingEngine().run(ctx, db_session)
+    ArchEngine().run(ctx, db_session)
+    OverlayEngine().run(ctx, db_session)
+    RiskEngine().run(ctx, db_session)
+    HealthEngine().run(ctx, db_session)
+    FindingsRankEngine().run(ctx, db_session)
     db_session.commit()
 
     findings = db_session.scalars(

@@ -5,9 +5,8 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.orm import Session
 
 from app.db.models import File, FileMetrics, Health
-from app.engines.architecture import build_graph, find_cycles, load_edges
 from app.engines.base import Engine
-from app.engines.overlay import compute_hidden_dependencies
+from app.engines.context import RunContext
 
 HIGH_RISK_THRESHOLD = 0.60
 """A file counts toward the "high risk" proportion once its composite
@@ -44,8 +43,20 @@ structural findings alone.
 
 
 def _high_risk_ratio(repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> float:
+    # INVARIANT: the numerator and denominator must always be drawn from the
+    # same file population. RiskEngine only ever scores files where
+    # is_deleted is false (a deleted file never gets a file_metrics row), so
+    # `total` must be scoped the same way -- otherwise a repo with real
+    # deletion history understates high_risk_ratio (a deleted-inclusive
+    # denominator divided into a deleted-exclusive numerator) -- see
+    # CLAUDE.md's health-engine section.
     total = (
-        session.scalar(select(func.count()).select_from(File).where(File.repo_id == repo_id)) or 0
+        session.scalar(
+            select(func.count())
+            .select_from(File)
+            .where(File.repo_id == repo_id, File.is_deleted.is_(False))
+        )
+        or 0
     )
     if total == 0:
         return 0.0
@@ -64,18 +75,28 @@ def _high_risk_ratio(repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) ->
     return high_risk / total
 
 
-def compute_health(repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
+def compute_health(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID,
+    session: Session,
+    *,
+    cycle_count: int,
+    hidden_dependency_count: int,
+) -> dict[str, Any]:
     """Pure computation of the composite health score and its inputs -- no
     writes. Shared by HealthEngine (persists it) and available to callers
     that want it recomputed fresh, same "pure function over mined facts"
     shape as every other engine's compute_* helper. ``run_id`` scopes the
-    two Insight-table reads (file_metrics via ``_high_risk_ratio``,
-    coupling via ``compute_hidden_dependencies``) to this run only --
-    both tables hold rows from every past run of this repo (Phase 02).
+    file_metrics read (via ``_high_risk_ratio``) to this run only -- that
+    table holds rows from every past run of this repo (Phase 02).
+
+    ``cycle_count``/``hidden_dependency_count`` are passed in rather than
+    recomputed here -- ArchEngine and OverlayEngine already computed them
+    for this same run_id (session 01: the whole point of RunContext is that
+    HealthEngine no longer re-derives what a prior engine in the same run
+    already derived). See HealthEngine.run, which sources both from ctx.
     """
     high_risk_ratio = _high_risk_ratio(repo_id, run_id, session)
-    cycle_count = len(find_cycles(build_graph(load_edges(repo_id, session))))
-    hidden_dependency_count = len(compute_hidden_dependencies(repo_id, run_id, session))
 
     risk_penalty = min(100.0, RISK_PENALTY_WEIGHT * high_risk_ratio)
     cycle_penalty = min(CYCLE_PENALTY_CAP, CYCLE_PENALTY_PER_CYCLE * cycle_count)
@@ -102,8 +123,17 @@ class HealthEngine(Engine):
     find_cycles/compute_hidden_dependencies helpers.
     """
 
-    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        result = compute_health(repo_id, run_id, session)
+    def run(self, ctx: RunContext, session: Session) -> dict[str, Any]:
+        repo_id, run_id = ctx.repo_id, ctx.run_id
+        cycle_count = len(ctx.cycles(session))
+        hidden_dependency_count = len(ctx.hidden_dependencies(session))
+        result = compute_health(
+            repo_id,
+            run_id,
+            session,
+            cycle_count=cycle_count,
+            hidden_dependency_count=hidden_dependency_count,
+        )
 
         session.execute(
             insert(Health),

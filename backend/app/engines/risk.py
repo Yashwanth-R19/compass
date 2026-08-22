@@ -10,6 +10,8 @@ from app.baseline.heuristic import HeuristicBaseline, size_bucket_for
 from app.db.models import Commit, Coupling, File, FileMetrics, Finding, Severity
 from app.db.paths import load_path_map
 from app.engines.base import Engine
+from app.engines.context import RunContext
+from app.engines.signature import finding_signature
 
 MAX_RISK_FINDINGS = 10
 """Top-N hotspots emitted as findings, not all files -- the anti-alert-
@@ -96,7 +98,8 @@ class RiskEngine(Engine):
     def __init__(self, baseline: BaselineProvider | None = None) -> None:
         self._baseline = baseline or HeuristicBaseline()
 
-    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
+    def run(self, ctx: RunContext, session: Session) -> dict[str, Any]:
+        repo_id, run_id = ctx.repo_id, ctx.run_id
         files = session.scalars(
             select(File).where(File.repo_id == repo_id, File.is_deleted.is_(False))
         ).all()
@@ -199,6 +202,7 @@ class RiskEngine(Engine):
                         f"max_coupling_degree={coupling_degrees[i]:.2f}, commit_count={f.commit_count})."
                     ),
                     "rank": rank,
+                    "signature": finding_signature("risk", f.path),
                 }
             )
         if findings:

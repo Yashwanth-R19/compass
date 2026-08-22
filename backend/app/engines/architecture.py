@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 from sqlalchemy import insert, select
@@ -9,6 +11,13 @@ from sqlalchemy.orm import Session, aliased
 from app.db.models import Dependency, Finding, RepoPath, Severity
 from app.db.paths import load_path_id_map
 from app.engines.base import Engine
+from app.engines.signature import finding_signature
+
+if TYPE_CHECKING:
+    # See app/engines/base.py -- app.engines.context imports this module for
+    # dependency_edges/dependency_graph/cycles, so a top-level import of
+    # RunContext here would be circular.
+    from app.engines.context import RunContext
 
 MAX_CYCLE_LENGTH = 10
 """``nx.simple_cycles``' ``length_bound`` -- caps how long a cycle we'll even
@@ -111,10 +120,11 @@ class ArchEngine(Engine):
     before the clone is deleted -- this engine only ever reads that table.
     """
 
-    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        edges = load_edges(repo_id, session)
-        graph = build_graph(edges)
-        cycles = find_cycles(graph)
+    def run(self, ctx: RunContext, session: Session) -> dict[str, Any]:
+        repo_id, run_id = ctx.repo_id, ctx.run_id
+        edges = ctx.dependency_edges(session)
+        graph = ctx.dependency_graph(session)
+        cycles = ctx.cycles(session)
         violations = layering_violations(edges)
         path_id_map = load_path_id_map(repo_id, session)
 
@@ -168,6 +178,10 @@ def _cycle_finding(
     length = len(cycle)
     severity = cycle_severity(length)
     chain = " -> ".join([*cycle, cycle[0]])
+    # Sorted, not insertion order -- a cycle found as a->b->c is the same
+    # cycle as one found starting at b->c->a, and must produce the same
+    # signature (see app/engines/signature.py).
+    signature_key = "|".join(sorted(cycle))
     return {
         "analysis_run_id": run_id,
         "repo_id": repo_id,
@@ -179,6 +193,7 @@ def _cycle_finding(
         "title": f"Circular dependency among {length} files",
         "detail": f"Import cycle: {chain}",
         "rank": 0,
+        "signature": finding_signature("architecture", signature_key),
         "_size": length,
     }
 
@@ -214,5 +229,6 @@ def _layering_finding(
         "title": title,
         "detail": detail,
         "rank": 0,
+        "signature": finding_signature("architecture", f"{from_path}->{to_path}"),
         "_size": 0,
     }

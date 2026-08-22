@@ -1,0 +1,36 @@
+name: Reaper
+
+# Public repository -- see mine.yml's header comment. This workflow only
+# ever prints reap_stale_runs()'s own count log line (app/jobs/reaper.py),
+# never raw environment values.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend
+        run: pip install ./backend
+
+      - name: Reap stale runs
+        run: python -m app.jobs.reaper

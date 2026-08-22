@@ -13,12 +13,14 @@ from app.db.models import (
     RepoPath,
     RepoStatus,
 )
+from app.engines.context import RunContext
 from app.engines.coupling import (
     FALLBACK_MIN_SHARED_REVS,
     MIN_SHARED_REVS,
     CouplingEngine,
     confidence_hint,
     is_low_confidence,
+    load_kept_changesets,
 )
 
 
@@ -106,7 +108,7 @@ def test_coupled_files_detected_and_uncoupled_file_excluded(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    metadata = CouplingEngine().run(repo_id, run_id, db_session)
+    metadata = CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["low_confidence"] is False
@@ -142,7 +144,7 @@ def test_asymmetric_coupling_divides_by_the_less_active_file(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    CouplingEngine().run(repo_id, run_id, db_session)
+    CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     path_ids = _intern_paths(db_session, repo_id, ["a.py", "b.py"])
@@ -170,7 +172,7 @@ def test_asymmetric_coupling_at_larger_scale_still_divides_by_less_active_file(d
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    CouplingEngine().run(repo_id, run_id, db_session)
+    CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     path_ids = _intern_paths(db_session, repo_id, ["a.py", "b.py"])
@@ -195,7 +197,7 @@ def test_mega_commit_is_dropped_as_noise(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    metadata = CouplingEngine().run(repo_id, run_id, db_session)
+    metadata = CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["commits_analyzed"] == 6  # the 40-file commit was dropped
@@ -222,7 +224,7 @@ def test_small_repo_fallback_marks_low_confidence_instead_of_empty(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    metadata = CouplingEngine().run(repo_id, run_id, db_session)
+    metadata = CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["low_confidence"] is True
@@ -235,7 +237,7 @@ def test_small_repo_fallback_marks_low_confidence_instead_of_empty(db_session):
     assert ab.shared_revs >= FALLBACK_MIN_SHARED_REVS
 
     assert confidence_hint(ab.shared_revs, low_confidence_repo=True) == "low"
-    assert is_low_confidence(repo_id, db_session) is True
+    assert is_low_confidence(run_id, db_session) is True
 
 
 def test_fallback_triggers_when_no_pair_meets_the_floor_even_with_enough_commits(db_session):
@@ -264,7 +266,7 @@ def test_fallback_triggers_when_no_pair_meets_the_floor_even_with_enough_commits
     assert MIN_SHARED_REVS <= 2 + 13
 
     run_id = _make_run(db_session, repo_id)
-    metadata = CouplingEngine().run(repo_id, run_id, db_session)
+    metadata = CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["commits_analyzed"] == 15
@@ -274,4 +276,121 @@ def test_fallback_triggers_when_no_pair_meets_the_floor_even_with_enough_commits
     rows = db_session.scalars(select(Coupling).where(Coupling.repo_id == repo_id)).all()
     assert len(rows) == 1
     assert rows[0].shared_revs == 2
-    assert is_low_confidence(repo_id, db_session) is True
+    assert is_low_confidence(run_id, db_session) is True
+
+
+def test_coupling_engine_persists_low_confidence_flag_on_the_run_row(db_session):
+    """Part B: CouplingEngine must persist the flag onto analysis_runs.coupling_low_confidence,
+    not just return it in the stage summary -- that persisted column is what
+    is_low_confidence() reads instead of re-running compute_coupling()."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/coupling-persist-flag")
+    now = datetime.now(UTC)
+    for i in range(6):
+        _add_commit(db_session, repo_id, f"ab{i}", ["a.py", "b.py"], now)
+    db_session.commit()
+
+    run_id = _make_run(db_session, repo_id)
+    CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
+    db_session.commit()
+
+    run = db_session.get(AnalysisRun, run_id)
+    assert run.coupling_low_confidence is False
+
+
+def test_is_low_confidence_performs_no_changeset_scan(db_session, monkeypatch):
+    """Part B/L: is_low_confidence must read the persisted flag only -- it
+    must NEVER re-scan commits.changed_path_ids via load_kept_changesets,
+    which is what made this the heaviest computation in the product running
+    three times per analysis (see CouplingEngine's docstring / CLAUDE.md)."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/coupling-no-rescan")
+    now = datetime.now(UTC)
+    for i in range(6):
+        _add_commit(db_session, repo_id, f"ab{i}", ["a.py", "b.py"], now)
+    db_session.commit()
+
+    run_id = _make_run(db_session, repo_id)
+    CouplingEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
+    db_session.commit()
+
+    calls = {"count": 0}
+    original = load_kept_changesets
+
+    def spy(*args, **kwargs):
+        calls["count"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr("app.engines.coupling.load_kept_changesets", spy)
+
+    assert is_low_confidence(run_id, db_session) is False
+    assert calls["count"] == 0
+
+
+def test_is_low_confidence_returns_false_when_coupling_stage_not_yet_run(db_session):
+    """Part B: a run whose coupling stage hasn't completed has a NULL
+    coupling_low_confidence column -- is_low_confidence() must treat that as
+    False (nothing to be low-confidence about yet), not raise or guess."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/coupling-null-flag")
+    run_id = _make_run(db_session, repo_id)
+    db_session.commit()
+
+    run = db_session.get(AnalysisRun, run_id)
+    assert run.coupling_low_confidence is None
+
+    assert is_low_confidence(run_id, db_session) is False
+
+
+def _init_local_git_fixture(root) -> str:
+    """A tiny local git repo with a handful of real commits, used to exercise
+    the full run_ingestion_job pipeline (clone -> mine -> persist -> insight
+    engines) without hitting a real remote. Deliberately independent of
+    test_ingestion.py's own fixture_repo -- test modules don't share fixtures
+    across files without a conftest.py entry, and this test doesn't need
+    anything beyond "a few real commits"."""
+    import subprocess
+
+    repo_dir = root / "coupling-spy-fixture"
+    repo_dir.mkdir()
+
+    def _git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=repo_dir, check=True, capture_output=True)
+
+    _git("init", "-b", "main")
+    _git("config", "user.email", "test@example.com")
+    _git("config", "user.name", "Test User")
+
+    for i in range(6):
+        (repo_dir / "a.py").write_text(f"value = {i}\n")
+        (repo_dir / "b.py").write_text(f"value = {i}\n")
+        _git("add", "a.py", "b.py")
+        _git("commit", "-m", f"commit {i}")
+
+    return str(repo_dir)
+
+
+def test_compute_coupling_invoked_exactly_once_per_ingestion_run(tmp_path, db_session, monkeypatch):
+    """Part L: regression guard for the whole session-01 Part A/B effort --
+    compute_coupling (the full changeset scan) must run exactly once per
+    ingestion job, not three times (CouplingEngine, OverlayEngine via
+    is_low_confidence, HealthEngine via compute_health)."""
+    import app.engines.coupling as coupling_module
+    from app.db.models import Job, JobStatus
+    from app.jobs.runner import run_ingestion_job
+
+    original = coupling_module.compute_coupling
+    calls = {"count": 0}
+
+    def spy(*args, **kwargs):
+        calls["count"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(coupling_module, "compute_coupling", spy)
+
+    repo_url = _init_local_git_fixture(tmp_path)
+    repo_id = _make_repo(db_session, repo_url)
+    job = Job(repo_id=repo_id, job_type="ingestion", status=JobStatus.queued, progress=0)
+    db_session.add(job)
+    db_session.commit()
+
+    run_ingestion_job(repo_id, job.id)
+
+    assert calls["count"] == 1

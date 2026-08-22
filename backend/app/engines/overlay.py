@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import uuid
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
@@ -8,6 +10,13 @@ from app.db.models import Coupling, Dependency, Finding, Severity
 from app.db.paths import load_path_map
 from app.engines.base import Engine
 from app.engines.coupling import CONFIDENCE_SCORE, confidence_hint, is_low_confidence
+from app.engines.signature import finding_signature
+
+if TYPE_CHECKING:
+    # See app/engines/base.py -- app.engines.context imports this module for
+    # hidden_dependencies, so a top-level import of RunContext here would be
+    # circular.
+    from app.engines.context import RunContext
 
 HIGH_DEGREE = 0.65
 MED_DEGREE = 0.45
@@ -66,7 +75,7 @@ def compute_hidden_dependencies(
         ).all()
     }
 
-    low_confidence_repo = is_low_confidence(repo_id, session)
+    low_confidence_repo = is_low_confidence(run_id, session)
     path_map = load_path_map(repo_id, session)
 
     hidden: list[HiddenDependency] = []
@@ -112,8 +121,9 @@ class OverlayEngine(Engine):
     and ArchEngine have persisted their outputs, recomputes neither.
     """
 
-    def run(self, repo_id: uuid.UUID, run_id: uuid.UUID, session: Session) -> dict[str, Any]:
-        hidden = compute_hidden_dependencies(repo_id, run_id, session)
+    def run(self, ctx: RunContext, session: Session) -> dict[str, Any]:
+        repo_id, run_id = ctx.repo_id, ctx.run_id
+        hidden = ctx.hidden_dependencies(session)
 
         findings = [
             {
@@ -130,6 +140,10 @@ class OverlayEngine(Engine):
                     f"(coupling_degree={h['coupling_degree']:.2f}) but neither imports the other."
                 ),
                 "rank": rank,
+                "signature": finding_signature(
+                    "hidden_dependency",
+                    "|".join(sorted((h["file_a_path"], h["file_b_path"]))),
+                ),
             }
             for rank, h in enumerate(hidden)
         ]

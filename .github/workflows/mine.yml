@@ -1,0 +1,85 @@
+name: Mine
+
+# This repository is PUBLIC (see DEPLOY.md) -- every line this workflow
+# prints is on the internet. Never enable shell tracing (`set -x`), never
+# echo a secret, and never let a step print anything other than the tiny,
+# non-sensitive status lines below. app/jobs/worker.py installs its own log
+# redaction before running the pipeline; this file must not undo that by
+# printing raw environment values itself.
+
+on:
+  repository_dispatch:
+    types: [compass-mine]
+
+concurrency:
+  group: mine-${{ github.event.client_payload.repo_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend
+        run: pip install ./backend
+
+      - name: Run mining job
+        run: |
+          python -m app.jobs.worker \
+            --repo-id "${{ github.event.client_payload.repo_id }}" \
+            --run-id "${{ github.event.client_payload.run_id }}"
+
+      - name: Mark run failed if the job didn't clean up after itself
+        if: failure()
+        run: |
+          python - <<'PYEOF'
+          import os
+          import uuid
+
+          from sqlalchemy import select
+
+          from app.db.base import SessionLocal
+          from app.db.models import AnalysisRun, AnalysisRunStatus
+
+          # Looked up by repo_id + status=running rather than the dispatched
+          # run_id: run_id here is the jobs.id row dispatch_run passed in,
+          # not analysis_runs.id -- that row is created by run_ingestion_job
+          # itself, possibly after this runner died, so there may be no such
+          # row yet at all (a no-op below) or exactly one running row for
+          # this repo (the one this job was working on).
+          repo_id = uuid.UUID(os.environ["REPO_ID"])
+          session = SessionLocal()
+          try:
+              run = session.scalar(
+                  select(AnalysisRun)
+                  .where(
+                      AnalysisRun.repo_id == repo_id,
+                      AnalysisRun.status == AnalysisRunStatus.running,
+                  )
+                  .order_by(AnalysisRun.started_at.desc())
+              )
+              if run is not None:
+                  run.status = AnalysisRunStatus.failed
+                  run.error = "Runner exited without completing (see reaper.yml for the general case)."
+                  session.commit()
+          finally:
+              session.close()
+          PYEOF
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REPO_ID: ${{ github.event.client_payload.repo_id }}

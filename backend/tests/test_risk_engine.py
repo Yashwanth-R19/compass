@@ -16,6 +16,7 @@ from app.db.models import (
     RepoPath,
     RepoStatus,
 )
+from app.engines.context import RunContext
 from app.engines.risk import MAX_RISK_FINDINGS, RiskEngine
 
 
@@ -145,7 +146,7 @@ def test_hotspot_ranking_matches_locked_formula(db_session):
     _add_coupling(db_session, repo_id, run_id, "a.py", "b.py", 0.9)
     db_session.commit()
 
-    metadata = RiskEngine().run(repo_id, run_id, db_session)
+    metadata = RiskEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["files_scored"] == 3
@@ -197,7 +198,7 @@ def test_top_finding_uses_most_recent_fix_commit_as_evidence(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    RiskEngine().run(repo_id, run_id, db_session)
+    RiskEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     findings = db_session.scalars(
@@ -226,7 +227,7 @@ def test_findings_capped_at_max_risk_findings(db_session):
     db_session.commit()
 
     run_id = _make_run(db_session, repo_id)
-    metadata = RiskEngine().run(repo_id, run_id, db_session)
+    metadata = RiskEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
 
     assert metadata["files_scored"] == MAX_RISK_FINDINGS + 5
@@ -246,6 +247,6 @@ def test_findings_capped_at_max_risk_findings(db_session):
 def test_no_files_is_a_harmless_noop(db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/risk-empty")
     run_id = _make_run(db_session, repo_id)
-    metadata = RiskEngine().run(repo_id, run_id, db_session)
+    metadata = RiskEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
     assert metadata == {"files_scored": 0, "findings_emitted": 0}

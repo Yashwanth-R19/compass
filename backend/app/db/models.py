@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -132,6 +133,24 @@ class AnalysisRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     engine_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Session 01: persisted by CouplingEngine from compute_coupling()'s
+    # return value -- true when the normal MIN_SHARED_REVS floor produced
+    # zero pairs and the engine fell back to FALLBACK_MIN_SHARED_REVS (see
+    # app/engines/coupling.py::is_low_confidence). NULL means the coupling
+    # stage for this run hasn't completed yet, not "not low confidence" --
+    # is_low_confidence() treats NULL as False since there is nothing to be
+    # low-confidence about inside the 202 window. Deliberately NOT
+    # re-derivable from a commit count; see FALLBACK_MIN_SHARED_REVS's
+    # docstring for why.
+    coupling_low_confidence: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Session 01: which transport actually ran this job -- "inline"
+    # (FastAPI BackgroundTasks), "actions" (dispatched to the GitHub Actions
+    # worker), or "inline_fallback" (actions dispatch was attempted but
+    # failed, e.g. a GitHub outage, and the job fell back to inline so a
+    # GitHub Actions outage never means Compass itself is down). Set by
+    # app/jobs/dispatch.py::dispatch_run. NULL for any run created before
+    # this column existed.
+    worker_mode: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class AnalysisStage(Base):
@@ -351,6 +370,7 @@ class Finding(Base):
     mixed across unrelated runs."""
 
     __tablename__ = "findings"
+    __table_args__ = (Index("ix_findings_run_id_signature", "analysis_run_id", "signature"),)
 
     id: Mapped[int] = bigint_pk()
     analysis_run_id: Mapped[uuid.UUID] = mapped_column(
@@ -374,6 +394,13 @@ class Finding(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Session 01: stable cross-run identity via app/engines/signature.py::
+    # finding_signature -- what session 13's run-to-run diff (appeared /
+    # resolved / persisted) matches on instead of fuzzy title comparison.
+    # Nullable because findings from before this column existed have none;
+    # every finding-emitting engine going forward MUST set it (see
+    # CLAUDE.md's finding-signature convention).
+    signature: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Job(Base):
