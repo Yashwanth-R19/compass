@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from app.db.base import SessionLocal
 from app.db.models import AnalysisRun, AnalysisRunStatus, File, Job, JobStatus, Repo, RepoStatus
 from app.engines.context import RunContext
+from app.ingestion.clone_url import resolve_clone_url
 from app.ingestion.cloner import clone_repo, get_remote_head_sha
 from app.ingestion.miner import mine_repo
 from app.ingestion.persist import persist_facts
@@ -22,7 +23,12 @@ from app.jobs.stages import (
 from app.languages.scanner import extract_structural_edges
 
 
-def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID, worker_mode: str = "inline") -> None:
+def run_ingestion_job(
+    repo_id: uuid.UUID,
+    job_id: uuid.UUID,
+    worker_mode: str = "inline",
+    triggered_by_user_id: uuid.UUID | None = None,
+) -> None:
     """Create a new ``analysis_runs`` row and drive it through the FACT
     stages (clone -> mine -> structure -> persist_facts, skipped entirely if
     the remote head_sha is unchanged) and then the INSIGHT stages (coupling
@@ -49,6 +55,11 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID, worker_mode: str = 
     ``jobs``/``repos`` rows are marked failed here, and CRUCIALLY
     ``repos.current_run_id``/``head_sha`` are left untouched -- a failed
     re-analysis must never blank out a repo that already had a good run.
+
+    ``triggered_by_user_id`` is best-effort audit only (session 02,
+    ``analysis_runs.triggered_by_user_id``) -- see that column's docstring
+    in app/db/models.py for why it's populated for inline/inline_fallback
+    runs but always NULL for "actions"-mode runs.
     """
     session = SessionLocal()
     clone_path: str | None = None
@@ -57,9 +68,9 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID, worker_mode: str = 
         _update_job(session, job_id, status=JobStatus.running, progress=0)
         session.commit()
 
-        repo_url = session.scalar(select(Repo.url).where(Repo.id == repo_id))
-        previous_head_sha = session.scalar(select(Repo.head_sha).where(Repo.id == repo_id))
-        previous_run_id = session.scalar(select(Repo.current_run_id).where(Repo.id == repo_id))
+        repo_row = session.get(Repo, repo_id)
+        previous_head_sha = repo_row.head_sha
+        previous_run_id = repo_row.current_run_id
 
         # head_sha is filled in once resolved below; the run/stage rows are
         # created and committed FIRST, before the (network-dependent)
@@ -71,6 +82,7 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID, worker_mode: str = 
             status=AnalysisRunStatus.running,
             head_sha="",
             worker_mode=worker_mode,
+            triggered_by_user_id=triggered_by_user_id,
         )
         session.add(run)
         session.flush()
@@ -80,7 +92,14 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID, worker_mode: str = 
         _update_job(session, job_id, progress=5)
         session.commit()
 
-        remote_head_sha = get_remote_head_sha(repo_url)
+        # Resolves to the plain repo.url for a public repo, or an
+        # x-access-token-embedded URL for a private one (session 02, Part
+        # D) -- resolved once and reused for both the ls-remote check below
+        # and the clone stage, so a private repo's owner token is only
+        # decrypted once per job.
+        clone_url = resolve_clone_url(repo_row, session)
+
+        remote_head_sha = get_remote_head_sha(clone_url)
         run.head_sha = remote_head_sha
 
         facts_exist = bool(
@@ -107,7 +126,7 @@ def run_ingestion_job(repo_id: uuid.UUID, job_id: uuid.UUID, worker_mode: str = 
             session.commit()
 
             with stage(run_id, "clone", session) as summary:
-                clone_path = clone_repo(repo_url)
+                clone_path = clone_repo(clone_url)
                 summary["cloned"] = True
             _update_job(session, job_id, progress=15)
             session.commit()

@@ -1,15 +1,20 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiGetOrPending, apiPost } from "./client";
+import { ApiError, apiDelete, apiGet, apiGetOrPending, apiPost, onUnauthorized } from "./client";
 import type {
   ArchitectureResponse,
   CouplingResponse,
   FindingsResponse,
   HealthResponse,
   HiddenDependencyResponse,
+  MyGithubReposResponse,
+  MyReposResponse,
   RepoCreateResponse,
   RepoOut,
   RepoStatusResponse,
   RiskResponse,
+  ShareLinkOut,
+  UserOut,
 } from "./types";
 
 const POLL_INTERVAL_MS = 1500;
@@ -107,5 +112,76 @@ export function useFindings(repoId: string | undefined, category?: string) {
       return apiGetOrPending<FindingsResponse>(`/repos/${repoId}/findings${qs}`);
     },
     enabled: Boolean(repoId),
+  });
+}
+
+// --- Session 02: auth, history, sharing ------------------------------------
+
+/** The current session's user, or `null` when logged out -- never throws for
+ * a plain 401 (that just means "not logged in"), and clears itself the
+ * instant any OTHER request reports 401 (client.ts's onUnauthorized
+ * pub-sub), so a session that expires mid-visit doesn't leave a stale
+ * avatar showing (Part G). */
+export function useMe() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    return onUnauthorized(() => {
+      queryClient.setQueryData(["me"], null);
+    });
+  }, [queryClient]);
+
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: async (): Promise<UserOut | null> => {
+      try {
+        return await apiGet<UserOut>("/auth/me");
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    retry: false,
+  });
+}
+
+export function useLogout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<{ status: string }>("/auth/logout", {}),
+    onSuccess: () => {
+      queryClient.setQueryData(["me"], null);
+      void queryClient.invalidateQueries();
+    },
+  });
+}
+
+export function useMyRepos(page = 1, perPage = 20) {
+  return useQuery({
+    queryKey: ["my-repos", page, perPage],
+    queryFn: () => apiGet<MyReposResponse>(`/me/repos?page=${page}&per_page=${perPage}`),
+  });
+}
+
+export function useMyGithubRepos(enabled: boolean) {
+  return useQuery({
+    queryKey: ["my-github-repos"],
+    queryFn: () => apiGet<MyGithubReposResponse>("/me/github/repos"),
+    enabled,
+    retry: false,
+  });
+}
+
+export function useCreateShareLink() {
+  return useMutation({
+    mutationFn: (runId: string) => apiPost<ShareLinkOut>(`/runs/${runId}/share`, {}),
+  });
+}
+
+export function useRevokeShareLink() {
+  return useMutation({
+    mutationFn: (runId: string) => apiDelete<{ status: string }>(`/runs/${runId}/share`),
   });
 }

@@ -29,6 +29,7 @@ class RepoOut(BaseModel):
     analyzed_at: datetime | None
     created_at: datetime
     file_count: int
+    is_private: bool
 
 
 class JobOut(BaseModel):

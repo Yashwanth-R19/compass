@@ -28,7 +28,7 @@ def test_inline_mode_schedules_background_task(monkeypatch):
     task = background_tasks.tasks[0]
     assert task.func is dispatch_module.run_ingestion_job
     assert task.args == (repo_id, run_id)
-    assert task.kwargs == {"worker_mode": "inline"}
+    assert task.kwargs == {"worker_mode": "inline", "triggered_by_user_id": None}
 
 
 def test_actions_mode_posts_dispatch_with_only_the_two_identifiers(monkeypatch):
@@ -91,4 +91,4 @@ def test_failing_dispatch_falls_back_to_inline(monkeypatch):
     assert mode == "inline_fallback"
     assert len(background_tasks.tasks) == 1
     task = background_tasks.tasks[0]
-    assert task.kwargs == {"worker_mode": "inline_fallback"}
+    assert task.kwargs == {"worker_mode": "inline_fallback", "triggered_by_user_id": None}

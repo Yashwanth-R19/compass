@@ -47,3 +47,29 @@ services:
         value: "300"
       - key: COMPASS_VERSION
         sync: false # bump per release so /health reports the running build
+      # --- Session 02: GitHub OAuth, private repos, sharing -- see DEPLOY.md
+      # steps 4/5/7 for how to generate/find each value below.
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_OAUTH_REDIRECT_URI
+        sync: false # must exactly match the OAuth App's callback URL
+      - key: COMPASS_JWT_SECRET
+        sync: false
+      - key: COMPASS_TOKEN_ENCRYPTION_KEY
+        sync: false # rotating this makes every stored GitHub token undecryptable -- see DEPLOY.md step 5
+      - key: COMPASS_FRONTEND_URL
+        sync: false # same value as FRONTEND_ORIGIN above
+      - key: COMPASS_ENV
+        value: production # required -- see app/auth/crypto.py's startup assertion
+      - key: COMPASS_RATE_LIMIT_ANON_PER_HOUR
+        value: "3"
+      - key: COMPASS_RATE_LIMIT_ANON_PER_DAY
+        value: "10"
+      - key: COMPASS_RATE_LIMIT_USER_PER_HOUR
+        value: "20"
+      - key: COMPASS_RATE_LIMIT_USER_PER_DAY
+        value: "100"
+      - key: COMPASS_MAX_CONCURRENT_RUNS
+        value: "3"

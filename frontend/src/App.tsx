@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { HomePage } from "./pages/HomePage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { SharedRedirectPage } from "./pages/SharedRedirectPage";
 import { RepoLayout } from "./pages/RepoLayout";
 import { OverviewPage } from "./pages/OverviewPage";
 import { CouplingPage } from "./pages/CouplingPage";
@@ -24,6 +26,8 @@ function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<HomePage />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="shared/:slug" element={<SharedRedirectPage />} />
             <Route path="repos/:repoId" element={<RepoLayout />}>
               <Route index element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<OverviewPage />} />

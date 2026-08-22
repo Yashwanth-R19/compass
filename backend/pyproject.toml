@@ -15,6 +15,8 @@ dependencies = [
     "networkx>=3.2,<3.5",
     "tree-sitter>=0.21,<0.24",
     "tree-sitter-python>=0.21,<0.24",
+    "cryptography>=43,<44",
+    "pyjwt>=2.9,<2.10",
 ]
 
 [project.optional-dependencies]

@@ -8,16 +8,25 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
     re.compile(r"postgres(ql)?://[^\s]+"),
+    # Session 02, Part D: the private-repo clone URL
+    # (app/ingestion/clone_url.py::resolve_clone_url) embeds a live GitHub
+    # token as the URL's userinfo -- `https://x-access-token:<token>@...`.
+    # The token itself already matches the gh[pousr]_ pattern above in
+    # practice, but this pattern catches the whole credential regardless of
+    # the token's shape, since a failed git clone's own error text
+    # (git.exc.GitCommandError, app/ingestion/cloner.py) echoes this exact
+    # URL back verbatim.
+    re.compile(r"x-access-token:[^@\s]+@"),
 ]
 """Patterns scrubbed from every log line regardless of source -- GitHub
-tokens (classic and fine-grained) and any Postgres connection string. This
-list is deliberately conservative in the other direction from usual: it is
-fine, even expected, for `postgres://...` to eat a whole legitimate-looking
-URL in a log line -- the alternative (a partial match that leaves a
-password fragment visible) is the failure that matters here (session 01,
-CLAUDE.md's public-logs constraint). See test_log_redaction.py for the
-"a normal line survives byte-identical" regression guard that catches an
-over-eager pattern in the other direction.
+tokens (classic and fine-grained), any Postgres connection string, and the
+x-access-token clone-URL credential. This list is deliberately conservative
+in the other direction from usual: it is fine, even expected, for
+`postgres://...` to eat a whole legitimate-looking URL in a log line -- the
+alternative (a partial match that leaves a password fragment visible) is the
+failure that matters here (session 01, CLAUDE.md's public-logs constraint).
+See test_log_redaction.py for the "a normal line survives byte-identical"
+regression guard that catches an over-eager pattern in the other direction.
 """
 
 

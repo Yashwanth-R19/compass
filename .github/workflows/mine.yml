@@ -25,6 +25,13 @@ jobs:
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Session 02: needed to decrypt a private repo owner's stored GitHub
+      # token in app/ingestion/clone_url.py::resolve_clone_url -- the worker
+      # resolves the clone URL itself, the same way the inline path does,
+      # with no callback endpoint (CLAUDE.md's "Authentication..." section).
+      # Never echoed by any step in this workflow; app/jobs/worker.py's log
+      # redaction also scrubs it defensively if it ever appeared in output.
+      COMPASS_TOKEN_ENCRYPTION_KEY: ${{ secrets.COMPASS_TOKEN_ENCRYPTION_KEY }}
 
     steps:
       - uses: actions/checkout@v4

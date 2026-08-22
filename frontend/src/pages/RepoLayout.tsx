@@ -1,5 +1,13 @@
+import { useState } from "react";
 import { NavLink, Outlet, useParams } from "react-router-dom";
-import { useRepo, useRepoStatus } from "../api/hooks";
+import {
+  useCreateShareLink,
+  useMe,
+  useRepo,
+  useRepoStatus,
+  useRevokeShareLink,
+} from "../api/hooks";
+import { ApiError } from "../api/client";
 import { LoadingState } from "../components/LoadingState";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
@@ -62,6 +70,7 @@ export function RepoLayout() {
   const { repoId } = useParams<{ repoId: string }>();
   const { data: repo, isPending, isError, error, refetch } = useRepo(repoId);
   const status = useRepoStatus(repoId);
+  const me = useMe();
 
   if (isPending) return <LoadingState label="Loading repo…" />;
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
@@ -101,17 +110,22 @@ export function RepoLayout() {
               {repo.url}
             </a>
           </div>
-          <span
-            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
-              displayStatus === "ready"
-                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
-                : displayStatus === "failed"
-                  ? "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400"
-                  : "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400"
-            }`}
-          >
-            {REPO_STATUS_LABEL[displayStatus] ?? displayStatus}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                displayStatus === "ready"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                  : displayStatus === "failed"
+                    ? "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400"
+                    : "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400"
+              }`}
+            >
+              {REPO_STATUS_LABEL[displayStatus] ?? displayStatus}
+            </span>
+            {me.data && status.data?.current_run_id ? (
+              <ShareButton runId={status.data.current_run_id} />
+            ) : null}
+          </div>
         </div>
 
         {status.data && status.data.stages.length > 0 ? (
@@ -180,4 +194,77 @@ function stageSummaryValue(stage: StageOut): string | null {
   const value = stage.summary[key];
   if (typeof value !== "number") return null;
   return Math.round(value).toLocaleString();
+}
+
+/** Creates/copies/revokes a share link for the repo's current run. Only a
+ * run's link is ever created (never one for the repo as a whole -- see
+ * CLAUDE.md's "a share link grants access to one run" note), and only the
+ * repository's own owner can actually create or revoke one -- a 403 from
+ * either action just surfaces inline rather than needing its own state
+ * machine, since that's already a rare, self-explanatory case for someone
+ * who isn't the owner but happens to see this button while it's still
+ * mid-render for their own dashboard. */
+function ShareButton({ runId }: { runId: string }) {
+  const createShare = useCreateShareLink();
+  const revokeShare = useRevokeShareLink();
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function handleShare() {
+    const result = await createShare.mutateAsync(runId);
+    const shareUrl = `${window.location.origin}/shared/${result.slug}`;
+    setLink(shareUrl);
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access denied/unavailable -- the link is still shown
+      // inline below for the user to copy by hand.
+    }
+  }
+
+  function handleRevoke() {
+    revokeShare.mutate(runId, { onSuccess: () => setLink(null) });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void handleShare()}
+        disabled={createShare.isPending}
+        className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+      >
+        {createShare.isPending ? "Creating link…" : "Share"}
+      </button>
+      {link ? (
+        <>
+          <input
+            readOnly
+            value={link}
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-56 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+          />
+          {copied ? (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400">Copied</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleRevoke}
+            className="text-xs text-red-600 hover:underline dark:text-red-400"
+          >
+            Revoke
+          </button>
+        </>
+      ) : null}
+      {createShare.isError ? (
+        <span className="text-xs text-red-600 dark:text-red-400">
+          {createShare.error instanceof ApiError
+            ? createShare.error.message
+            : "Couldn't create link."}
+        </span>
+      ) : null}
+    </div>
+  );
 }

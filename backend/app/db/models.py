@@ -11,6 +11,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -73,6 +74,39 @@ class StageStatus(str, enum.Enum):
     skipped = "skipped"
 
 
+class User(Base):
+    """A Compass account, created/updated on every successful GitHub OAuth
+    callback (session 02, Part A/C) -- upserted by ``github_id``, GitHub's
+    own stable numeric user id (never the mutable ``github_login``).
+
+    ``access_token_encrypted`` is the user's GitHub access token, Fernet-
+    encrypted at rest (app/auth/crypto.py) -- NEVER stored, logged, or
+    returned plaintext anywhere (plan/RULES.md sec 10). ``token_scopes`` is
+    the space-separated scope string GitHub actually granted (not what was
+    requested -- a user can approve a narrower set than requested in some
+    GitHub Apps flows, though not for this OAuth App flow in practice; still
+    recorded as ground truth rather than assumed). Both are nullable because
+    a user who has only ever done the profile-only login (``scope=basic``,
+    two-step escalation, CLAUDE.md) has authenticated but never granted repo
+    access, and ``DELETE /auth/github/connection`` clears both back to NULL
+    without deleting the user row itself (they may log back in).
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    github_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
+    github_login: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    token_scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Repo(Base):
     __tablename__ = "repos"
 
@@ -99,6 +133,21 @@ class Repo(Base):
     head_sha: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    # Session 02, Part A/D: the user who first successfully submitted this
+    # repo (set once, at creation, never reassigned on re-analysis -- see
+    # CLAUDE.md's access-control section for why ownership doesn't drift to
+    # whoever happens to re-trigger analysis later). ON DELETE SET NULL: a
+    # deleted user account must not cascade into deleting repos/analysis
+    # data other people may still be able to read (a public repo) or that
+    # should simply become unowned (a private repo nobody can reach anymore
+    # anyway, since access requires the owner's live token).
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    visibility_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 
@@ -151,6 +200,19 @@ class AnalysisRun(Base):
     # app/jobs/dispatch.py::dispatch_run. NULL for any run created before
     # this column existed.
     worker_mode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Session 02: best-effort audit of who triggered this specific run.
+    # Populated from the authenticated request for inline/inline_fallback
+    # runs (the same process has the real user context); left NULL for
+    # "actions"-mode runs, since the GitHub Actions dispatch payload
+    # deliberately carries only repo_id/run_id and no user id (CLAUDE.md's
+    # worker-dispatch section) -- adding one would widen that payload
+    # contract just for this optional audit field. Nullable for that reason
+    # and because runs created before this column existed have none. ON
+    # DELETE SET NULL: a deleted user's past runs stay valid analysis
+    # history, just no longer attributable.
+    triggered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class AnalysisStage(Base):
@@ -468,3 +530,45 @@ class Baseline(Base):
     p50: Mapped[float] = mapped_column(Float, nullable=False)
     p75: Mapped[float] = mapped_column(Float, nullable=False)
     p90: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class ShareLink(Base):
+    """A share link grants read access to ONE analysis run, not to the
+    repository (session 02, Part E/CLAUDE.md) -- ``run_id`` is a FK straight
+    to ``analysis_runs.id``, never to ``repos.id``. A later run of the same
+    private repository is not exposed by an older share link: a fresh
+    re-analysis creates a brand-new ``analysis_runs`` row (Facts/Insight
+    split, unchanged by this session), and this table has no row pointing at
+    it unless someone explicitly shares that new run too.
+
+    ``ON DELETE CASCADE`` to ``analysis_runs``: pruning a run (Phase 21 LRU
+    eviction, not wired up yet) must also invalidate any share link that
+    pointed at it -- a dangling share link to a deleted run would be a
+    confusing 404 at best.
+
+    ``slug`` is a short random urlsafe string (``secrets.token_urlsafe``),
+    unique and indexed -- the only thing ``GET /shared/{slug}`` looks up by.
+    ``revoked_at`` is nullable/set-once: a share link is revoked by setting
+    it, never by deleting the row (keeping the row lets an old link resolve
+    to a clear "revoked" 404 rather than an ambiguous "never existed" one,
+    though the API response is the same either way per the session prompt --
+    the row is kept for audit purposes).
+    """
+
+    __tablename__ = "share_links"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    slug: Mapped[str] = mapped_column(Text, unique=True, nullable=False, index=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

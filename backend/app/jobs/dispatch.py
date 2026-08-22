@@ -66,6 +66,7 @@ def dispatch_run(
     run_id: uuid.UUID,
     session: Session,
     background_tasks: BackgroundTasks,
+    triggered_by_user_id: uuid.UUID | None = None,
 ) -> str:
     """Runs the ingestion job via whichever transport ``COMPASS_WORKER_MODE``
     selects, and returns the mode actually used ("inline", "actions", or
@@ -88,6 +89,15 @@ def dispatch_run(
     must never mean Compass itself is down -- and records
     ``worker_mode="inline_fallback"`` on the run so it's visible after the
     fact which path actually ran.
+
+    ``triggered_by_user_id`` (session 02) is passed straight through to
+    ``run_ingestion_job`` for the inline/inline_fallback paths, which run in
+    this same process and so have the real authenticated-request context
+    available. It is deliberately NOT added to the ``repository_dispatch``
+    ``client_payload`` -- that payload's contract is "only the two
+    identifiers" (CLAUDE.md's worker-dispatch section), and widening it to
+    carry a user id too isn't worth breaking that invariant for a nullable
+    audit column; "actions"-mode runs simply leave it NULL.
     """
     mode = settings.COMPASS_WORKER_MODE
 
@@ -104,8 +114,20 @@ def dispatch_run(
         else:
             return "actions"
 
-        background_tasks.add_task(run_ingestion_job, repo_id, run_id, worker_mode="inline_fallback")
+        background_tasks.add_task(
+            run_ingestion_job,
+            repo_id,
+            run_id,
+            worker_mode="inline_fallback",
+            triggered_by_user_id=triggered_by_user_id,
+        )
         return "inline_fallback"
 
-    background_tasks.add_task(run_ingestion_job, repo_id, run_id, worker_mode="inline")
+    background_tasks.add_task(
+        run_ingestion_job,
+        repo_id,
+        run_id,
+        worker_mode="inline",
+        triggered_by_user_id=triggered_by_user_id,
+    )
     return "inline"

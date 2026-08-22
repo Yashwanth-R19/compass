@@ -37,6 +37,7 @@ export interface RepoOut {
   analyzed_at: string | null;
   created_at: string;
   file_count: number;
+  is_private: boolean;
 }
 
 export interface JobOut {
@@ -180,4 +181,56 @@ export interface AnalysisRunOut {
 export interface AnalysisRunsResponse {
   repo_id: string;
   runs: AnalysisRunOut[];
+}
+
+// Session 02: auth, history, and sharing (mirrors backend/app/schemas/{auth,me,share}.py).
+
+export interface UserOut {
+  id: string;
+  github_login: string;
+  name: string | null;
+  avatar_url: string | null;
+  has_repo_scope: boolean;
+}
+
+export interface MyRepoOut {
+  id: string;
+  url: string;
+  owner: string;
+  name: string;
+  is_private: boolean;
+  status: RepoStatus;
+  latest_run_status: AnalysisRunStatus | null;
+  analyzed_at: string | null;
+  health_score: number | null;
+}
+
+export interface MyReposResponse {
+  repos: MyRepoOut[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface GithubRepoOut {
+  full_name: string;
+  private: boolean;
+  size: number;
+  language: string | null;
+  pushed_at: string | null;
+}
+
+export interface MyGithubReposResponse {
+  repos: GithubRepoOut[];
+  truncated: boolean;
+}
+
+export interface ShareLinkOut {
+  slug: string;
+  created_at: string;
+}
+
+export interface SharedRunOut {
+  repo_id: string;
+  run_id: string;
 }
