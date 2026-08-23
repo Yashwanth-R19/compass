@@ -102,3 +102,56 @@ class FindingOut(BaseModel):
 class FindingsResponse(BaseModel):
     repo_id: uuid.UUID
     findings: list[FindingOut]
+
+
+class SubsystemMemberOut(BaseModel):
+    file_path: str
+    centrality: float
+
+
+class SubsystemOut(BaseModel):
+    label: str
+    label_source: str
+    file_count: int
+    total_loc: int
+    internal_edges: int
+    external_edges: int
+    cohesion: float
+    rank: int
+    members: list[SubsystemMemberOut] | None
+
+
+class SubsystemsResponse(BaseModel):
+    repo_id: uuid.UUID
+    modularity: float
+    subsystems: list[SubsystemOut]
+
+
+class EntryPointOut(BaseModel):
+    file_path: str
+    kind: str
+    evidence: str
+    confidence: float
+    rank: int
+
+
+class EntryPointsResponse(BaseModel):
+    repo_id: uuid.UUID
+    entry_points: list[EntryPointOut]
+
+
+class ModuleCouplingPairOut(BaseModel):
+    module_a: str
+    module_b: str
+    granularity: str
+    shared_revs: int
+    coupling_degree: float
+    avg_revs: float
+    confidence: str
+
+
+class ModuleCouplingResponse(BaseModel):
+    repo_id: uuid.UUID
+    granularity: str
+    low_confidence: bool
+    pairs: list[ModuleCouplingPairOut]

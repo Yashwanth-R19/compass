@@ -531,6 +531,147 @@ class Finding(Base):
     signature: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Subsystem(Base):
+    """Insight (session 04): one Louvain-detected community from
+    ``app/engines/subsystems.py::SubsystemEngine``, one row per
+    ``analysis_run_id`` per community (post merge-small/cap-at-12
+    post-processing -- see that module). ``label_source`` is one of
+    "path_prefix"/"identifiers"/"fallback" so the UI can be honest about how
+    confident the generated name is, never presenting a guessed label as a
+    verified one. ``cohesion`` is ``internal_edges / (internal_edges +
+    external_edges)``, 0.0 for a subsystem with no edges at all (an isolated
+    singleton). ``rank`` orders by ``file_count`` desc, stable (ties broken
+    by the same sorted-community-list order Louvain post-processing already
+    established -- see SubsystemEngine's determinism discipline).
+    """
+
+    __tablename__ = "subsystems"
+    __table_args__ = (
+        Index("ix_subsystems_analysis_run_id", "analysis_run_id"),
+        Index("ix_subsystems_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    label_source: Mapped[str] = mapped_column(Text, nullable=False)
+    file_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_loc: Mapped[int] = mapped_column(Integer, nullable=False)
+    internal_edges: Mapped[int] = mapped_column(Integer, nullable=False)
+    external_edges: Mapped[int] = mapped_column(Integer, nullable=False)
+    cohesion: Mapped[float] = mapped_column(Float, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SubsystemMember(Base):
+    """Insight (session 04): one (subsystem, file) membership row.
+    ``centrality`` is that file's PageRank score across the WHOLE repo graph
+    (computed once by ``SubsystemEngine``, session 06/07 read it from here
+    rather than ever recomputing PageRank themselves -- see that engine's
+    docstring). ``path_id`` references the permanent ``repo_paths.id``, not a
+    Facts-layer ``files.id`` (same reasoning as every other per-file Insight
+    column, see ``FileMetrics``'s docstring)."""
+
+    __tablename__ = "subsystem_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "subsystem_id", "path_id", name="uq_subsystem_members_subsystem_id_path_id"
+        ),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    subsystem_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("subsystems.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    path_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
+    )
+    centrality: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class EntryPoint(Base):
+    """Insight (session 04): one detected entry point
+    (``app/engines/entrypoints.py::EntryPointEngine``). ``kind`` is one of
+    "cli"/"web_server"/"ui_root"/"test_root"/"build"/"graph_inferred".
+    ``evidence`` is a short, literal statement of the rule that fired (e.g.
+    "package.json scripts.dev references this file") -- NEVER a generated
+    sentence describing the file itself; see that engine's docstring for the
+    full detection-rule table."""
+
+    __tablename__ = "entry_points"
+    __table_args__ = (
+        Index("ix_entry_points_analysis_run_id", "analysis_run_id"),
+        Index("ix_entry_points_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False
+    )
+    path_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ModuleCoupling(Base):
+    """Insight (session 04): the LOCKED coupling formula
+    (``coupling_degree = shared_revs / min(revs(A), revs(B))``, identical to
+    file-level ``Coupling``) computed at coarser granularity -- see
+    ``app/engines/module_coupling.py`` for why this MUST be computed directly
+    from commit changesets at module grain, never aggregated from file-pair
+    rows. ``granularity`` is "directory" or "subsystem"; ``module_a``/
+    ``module_b`` are always labels (directories aren't interned in
+    ``repo_paths``, and a uniform label column lets both granularities share
+    one table shape). ``subsystem_a_id``/``subsystem_b_id`` are populated
+    only when ``granularity='subsystem'`` -- nullable FKs, not enforced
+    against a CHECK constraint, since the engine itself is the only writer
+    and always sets both-or-neither per row.
+    """
+
+    __tablename__ = "module_coupling"
+    __table_args__ = (
+        Index(
+            "ix_module_coupling_run_id_granularity_degree",
+            "analysis_run_id",
+            "granularity",
+            "coupling_degree",
+        ),
+        Index("ix_module_coupling_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False
+    )
+    granularity: Mapped[str] = mapped_column(Text, nullable=False)
+    module_a: Mapped[str] = mapped_column(Text, nullable=False)
+    module_b: Mapped[str] = mapped_column(Text, nullable=False)
+    subsystem_a_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("subsystems.id", ondelete="CASCADE"), nullable=True
+    )
+    subsystem_b_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("subsystems.id", ondelete="CASCADE"), nullable=True
+    )
+    shared_revs: Mapped[int] = mapped_column(Integer, nullable=False)
+    coupling_degree: Mapped[float] = mapped_column(Float, nullable=False)
+    avg_revs: Mapped[float] = mapped_column(Float, nullable=False)
+
+
 class Job(Base):
     __tablename__ = "jobs"
 

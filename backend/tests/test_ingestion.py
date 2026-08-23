@@ -324,13 +324,15 @@ def test_failed_insight_stage_leaves_current_run_id_on_previous_good_run(
     assert failed_run.error and "synthetic risk engine failure" in failed_run.error
 
     # The FACT stages were skipped (head_sha unchanged); risk failed; health
-    # and rank, which run after risk, never even started.
+    # and rank, which run after risk, never even started. Session 04: the
+    # standalone "overlay" stage no longer exists -- OverlayEngine now runs
+    # inside "architecture" (see app/jobs/stages.py), and "subsystems" is new.
     statuses = _stage_statuses(db_session, failed_run.id)
     for s in FACT_STAGES:
         assert statuses[s.name] == StageStatus.skipped
     assert statuses["coupling"] == StageStatus.done
+    assert statuses["subsystems"] == StageStatus.done
     assert statuses["architecture"] == StageStatus.done
-    assert statuses["overlay"] == StageStatus.done
     assert statuses["risk"] == StageStatus.failed
     assert statuses["health"] == StageStatus.pending
     assert statuses["rank"] == StageStatus.pending

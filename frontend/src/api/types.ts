@@ -14,8 +14,8 @@ export type StageName =
   | "structure"
   | "persist_facts"
   | "coupling"
+  | "subsystems"
   | "architecture"
-  | "overlay"
   | "risk"
   | "health"
   | "rank";
@@ -233,4 +233,67 @@ export interface ShareLinkOut {
 export interface SharedRunOut {
   repo_id: string;
   run_id: string;
+}
+
+// Session 04: subsystem discovery, entry points, module-level coupling
+// (mirrors backend/app/schemas/analysis.py's new response models).
+
+export type LabelSource = "path_prefix" | "identifiers" | "fallback";
+
+export interface SubsystemMemberOut {
+  file_path: string;
+  centrality: number;
+}
+
+export interface SubsystemOut {
+  label: string;
+  label_source: LabelSource;
+  file_count: number;
+  total_loc: number;
+  internal_edges: number;
+  external_edges: number;
+  cohesion: number;
+  rank: number;
+  members: SubsystemMemberOut[] | null;
+}
+
+export interface SubsystemsResponse {
+  repo_id: string;
+  modularity: number;
+  subsystems: SubsystemOut[];
+}
+
+export type EntryPointKind =
+  "cli" | "web_server" | "ui_root" | "test_root" | "build" | "graph_inferred";
+
+export interface EntryPointOut {
+  file_path: string;
+  kind: EntryPointKind;
+  evidence: string;
+  confidence: number;
+  rank: number;
+}
+
+export interface EntryPointsResponse {
+  repo_id: string;
+  entry_points: EntryPointOut[];
+}
+
+export type ModuleCouplingGranularity = "directory" | "subsystem";
+
+export interface ModuleCouplingPairOut {
+  module_a: string;
+  module_b: string;
+  granularity: ModuleCouplingGranularity;
+  shared_revs: number;
+  coupling_degree: number;
+  avg_revs: number;
+  confidence: "low" | "medium" | "high";
+}
+
+export interface ModuleCouplingResponse {
+  repo_id: string;
+  granularity: ModuleCouplingGranularity;
+  low_confidence: boolean;
+  pairs: ModuleCouplingPairOut[];
 }

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -8,11 +8,15 @@ from app.db.models import (
     Commit,
     Coupling,
     Dependency,
+    EntryPoint,
     File,
     FileMetrics,
     Finding,
     Health,
+    ModuleCoupling,
     RepoManifest,
+    Subsystem,
+    SubsystemMember,
     Symbol,
 )
 
@@ -55,12 +59,26 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
     ON DELETE SET NULL); callers doing real eviction should of course never
     prune the current run.
 
-    Insight tables only ever reference Facts tables (repo_paths), never each
-    other, so the deletion order among them doesn't matter. Caller owns the
+    Insight tables only ever reference Facts tables (repo_paths) or each
+    other in one direction (subsystem_members/module_coupling -> subsystems),
+    so explicit deletes here run those two before ``Subsystem`` itself --
+    belt-and-suspenders alongside Postgres's own ON DELETE CASCADE, matching
+    every other table in this function being deleted explicitly even though
+    their FK to analysis_runs would also cascade. Caller owns the
     transaction, same as wipe_facts.
     """
     session.execute(delete(Coupling).where(Coupling.analysis_run_id == run_id))
     session.execute(delete(FileMetrics).where(FileMetrics.analysis_run_id == run_id))
     session.execute(delete(Finding).where(Finding.analysis_run_id == run_id))
     session.execute(delete(Health).where(Health.analysis_run_id == run_id))
+    session.execute(delete(ModuleCoupling).where(ModuleCoupling.analysis_run_id == run_id))
+    session.execute(delete(EntryPoint).where(EntryPoint.analysis_run_id == run_id))
+    session.execute(
+        delete(SubsystemMember).where(
+            SubsystemMember.subsystem_id.in_(
+                select(Subsystem.id).where(Subsystem.analysis_run_id == run_id)
+            )
+        )
+    )
+    session.execute(delete(Subsystem).where(Subsystem.analysis_run_id == run_id))
     session.execute(delete(AnalysisRun).where(AnalysisRun.id == run_id))

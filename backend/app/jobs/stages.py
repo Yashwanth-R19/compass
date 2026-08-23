@@ -12,10 +12,13 @@ from app.db.models import AnalysisRun, AnalysisRunStatus, AnalysisStage, StageSt
 from app.engines.architecture import ArchEngine
 from app.engines.context import RunContext
 from app.engines.coupling import CouplingEngine
+from app.engines.entrypoints import EntryPointEngine
 from app.engines.findings import FindingsRankEngine
 from app.engines.health import HealthEngine
+from app.engines.module_coupling import ModuleCouplingEngine
 from app.engines.overlay import OverlayEngine
 from app.engines.risk import RiskEngine
+from app.engines.subsystems import SubsystemEngine
 
 StageKind = Literal["fact", "insight"]
 
@@ -26,20 +29,30 @@ EngineCallable = Callable[[RunContext, Session], dict[str, Any]]
 class Stage:
     """One entry in the canonical, ordered stage list (Phase 02, CLAUDE.md).
 
-    ``callable`` is only populated for "insight" stages, where every engine
-    already shares the uniform ``Engine.run(ctx, session) -> dict``
+    ``callables`` is only populated for "insight" stages, where every
+    engine already shares the uniform ``Engine.run(ctx, session) -> dict``
     signature (app/engines/base.py) -- letting the runner drive them
-    generically: ``s.callable(ctx, session)``. "fact" stages
-    (clone/mine/structure/persist_facts) have no such uniform signature --
-    each one both consumes and produces different local state (a clone path,
-    a MinedRepo, a dependency list) that has to thread through the next
-    stage -- so ``run_ingestion_job`` runs their bodies inline instead of
-    through this field, and it is left ``None``.
+    generically: ``for c in s.callables: summary.update(c(ctx, session))``.
+    A stage can run SEVERAL engines in a fixed sequence (session 04: the
+    "subsystems" stage runs SubsystemEngine then ModuleCouplingEngine, the
+    "architecture" stage runs ArchEngine then EntryPointEngine then
+    OverlayEngine) -- the one-engine-per-stage assumption from earlier
+    sessions no longer holds. The tuple's own order IS the execution order
+    within that stage; when a later engine in the tuple depends on an
+    earlier one's output for this SAME run_id (e.g. ModuleCouplingEngine's
+    subsystem-granularity pass needs SubsystemEngine's partition), that
+    order is load-bearing, not incidental -- don't reorder it.
+
+    "fact" stages (clone/mine/structure/persist_facts) have no such uniform
+    signature -- each one both consumes and produces different local state
+    (a clone path, a MinedRepo, a dependency list) that has to thread
+    through to the next stage -- so ``run_ingestion_job`` runs their bodies
+    inline instead of through this field, and it is left empty.
     """
 
     name: str
     kind: StageKind
-    callable: EngineCallable | None = None
+    callables: tuple[EngineCallable, ...] = ()
 
 
 FACT_STAGES: tuple[Stage, ...] = (
@@ -50,18 +63,36 @@ FACT_STAGES: tuple[Stage, ...] = (
 )
 
 INSIGHT_STAGES: tuple[Stage, ...] = (
-    Stage("coupling", "insight", CouplingEngine().run),
-    Stage("architecture", "insight", ArchEngine().run),
-    Stage("overlay", "insight", OverlayEngine().run),
-    Stage("risk", "insight", RiskEngine().run),
-    Stage("health", "insight", HealthEngine().run),
-    Stage("rank", "insight", FindingsRankEngine().run),
+    Stage("coupling", "insight", (CouplingEngine().run,)),
+    Stage("subsystems", "insight", (SubsystemEngine().run, ModuleCouplingEngine().run)),
+    Stage(
+        "architecture", "insight", (ArchEngine().run, EntryPointEngine().run, OverlayEngine().run)
+    ),
+    Stage("risk", "insight", (RiskEngine().run,)),
+    Stage("health", "insight", (HealthEngine().run,)),
+    Stage("rank", "insight", (FindingsRankEngine().run,)),
 )
-"""Fixed order, load-bearing (CLAUDE.md "Engines" section): Overlay needs
-Coupling+Architecture, Risk needs Coupling's max coupling_degree, Health
-needs Risk's file_metrics plus Architecture's cycles and Overlay's
-hidden-dependency count, and FindingsRank needs every other engine's
-findings already written for this run_id. Do not reorder."""
+"""Fixed order, load-bearing (CLAUDE.md "Engines" section):
+
+- "subsystems" needs Coupling's persisted rows (SubsystemEngine's graph
+  weights coupling pairs alongside structural edges); within it,
+  SubsystemEngine must run before ModuleCouplingEngine, which reads the
+  subsystem partition SubsystemEngine just wrote (session 04, Known Hazard
+  #3 -- the two engines sharing one stage does not by itself guarantee
+  order, the tuple order does).
+- "architecture" needs Coupling (Overlay, which now lives in this stage,
+  joins coupling against dependencies); within it, ArchEngine builds the
+  dependency graph EntryPointEngine reuses off the shared RunContext
+  (avoiding a second graph build), and OverlayEngine runs last since it
+  also depends on ArchEngine's structural edges for the hidden-dependency
+  join.
+- "risk" needs Coupling's max coupling_degree per file.
+- "health" needs Risk's file_metrics plus Architecture's cycles and
+  Overlay's (now inside "architecture") hidden-dependency count.
+- "rank" needs every other engine's findings already written for this
+  run_id.
+
+Do not reorder."""
 
 ALL_STAGES: tuple[Stage, ...] = FACT_STAGES + INSIGHT_STAGES
 

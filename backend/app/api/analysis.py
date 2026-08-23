@@ -10,12 +10,16 @@ from app.db.base import get_db
 from app.db.models import (
     AnalysisStage,
     Coupling,
+    EntryPoint,
     File,
     FileMetrics,
     Finding,
     Health,
+    ModuleCoupling,
     Repo,
     StageStatus,
+    Subsystem,
+    SubsystemMember,
 )
 from app.db.paths import load_path_map
 from app.db.runs import resolve_run_id
@@ -26,6 +30,7 @@ from app.engines.architecture import (
 )
 from app.engines.context import RunContext
 from app.engines.coupling import confidence_hint, is_low_confidence
+from app.engines.module_coupling import is_module_coupling_low_confidence
 from app.engines.risk import max_coupling_by_path
 from app.schemas.analysis import (
     ArchitectureResponse,
@@ -33,14 +38,21 @@ from app.schemas.analysis import (
     CouplingResponse,
     CycleOut,
     DependencyEdgeOut,
+    EntryPointOut,
+    EntryPointsResponse,
     FindingOut,
     FindingsResponse,
     HealthResponse,
     HiddenDependencyOut,
     HiddenDependencyResponse,
     LayeringViolationOut,
+    ModuleCouplingPairOut,
+    ModuleCouplingResponse,
     RiskFileOut,
     RiskResponse,
+    SubsystemMemberOut,
+    SubsystemOut,
+    SubsystemsResponse,
 )
 
 # Calibration is always "heuristic" until Release C wires a CorpusBaseline in
@@ -175,10 +187,11 @@ def get_hidden_dependencies(
     """Coupled-but-not-imported pairs, ranked by coupling_degree desc -- the
     money insight (master-context.md sec 5): files that co-change without
     any import between them, recomputed fresh via app/engines/overlay.py.
-    Gated on the "overlay" stage, which is what actually needs coupling
-    (run-scoped) to have finished."""
+    Gated on the "architecture" stage (session 04: OverlayEngine now runs
+    inside that stage, after ArchEngine/EntryPointEngine -- the standalone
+    "overlay" stage no longer exists, see app/jobs/stages.py)."""
     resolved_run_id = _resolve_run_or_404(repo, run_id, db)
-    pending = _pending_response(resolved_run_id, "overlay", db)
+    pending = _pending_response(resolved_run_id, "architecture", db)
     if pending is not None:
         return pending
 
@@ -322,3 +335,153 @@ def get_findings(
         for f in rows
     ]
     return FindingsResponse(repo_id=repo_id, findings=findings)
+
+
+@router.get("/repos/{repo_id}/subsystems", response_model=SubsystemsResponse)
+def get_subsystems(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    include_members: bool = True,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> SubsystemsResponse | JSONResponse:
+    """Subsystems for the resolved run, ranked (file_count desc, already
+    decided by SubsystemEngine -- app/engines/subsystems.py), with member
+    file paths and each member's PageRank centrality. ``?include_members=false``
+    returns a lightweight version (labels/metrics only, no member lists) for
+    callers that only need the summary. ``modularity`` isn't its own column
+    (Part A's schema has none) -- it's read back from the "subsystems"
+    stage's own JSONB summary, the same value SubsystemEngine returned when
+    it ran, which is exactly what that summary field exists for."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "subsystems", db)
+    if pending is not None:
+        return pending
+
+    stage_row = db.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == resolved_run_id, AnalysisStage.name == "subsystems"
+        )
+    )
+    modularity = (stage_row.summary or {}).get("modularity", 0.0) if stage_row is not None else 0.0
+
+    subsystem_rows = db.scalars(
+        select(Subsystem)
+        .where(Subsystem.analysis_run_id == resolved_run_id)
+        .order_by(Subsystem.rank)
+    ).all()
+
+    members_by_subsystem: dict[int, list[SubsystemMemberOut]] = {}
+    if include_members and subsystem_rows:
+        path_map = load_path_map(repo_id, db)
+        member_rows = db.execute(
+            select(
+                SubsystemMember.subsystem_id, SubsystemMember.path_id, SubsystemMember.centrality
+            ).where(SubsystemMember.subsystem_id.in_([s.id for s in subsystem_rows]))
+        ).all()
+        for subsystem_id, path_id, centrality in member_rows:
+            members_by_subsystem.setdefault(subsystem_id, []).append(
+                SubsystemMemberOut(file_path=path_map[path_id], centrality=centrality)
+            )
+
+    subsystems = [
+        SubsystemOut(
+            label=s.label,
+            label_source=s.label_source,
+            file_count=s.file_count,
+            total_loc=s.total_loc,
+            internal_edges=s.internal_edges,
+            external_edges=s.external_edges,
+            cohesion=s.cohesion,
+            rank=s.rank,
+            members=members_by_subsystem.get(s.id) if include_members else None,
+        )
+        for s in subsystem_rows
+    ]
+    return SubsystemsResponse(repo_id=repo_id, modularity=modularity, subsystems=subsystems)
+
+
+@router.get("/repos/{repo_id}/entry-points", response_model=EntryPointsResponse)
+def get_entry_points(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> EntryPointsResponse | JSONResponse:
+    """Detected entry points for the resolved run (app/engines/entrypoints.py),
+    ranked (confidence desc, out-degree desc, already decided by
+    EntryPointEngine). Gated on "architecture" -- EntryPointEngine runs
+    inside that stage, between ArchEngine and OverlayEngine."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "architecture", db)
+    if pending is not None:
+        return pending
+
+    rows = db.scalars(
+        select(EntryPoint)
+        .where(EntryPoint.analysis_run_id == resolved_run_id)
+        .order_by(EntryPoint.rank)
+    ).all()
+    path_map = load_path_map(repo_id, db)
+    entry_points = [
+        EntryPointOut(
+            file_path=path_map[r.path_id],
+            kind=r.kind,
+            evidence=r.evidence,
+            confidence=r.confidence,
+            rank=r.rank,
+        )
+        for r in rows
+    ]
+    return EntryPointsResponse(repo_id=repo_id, entry_points=entry_points)
+
+
+@router.get("/repos/{repo_id}/module-coupling", response_model=ModuleCouplingResponse)
+def get_module_coupling(
+    repo_id: uuid.UUID,
+    granularity: str = "directory",
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> ModuleCouplingResponse | JSONResponse:
+    """The locked coupling formula at directory/subsystem granularity
+    (app/engines/module_coupling.py), ranked by coupling_degree desc, with a
+    confidence hint computed at read time via
+    ``is_module_coupling_low_confidence`` -- same pattern as file-level
+    ``/coupling``, reusing ``confidence_hint`` rather than duplicating it."""
+    if granularity not in ("directory", "subsystem"):
+        raise HTTPException(
+            status_code=422, detail="granularity must be 'directory' or 'subsystem'."
+        )
+
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "subsystems", db)
+    if pending is not None:
+        return pending
+
+    low_confidence = is_module_coupling_low_confidence(resolved_run_id, granularity, db)
+    rows = db.scalars(
+        select(ModuleCoupling)
+        .where(
+            ModuleCoupling.repo_id == repo_id,
+            ModuleCoupling.analysis_run_id == resolved_run_id,
+            ModuleCoupling.granularity == granularity,
+        )
+        .order_by(ModuleCoupling.coupling_degree.desc())
+    ).all()
+
+    pairs = [
+        ModuleCouplingPairOut(
+            module_a=row.module_a,
+            module_b=row.module_b,
+            granularity=row.granularity,
+            shared_revs=row.shared_revs,
+            coupling_degree=row.coupling_degree,
+            avg_revs=row.avg_revs,
+            confidence=confidence_hint(row.shared_revs, low_confidence),
+        )
+        for row in rows
+    ]
+    return ModuleCouplingResponse(
+        repo_id=repo_id, granularity=granularity, low_confidence=low_confidence, pairs=pairs
+    )

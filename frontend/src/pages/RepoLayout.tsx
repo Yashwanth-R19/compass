@@ -34,8 +34,8 @@ const STAGE_LABEL: Record<StageName, string> = {
   structure: "Structure",
   persist_facts: "Persist",
   coupling: "Coupling",
+  subsystems: "Subsystems",
   architecture: "Architecture",
-  overlay: "Overlay",
   risk: "Risk",
   health: "Health",
   rank: "Rank",
@@ -43,14 +43,18 @@ const STAGE_LABEL: Record<StageName, string> = {
 
 // The one summary field worth surfacing as a pill's number, per stage --
 // each stage's summary JSONB carries several fields (see app/engines/*.py's
-// return dicts), but the pill only has room for one.
+// return dicts), but the pill only has room for one. Session 04: "overlay"
+// folded into "architecture" (still reads its own hidden-dependency count,
+// alongside architecture's own cycles_found, but a pill only shows one key,
+// so cycles_found -- the FIRST engine in that stage's tuple -- keeps its
+// spot here); "subsystems" is new.
 const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
   mine: "commits",
   structure: "dependencies",
   persist_facts: "commits",
   coupling: "pairs_found",
+  subsystems: "subsystems",
   architecture: "cycles_found",
-  overlay: "hidden_dependencies_found",
   risk: "findings_emitted",
   health: "score",
   rank: "findings_ranked",

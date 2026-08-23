@@ -184,11 +184,15 @@ def run_ingestion_job(
         ctx = RunContext(repo_id=repo_id, run_id=run_id)
 
         # Engine order is fixed and load-bearing -- see app/jobs/stages.py's
-        # INSIGHT_STAGES docstring for why each depends on the last.
+        # INSIGHT_STAGES docstring for why each depends on the last. A stage
+        # may run several engines in sequence (session 04) -- each one's
+        # summary dict is merged into the stage's single JSONB summary, in
+        # the SAME order app/jobs/stages.py::Stage.callables declares.
         for s in INSIGHT_STAGES:
             with stage(run_id, s.name, session) as summary:
-                assert s.callable is not None  # every insight stage has one
-                summary.update(s.callable(ctx, session))
+                assert s.callables  # every insight stage has at least one
+                for engine_callable in s.callables:
+                    summary.update(engine_callable(ctx, session))
             session.commit()
         _update_job(session, job_id, progress=95)
         session.commit()
