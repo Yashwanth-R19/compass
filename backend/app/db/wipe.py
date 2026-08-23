@@ -12,15 +12,18 @@ from app.db.models import (
     FileMetrics,
     Finding,
     Health,
+    RepoManifest,
+    Symbol,
 )
 
 
 def wipe_facts(repo_id: uuid.UUID, session: Session) -> None:
     """Delete the Facts-layer rows that get rebuilt whenever a repo's
-    head_sha changes: dependencies, files, commits (FK-safe order --
-    dependencies/files both FK into repo_paths, commits doesn't FK it at
-    all). Called only when the miner is about to re-run, never on every
-    re-analysis (Facts/Insight split, Phase 02, CLAUDE.md).
+    head_sha changes: dependencies, symbols, repo_manifests, files, commits
+    (FK-safe order -- dependencies/symbols/repo_manifests/files all FK into
+    repo_paths, commits doesn't FK it at all). Called only when the miner is
+    about to re-run, never on every re-analysis (Facts/Insight split, Phase
+    02, CLAUDE.md).
 
     Deliberately does NOT delete ``repo_paths``. Unlike the rest of the
     Facts layer, repo_paths is append-only across a repo's whole lifetime --
@@ -36,6 +39,8 @@ def wipe_facts(repo_id: uuid.UUID, session: Session) -> None:
     harmless no-op.
     """
     session.execute(delete(Dependency).where(Dependency.repo_id == repo_id))
+    session.execute(delete(Symbol).where(Symbol.repo_id == repo_id))
+    session.execute(delete(RepoManifest).where(RepoManifest.repo_id == repo_id))
     session.execute(delete(File).where(File.repo_id == repo_id))
     session.execute(delete(Commit).where(Commit.repo_id == repo_id))
 

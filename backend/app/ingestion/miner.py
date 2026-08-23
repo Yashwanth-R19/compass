@@ -25,6 +25,14 @@ IGNORE_DIRS = {
     "coverage",
     ".mypy_cache",
     ".pytest_cache",
+    # Session 03, Part C: Java build-tool output/generated-source dirs not
+    # already covered above ("target"/"build"/".gradle" already are) -- kept
+    # in this one shared set (rather than a parallel Java-specific set) so
+    # both app/languages/scanner.py's file walk and
+    # JavaAnalyzer.prepare()'s class-index walk agree on what to skip.
+    "out",
+    "generated",
+    "generated-sources",
 }
 MAX_FILE_BYTES = 1_000_000
 
@@ -32,8 +40,12 @@ LANGUAGE_BY_EXT = {
     ".py": "python",
     ".js": "javascript",
     ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
     ".java": "java",
 }
 

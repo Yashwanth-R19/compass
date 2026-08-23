@@ -5,9 +5,14 @@ from typing import cast
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
 
-from app.languages.base import LanguageAnalyzer
+from app.languages.base import LanguageAnalyzer, Symbol
 
 _PY_LANGUAGE = Language(tspython.language())
+
+_SYMBOL_NODE_KINDS = {
+    "class_definition": "class",
+    "function_definition": "function",
+}
 
 
 class PythonAnalyzer(LanguageAnalyzer):
@@ -46,6 +51,34 @@ class PythonAnalyzer(LanguageAnalyzer):
             targets.extend(_resolve(node, current_dir, root))
         return targets
 
+    def extract_symbols(self, file_path: str, repo_root: str) -> list[Symbol]:
+        root = Path(repo_root)
+        try:
+            source = (root / file_path).read_bytes()
+        except OSError:
+            return []
+
+        try:
+            tree = Parser(_PY_LANGUAGE).parse(source)
+        except Exception:
+            return []
+
+        symbols: list[Symbol] = []
+        for node in _walk_symbol_nodes(tree.root_node):
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            name = cast(bytes, name_node.text).decode()
+            symbols.append(
+                Symbol(
+                    name=name,
+                    kind=_SYMBOL_NODE_KINDS[node.type],
+                    line=node.start_point[0] + 1,
+                    exported=not name.startswith("_"),
+                )
+            )
+        return symbols
+
 
 def _walk_import_nodes(node: Node) -> Iterator[Node]:
     if node.type in ("import_statement", "import_from_statement"):
@@ -53,6 +86,17 @@ def _walk_import_nodes(node: Node) -> Iterator[Node]:
         return  # these nodes don't nest further import statements inside them
     for child in node.children:
         yield from _walk_import_nodes(child)
+
+
+def _walk_symbol_nodes(node: Node) -> Iterator[Node]:
+    """Unlike ``_walk_import_nodes``, keeps recursing into a matched node's
+    own children -- a class body nests method function_definitions, and a
+    function body can nest further function_definitions, all of which are
+    real symbols worth recording."""
+    if node.type in _SYMBOL_NODE_KINDS:
+        yield node
+    for child in node.children:
+        yield from _walk_symbol_nodes(child)
 
 
 def _dotted_parts(node: Node) -> list[str]:

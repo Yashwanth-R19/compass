@@ -341,6 +341,12 @@ class File(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Session 03: populated by persist.py's shared test-path classifier
+    # (app/ingestion/persist.py::classify_is_test) during persist_facts --
+    # one function, reused by session 07's test-gap analysis, so the two
+    # never define "is this a test file" differently. See that function's
+    # docstring for the exact per-language rules.
+    is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class FileMetrics(Base):
@@ -423,6 +429,66 @@ class Dependency(Base):
         BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
     )
     dep_type: Mapped[str] = mapped_column(String, nullable=False)
+    # Session 03: "static" for a normal import/require/import-from edge,
+    # "dynamic" for a JS dynamic import(...) call whose string-literal
+    # argument resolved to a real file (app/languages/javascript_analyzer.py)
+    # -- lets a later session distinguish the two without a migration.
+    # Populated as "static" for every edge except that one JS case.
+    import_kind: Mapped[str] = mapped_column(String, nullable=False, default="static")
+
+
+class Symbol(Base):
+    """Facts (session 03): one class/function/etc. declaration extracted by
+    a ``LanguageAnalyzer.extract_symbols`` during the "structure" stage
+    (app/languages/scanner.py) -- feeds session 04's entry-point detection
+    and beyond. Keyed by ``repo_id`` only, like every other Facts table --
+    wiped and fully replaced by ``wipe_facts`` whenever ``head_sha``
+    changes, UNLIKE ``repo_paths``, which stays append-only (see
+    ``RepoPath``'s docstring). ``path_id`` references that permanent id, not
+    a Facts-layer ``files.id``, so a symbol row is always attributable to a
+    real interned path even across a Facts replace.
+    """
+
+    __tablename__ = "symbols"
+    __table_args__ = (Index("ix_symbols_repo_id_name", "repo_id", "name"),)
+
+    id: Mapped[int] = bigint_pk()
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    path_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    line: Mapped[int] = mapped_column(Integer, nullable=False)
+    exported: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class RepoManifest(Base):
+    """Facts (session 03): the small set of fields ``app/ingestion/manifests.py``
+    extracts from one project manifest file (package.json, pyproject.toml,
+    a Dockerfile, a Procfile, pom.xml, build.gradle(.kts), setup.py, a
+    requirements*.txt, README*, or LICENSE*) -- NEVER the whole file. ``kind``
+    is one of "package_json", "pyproject", "dockerfile", "procfile",
+    "pom_xml", "build_gradle", "setup_py", "requirements", "license",
+    "readme". ``data`` is JSONB holding only the extracted fields. Facts,
+    like ``symbols`` -- wiped and fully replaced by ``wipe_facts`` whenever
+    ``head_sha`` changes. Designed to be extensible: session 10 reuses this
+    table for dependency manifests rather than inventing a parallel one.
+    """
+
+    __tablename__ = "repo_manifests"
+
+    id: Mapped[int] = bigint_pk()
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    path_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
 
 class Finding(Base):

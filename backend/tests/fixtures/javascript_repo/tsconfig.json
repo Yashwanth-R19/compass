@@ -1,0 +1,10 @@
+{
+  // this comment, and the trailing comma below, must not stop parsing --
+  // real tsconfig.json files routinely have both.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@app/*": ["src/*"],
+    },
+  },
+}

@@ -11,6 +11,7 @@ from app.db.models import AnalysisRun, AnalysisRunStatus, File, Job, JobStatus, 
 from app.engines.context import RunContext
 from app.ingestion.clone_url import resolve_clone_url
 from app.ingestion.cloner import clone_repo, get_remote_head_sha
+from app.ingestion.manifests import extract_manifests
 from app.ingestion.miner import mine_repo
 from app.ingestion.persist import persist_facts
 from app.jobs.stages import (
@@ -139,13 +140,26 @@ def run_ingestion_job(
             session.commit()
 
             with stage(run_id, "structure", session) as summary:
-                dependencies = extract_structural_edges(clone_path)
+                scan_result = extract_structural_edges(clone_path)
+                dependencies = scan_result.edges
+                symbols = scan_result.symbols
+                manifests = extract_manifests(clone_path)
+                # "dependencies" kept alongside "edges" (session 03's
+                # spec'd key) so RepoLayout's existing structure-stage pill
+                # (frontend/src/pages/RepoLayout.tsx::STAGE_SUMMARY_KEY,
+                # untouched this session) keeps reading a real count instead
+                # of going blank -- summary is a free-form JSONB teaser, not
+                # a locked schema, so both keys can coexist.
                 summary["dependencies"] = len(dependencies)
+                summary["edges"] = len(dependencies)
+                summary["symbols"] = len(symbols)
+                summary["manifests"] = len(manifests)
+                summary["by_language"] = scan_result.by_language
             _update_job(session, job_id, progress=55)
             session.commit()
 
             with stage(run_id, "persist_facts", session) as summary:
-                persist_facts(repo_id, mined, dependencies, session)
+                persist_facts(repo_id, mined, dependencies, symbols, manifests, session)
                 summary["commits"] = len(mined.commits)
                 summary["files"] = len(mined.files)
 

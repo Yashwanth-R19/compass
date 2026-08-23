@@ -111,7 +111,7 @@ def test_import_edge_found_cycle_detected_hidden_dependency_surfaced(tmp_path, d
 
     # 1. Structural parsing (app/languages/scanner.py + PythonAnalyzer):
     # the real import edge must be found.
-    edges = extract_structural_edges(str(tmp_path))
+    edges = extract_structural_edges(str(tmp_path)).edges
     edge_pairs = {(e.from_path, e.to_path) for e in edges}
     assert ("a.py", "b.py") in edge_pairs
     assert ("x.py", "y.py") in edge_pairs
