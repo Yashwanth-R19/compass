@@ -17,6 +17,7 @@ export type StageName =
   | "subsystems"
   | "architecture"
   | "risk"
+  | "knowledge"
   | "health"
   | "rank";
 export type StageStatus = "pending" | "running" | "done" | "failed" | "skipped";
@@ -296,4 +297,93 @@ export interface ModuleCouplingResponse {
   granularity: ModuleCouplingGranularity;
   low_confidence: boolean;
   pairs: ModuleCouplingPairOut[];
+}
+
+// Session 05: contributor identities, DOA-based expertise, knowledge map,
+// truck factor (mirrors backend/app/schemas/analysis.py's new response
+// models). Display/privacy rules (plan/RULES.md sec 11) apply throughout:
+// no full email ever appears here, only the *_masked fields the backend
+// already masked server-side; every label reads as knowledge distribution,
+// never performance.
+
+export interface ContributorAliasOut {
+  name: string;
+  email_masked: string;
+}
+
+export interface ContributorOut {
+  id: number;
+  canonical_name: string;
+  canonical_email_masked: string;
+  aliases: ContributorAliasOut[];
+  commit_count: number;
+  lines_added: number;
+  lines_deleted: number;
+  first_commit_at: string;
+  last_commit_at: string;
+  is_bot: boolean;
+  active_days: number;
+  is_stale: boolean;
+  rank: number;
+}
+
+export interface ContributorsResponse {
+  repo_id: string;
+  contributors: ContributorOut[];
+}
+
+export interface ExpertEntryOut {
+  contributor_id: number;
+  canonical_name: string;
+  canonical_email_masked: string;
+  doa: number;
+  doa_normalized: number;
+  is_expert: boolean;
+  changes: number;
+  last_touched_at: string;
+  is_stale: boolean;
+}
+
+export interface ExpertiseResponse {
+  repo_id: string;
+  file_path: string;
+  experts: ExpertEntryOut[];
+}
+
+export interface KnowledgeMapEntryOut {
+  file_path: string;
+  principal_expert_contributor_id: number | null;
+  doa_normalized: number | null;
+  subsystem_id: number | null;
+}
+
+export interface KnowledgeMapContributorOut {
+  id: number;
+  canonical_name: string;
+  canonical_email_masked: string;
+  is_bot: boolean;
+  is_stale: boolean;
+}
+
+export interface KnowledgeMapResponse {
+  repo_id: string;
+  files: KnowledgeMapEntryOut[];
+  contributors: KnowledgeMapContributorOut[];
+}
+
+export interface TruckFactorRemovalStepOut {
+  contributor_id: number;
+  name: string;
+  files_orphaned: number;
+  cumulative_orphan_ratio: number;
+}
+
+export interface TruckFactorResponse {
+  repo_id: string;
+  value: number;
+  removal_order: TruckFactorRemovalStepOut[];
+  total_files_considered: number;
+  orphaned_file_count: number;
+  note: string | null;
+  interpretation: string;
 }

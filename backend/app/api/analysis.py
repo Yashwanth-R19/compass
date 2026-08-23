@@ -5,13 +5,16 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.analysis.identities import mask_email
 from app.auth.deps import require_repo_access
 from app.db.base import get_db
 from app.db.models import (
     AnalysisStage,
+    Contributor,
     Coupling,
     EntryPoint,
     File,
+    FileExpertise,
     FileMetrics,
     Finding,
     Health,
@@ -20,8 +23,9 @@ from app.db.models import (
     StageStatus,
     Subsystem,
     SubsystemMember,
+    TruckFactor,
 )
-from app.db.paths import load_path_map
+from app.db.paths import load_path_id_map, load_path_map
 from app.db.runs import resolve_run_id
 from app.engines.architecture import (
     cycle_severity,
@@ -34,17 +38,25 @@ from app.engines.module_coupling import is_module_coupling_low_confidence
 from app.engines.risk import max_coupling_by_path
 from app.schemas.analysis import (
     ArchitectureResponse,
+    ContributorAliasOut,
+    ContributorOut,
+    ContributorsResponse,
     CouplingPairOut,
     CouplingResponse,
     CycleOut,
     DependencyEdgeOut,
     EntryPointOut,
     EntryPointsResponse,
+    ExpertEntryOut,
+    ExpertiseResponse,
     FindingOut,
     FindingsResponse,
     HealthResponse,
     HiddenDependencyOut,
     HiddenDependencyResponse,
+    KnowledgeMapContributorOut,
+    KnowledgeMapEntryOut,
+    KnowledgeMapResponse,
     LayeringViolationOut,
     ModuleCouplingPairOut,
     ModuleCouplingResponse,
@@ -53,7 +65,18 @@ from app.schemas.analysis import (
     SubsystemMemberOut,
     SubsystemOut,
     SubsystemsResponse,
+    TruckFactorRemovalStepOut,
+    TruckFactorResponse,
 )
+
+KNOWLEDGE_INTERPRETATION_NOTE = (
+    "Truck factor measures this project's knowledge-distribution risk -- how many "
+    "contributors could stop working on it before large parts of the codebase have "
+    "no remaining expert -- not any individual contributor's importance or value."
+)
+"""plan/RULES.md sec 11.4: the truck-factor response must always carry this
+framing, not just the number. A fixed string, not derived per-repo -- the
+interpretation is the same regardless of the computed value."""
 
 # Calibration is always "heuristic" until Release C wires a CorpusBaseline in
 # behind the same BaselineProvider interface (master-context.md sec 9,
@@ -484,4 +507,213 @@ def get_module_coupling(
     ]
     return ModuleCouplingResponse(
         repo_id=repo_id, granularity=granularity, low_confidence=low_confidence, pairs=pairs
+    )
+
+
+@router.get("/repos/{repo_id}/contributors", response_model=ContributorsResponse)
+def get_contributors(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> ContributorsResponse | JSONResponse:
+    """Every contributor identity for the resolved run (session 05,
+    app/engines/expertise.py), ranked by commit_count desc (ACTIVITY, never
+    a contribution score -- plan/RULES.md sec 11.3). Includes bot identities
+    (``is_bot=True``) so the client can compute "N% of commits are from
+    dependabot[bot]" itself; no email, canonical or aliased, is ever
+    returned unmasked (plan/RULES.md sec 11.2)."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "knowledge", db)
+    if pending is not None:
+        return pending
+
+    rows = db.scalars(
+        select(Contributor)
+        .where(Contributor.analysis_run_id == resolved_run_id)
+        .order_by(Contributor.rank)
+    ).all()
+
+    contributors = [
+        ContributorOut(
+            id=c.id,
+            canonical_name=c.canonical_name,
+            canonical_email_masked=mask_email(c.canonical_email),
+            aliases=[
+                ContributorAliasOut(name=a["name"], email_masked=mask_email(a["email"]))
+                for a in c.aliases
+            ],
+            commit_count=c.commit_count,
+            lines_added=c.lines_added,
+            lines_deleted=c.lines_deleted,
+            first_commit_at=c.first_commit_at.isoformat(),
+            last_commit_at=c.last_commit_at.isoformat(),
+            is_bot=c.is_bot,
+            active_days=c.active_days,
+            is_stale=c.is_stale,
+            rank=c.rank,
+        )
+        for c in rows
+    ]
+    return ContributorsResponse(repo_id=repo_id, contributors=contributors)
+
+
+@router.get("/repos/{repo_id}/expertise", response_model=ExpertiseResponse)
+def get_expertise(
+    repo_id: uuid.UUID,
+    path: str,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> ExpertiseResponse | JSONResponse:
+    """The flagship endpoint (session 05, Part E): ranked experts for one
+    file, by doa_normalized desc -- DOA, change count, last-touched date,
+    and staleness for each. 404 (not an empty 200) when ``path`` doesn't
+    resolve to a file that exists in this repo, distinct from "computed,
+    genuinely no experts"."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "knowledge", db)
+    if pending is not None:
+        return pending
+
+    path_id = load_path_id_map(repo_id, db).get(path)
+    if path_id is None:
+        raise HTTPException(status_code=404, detail="No such file in this repository.")
+
+    rows = db.execute(
+        select(FileExpertise, Contributor)
+        .join(Contributor, Contributor.id == FileExpertise.contributor_id)
+        .where(FileExpertise.analysis_run_id == resolved_run_id, FileExpertise.path_id == path_id)
+        .order_by(FileExpertise.doa_normalized.desc())
+    ).all()
+
+    experts = [
+        ExpertEntryOut(
+            contributor_id=fe.contributor_id,
+            canonical_name=c.canonical_name,
+            canonical_email_masked=mask_email(c.canonical_email),
+            doa=fe.doa,
+            doa_normalized=fe.doa_normalized,
+            is_expert=fe.is_expert,
+            changes=fe.changes,
+            last_touched_at=fe.last_touched_at.isoformat(),
+            is_stale=c.is_stale,
+        )
+        for fe, c in rows
+    ]
+    return ExpertiseResponse(repo_id=repo_id, file_path=path, experts=experts)
+
+
+@router.get("/repos/{repo_id}/knowledge-map", response_model=KnowledgeMapResponse)
+def get_knowledge_map(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> KnowledgeMapResponse | JSONResponse:
+    """Every non-deleted file's principal expert (highest doa_normalized),
+    plus its subsystem -- a compact payload (ids, not repeated names) with a
+    separate contributor lookup table alongside, per session 05 Part E."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "knowledge", db)
+    if pending is not None:
+        return pending
+
+    files = db.scalars(
+        select(File).where(File.repo_id == repo_id, File.is_deleted.is_(False))
+    ).all()
+
+    best_by_path: dict[int, FileExpertise] = {}
+    for fe in db.scalars(
+        select(FileExpertise).where(FileExpertise.analysis_run_id == resolved_run_id)
+    ).all():
+        current = best_by_path.get(fe.path_id)
+        if current is None or fe.doa_normalized > current.doa_normalized:
+            best_by_path[fe.path_id] = fe
+
+    subsystem_by_path: dict[int, int] = dict(
+        db.execute(
+            select(SubsystemMember.path_id, SubsystemMember.subsystem_id)
+            .join(Subsystem, Subsystem.id == SubsystemMember.subsystem_id)
+            .where(Subsystem.analysis_run_id == resolved_run_id)
+        ).all()
+    )
+
+    entries = [
+        KnowledgeMapEntryOut(
+            file_path=f.path,
+            principal_expert_contributor_id=(
+                best_by_path[f.path_id].contributor_id if f.path_id in best_by_path else None
+            ),
+            doa_normalized=(
+                best_by_path[f.path_id].doa_normalized if f.path_id in best_by_path else None
+            ),
+            subsystem_id=subsystem_by_path.get(f.path_id),
+        )
+        for f in files
+    ]
+
+    contributor_ids = {
+        e.principal_expert_contributor_id
+        for e in entries
+        if e.principal_expert_contributor_id is not None
+    }
+    contributors: list[KnowledgeMapContributorOut] = []
+    if contributor_ids:
+        rows = db.scalars(select(Contributor).where(Contributor.id.in_(contributor_ids))).all()
+        contributors = [
+            KnowledgeMapContributorOut(
+                id=c.id,
+                canonical_name=c.canonical_name,
+                canonical_email_masked=mask_email(c.canonical_email),
+                is_bot=c.is_bot,
+                is_stale=c.is_stale,
+            )
+            for c in rows
+        ]
+
+    return KnowledgeMapResponse(repo_id=repo_id, files=entries, contributors=contributors)
+
+
+@router.get("/repos/{repo_id}/truck-factor", response_model=TruckFactorResponse)
+def get_truck_factor(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> TruckFactorResponse | JSONResponse:
+    """Truck factor for the resolved run (Avelino's greedy removal
+    algorithm, app/engines/truck_factor.py) -- value, the explainable
+    removal_order, and the fixed interpretation note (plan/RULES.md sec
+    11.4) every response carries regardless of the computed value."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "knowledge", db)
+    if pending is not None:
+        return pending
+
+    row = db.scalar(select(TruckFactor).where(TruckFactor.analysis_run_id == resolved_run_id))
+    if row is None:
+        # The "knowledge" stage can reach "skipped" (zero-commit repo) with
+        # no truck_factor row ever written -- a legitimate empty state, not
+        # an error, since _pending_response already only let us past a
+        # done/skipped stage.
+        return TruckFactorResponse(
+            repo_id=repo_id,
+            value=0,
+            removal_order=[],
+            total_files_considered=0,
+            orphaned_file_count=0,
+            note="Knowledge analysis was skipped for this run (no commit history).",
+            interpretation=KNOWLEDGE_INTERPRETATION_NOTE,
+        )
+
+    removal_order = [TruckFactorRemovalStepOut(**step) for step in row.removal_order]
+    return TruckFactorResponse(
+        repo_id=repo_id,
+        value=row.value,
+        removal_order=removal_order,
+        total_files_considered=row.total_files_considered,
+        orphaned_file_count=row.orphaned_file_count,
+        note=row.note,
+        interpretation=KNOWLEDGE_INTERPRETATION_NOTE,
     )

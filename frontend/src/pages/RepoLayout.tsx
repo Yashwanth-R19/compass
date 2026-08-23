@@ -37,6 +37,7 @@ const STAGE_LABEL: Record<StageName, string> = {
   subsystems: "Subsystems",
   architecture: "Architecture",
   risk: "Risk",
+  knowledge: "Knowledge",
   health: "Health",
   rank: "Rank",
 };
@@ -56,6 +57,7 @@ const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
   subsystems: "subsystems",
   architecture: "cycles_found",
   risk: "findings_emitted",
+  knowledge: "contributors",
   health: "score",
   rank: "findings_ranked",
 };

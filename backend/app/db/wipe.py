@@ -6,10 +6,12 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     AnalysisRun,
     Commit,
+    Contributor,
     Coupling,
     Dependency,
     EntryPoint,
     File,
+    FileExpertise,
     FileMetrics,
     Finding,
     Health,
@@ -18,6 +20,7 @@ from app.db.models import (
     Subsystem,
     SubsystemMember,
     Symbol,
+    TruckFactor,
 )
 
 
@@ -81,4 +84,8 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
         )
     )
     session.execute(delete(Subsystem).where(Subsystem.analysis_run_id == run_id))
+    # Session 05: FileExpertise FKs Contributor, so it must go first.
+    session.execute(delete(FileExpertise).where(FileExpertise.analysis_run_id == run_id))
+    session.execute(delete(Contributor).where(Contributor.analysis_run_id == run_id))
+    session.execute(delete(TruckFactor).where(TruckFactor.analysis_run_id == run_id))
     session.execute(delete(AnalysisRun).where(AnalysisRun.id == run_id))

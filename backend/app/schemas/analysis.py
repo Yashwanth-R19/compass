@@ -155,3 +155,92 @@ class ModuleCouplingResponse(BaseModel):
     granularity: str
     low_confidence: bool
     pairs: list[ModuleCouplingPairOut]
+
+
+# Session 05: contributor identities, DOA-based expertise, knowledge map,
+# truck factor. Display/privacy rules (plan/RULES.md sec 11) apply to every
+# one of these: no full email ever leaves this layer (see
+# app/analysis/identities.py::mask_email), and every label is
+# knowledge-distribution framing, never performance/ranking framing.
+
+
+class ContributorAliasOut(BaseModel):
+    name: str
+    email_masked: str
+
+
+class ContributorOut(BaseModel):
+    id: int
+    canonical_name: str
+    canonical_email_masked: str
+    aliases: list[ContributorAliasOut]
+    commit_count: int
+    lines_added: int
+    lines_deleted: int
+    first_commit_at: str
+    last_commit_at: str
+    is_bot: bool
+    active_days: int
+    is_stale: bool
+    rank: int
+
+
+class ContributorsResponse(BaseModel):
+    repo_id: uuid.UUID
+    contributors: list[ContributorOut]
+
+
+class ExpertEntryOut(BaseModel):
+    contributor_id: int
+    canonical_name: str
+    canonical_email_masked: str
+    doa: float
+    doa_normalized: float
+    is_expert: bool
+    changes: int
+    last_touched_at: str
+    is_stale: bool
+
+
+class ExpertiseResponse(BaseModel):
+    repo_id: uuid.UUID
+    file_path: str
+    experts: list[ExpertEntryOut]
+
+
+class KnowledgeMapEntryOut(BaseModel):
+    file_path: str
+    principal_expert_contributor_id: int | None
+    doa_normalized: float | None
+    subsystem_id: int | None
+
+
+class KnowledgeMapContributorOut(BaseModel):
+    id: int
+    canonical_name: str
+    canonical_email_masked: str
+    is_bot: bool
+    is_stale: bool
+
+
+class KnowledgeMapResponse(BaseModel):
+    repo_id: uuid.UUID
+    files: list[KnowledgeMapEntryOut]
+    contributors: list[KnowledgeMapContributorOut]
+
+
+class TruckFactorRemovalStepOut(BaseModel):
+    contributor_id: int
+    name: str
+    files_orphaned: int
+    cumulative_orphan_ratio: float
+
+
+class TruckFactorResponse(BaseModel):
+    repo_id: uuid.UUID
+    value: int
+    removal_order: list[TruckFactorRemovalStepOut]
+    total_files_considered: int
+    orphaned_file_count: int
+    note: str | None
+    interpretation: str

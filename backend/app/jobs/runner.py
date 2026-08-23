@@ -33,8 +33,10 @@ def run_ingestion_job(
     """Create a new ``analysis_runs`` row and drive it through the FACT
     stages (clone -> mine -> structure -> persist_facts, skipped entirely if
     the remote head_sha is unchanged) and then the INSIGHT stages (coupling
-    -> architecture -> overlay -> risk -> health -> rank), tracking progress
-    on both the legacy ``jobs`` row and the new per-stage ``analysis_stages``
+    -> subsystems -> architecture -> risk -> knowledge -> health -> rank,
+    see ``app/jobs/stages.py::INSIGHT_STAGES`` for the canonical, load-bearing
+    order), tracking progress on both the legacy ``jobs`` row and the
+    per-stage ``analysis_stages``
     rows throughout (Phase 02: Facts/Insight split + progressive reveal,
     CLAUDE.md).
 
@@ -189,6 +191,20 @@ def run_ingestion_job(
         # summary dict is merged into the stage's single JSONB summary, in
         # the SAME order app/jobs/stages.py::Stage.callables declares.
         for s in INSIGHT_STAGES:
+            # Session 05, Part D degenerate case: a repo with zero commits
+            # has no contributor data at all -- ExpertiseEngine/
+            # TruckFactorEngine would both trivially find nothing, so the
+            # whole "knowledge" stage is marked skipped rather than run.
+            if s.name == "knowledge" and commit_count == 0:
+                mark_stage_skipped(
+                    run_id,
+                    s.name,
+                    session,
+                    {"reason": "repo has zero commits; no contributor data to analyze"},
+                )
+                session.commit()
+                continue
+
             with stage(run_id, s.name, session) as summary:
                 assert s.callables  # every insight stage has at least one
                 for engine_callable in s.callables:

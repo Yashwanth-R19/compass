@@ -13,12 +13,14 @@ from app.engines.architecture import ArchEngine
 from app.engines.context import RunContext
 from app.engines.coupling import CouplingEngine
 from app.engines.entrypoints import EntryPointEngine
+from app.engines.expertise import ExpertiseEngine
 from app.engines.findings import FindingsRankEngine
 from app.engines.health import HealthEngine
 from app.engines.module_coupling import ModuleCouplingEngine
 from app.engines.overlay import OverlayEngine
 from app.engines.risk import RiskEngine
 from app.engines.subsystems import SubsystemEngine
+from app.engines.truck_factor import TruckFactorEngine
 
 StageKind = Literal["fact", "insight"]
 
@@ -69,6 +71,7 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
         "architecture", "insight", (ArchEngine().run, EntryPointEngine().run, OverlayEngine().run)
     ),
     Stage("risk", "insight", (RiskEngine().run,)),
+    Stage("knowledge", "insight", (ExpertiseEngine().run, TruckFactorEngine().run)),
     Stage("health", "insight", (HealthEngine().run,)),
     Stage("rank", "insight", (FindingsRankEngine().run,)),
 )
@@ -87,6 +90,15 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
   also depends on ArchEngine's structural edges for the hidden-dependency
   join.
 - "risk" needs Coupling's max coupling_degree per file.
+- "knowledge" (session 05) needs Risk's file_metrics.risk_score (the
+  orphaned-knowledge finding) and Subsystems' partition (the
+  single-expert-subsystem finding) -- MUST run after both, hence its
+  placement here, after "risk". Within it, ExpertiseEngine must run before
+  TruckFactorEngine, which reads the file_expertise/contributors rows
+  ExpertiseEngine just wrote for this same run_id (Avelino's greedy
+  algorithm never recomputes DOA itself). run_ingestion_job skips this
+  whole stage (StageStatus.skipped, not run) when the repo has zero
+  commits -- see that module's Part D degenerate-case handling.
 - "health" needs Risk's file_metrics plus Architecture's cycles and
   Overlay's (now inside "architecture") hidden-dependency count.
 - "rank" needs every other engine's findings already written for this

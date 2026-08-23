@@ -672,6 +672,140 @@ class ModuleCoupling(Base):
     avg_revs: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class Contributor(Base):
+    """Insight (session 05): one row per author identity resolved by
+    ``app/analysis/identities.py::resolve_identities`` -- a single real
+    person (or bot) may have committed under several (name, email) pairs;
+    every pair merged into this identity is recorded verbatim in
+    ``aliases`` (a list of ``{"name": ..., "email": ...}`` objects) so the
+    merge is auditable, not just asserted. ``canonical_email``/every alias
+    email is the RAW value -- masked only at the API boundary
+    (``app/analysis/identities.py::mask_email``); no endpoint ever returns
+    an unmasked one (plan/RULES.md sec 11.2).
+
+    Bots (``github-actions[bot]``, ``dependabot[bot]``, anything ending
+    ``[bot]``) get a row here too, with ``is_bot=True`` -- excluded from
+    ``file_expertise``/``truck_factor`` entirely, but their
+    ``commit_count``/lines are still recorded here so "N% of commits are
+    from dependabot[bot]" is directly computable from this table, per
+    session 05 Part A.
+
+    ``rank`` orders by ``commit_count`` desc (ties broken by
+    ``canonical_name`` asc) -- ACTIVITY, never a "contribution score" or a
+    sort by lines changed (plan/RULES.md sec 11.3 / session 05 Known
+    Hazard #8).
+    """
+
+    __tablename__ = "contributors"
+    __table_args__ = (
+        Index("ix_contributors_analysis_run_id", "analysis_run_id"),
+        Index("ix_contributors_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False
+    )
+    canonical_name: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_email: Mapped[str] = mapped_column(Text, nullable=False)
+    aliases: Mapped[list] = mapped_column(JSONB, nullable=False)
+    commit_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    lines_added: Mapped[int] = mapped_column(Integer, nullable=False)
+    lines_deleted: Mapped[int] = mapped_column(Integer, nullable=False)
+    first_commit_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_commit_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_bot: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    active_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Session 05: staleness is measured against the REPOSITORY's own most
+    # recent commit, never datetime.now() -- see
+    # app/analysis/staleness.py::is_stale_relative_to_repo. An archived
+    # repo whose whole team was active up until the last commit has nobody
+    # stale, even though every timestamp is old by the wall-clock.
+    is_stale: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class FileExpertise(Base):
+    """Insight (session 05): one row per (file, contributor) Degree-of-
+    Authorship result, ``app/engines/expertise.py``. Only the top
+    ``MAX_EXPERTS_PER_FILE`` (5) contributors per file are stored -- at
+    5,000 files x 50 contributors this table would otherwise dominate the
+    storage budget. Ranking and ``doa_normalized`` are both computed over
+    the FULL contributor set for that file BEFORE this truncation, never
+    after (session 05 Known Hazard #5: truncating first would produce
+    ``doa_normalized`` values that never reach 1.0).
+
+    ``path_id`` references the permanent ``repo_paths.id``, not a
+    Facts-layer ``files.id`` -- same reasoning as every other per-file
+    Insight column (see ``FileMetrics``'s docstring). ``contributor_id`` is
+    only ever a NON-bot contributor -- bots are excluded from expertise
+    entirely (session 05 Part A/C).
+    """
+
+    __tablename__ = "file_expertise"
+    __table_args__ = (Index("ix_file_expertise_run_id_path_id", "analysis_run_id", "path_id"),)
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    path_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
+    )
+    contributor_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("contributors.id", ondelete="CASCADE"), nullable=False
+    )
+    doa: Mapped[float] = mapped_column(Float, nullable=False)
+    doa_normalized: Mapped[float] = mapped_column(Float, nullable=False)
+    is_expert: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    changes: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_touched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TruckFactor(Base):
+    """Insight (session 05): one row per analysis run,
+    ``app/engines/truck_factor.py`` -- Avelino's greedy removal algorithm
+    over ``file_expertise``. ``removal_order`` (JSONB list of
+    ``{contributor_id, name, files_orphaned, cumulative_orphan_ratio}``) is
+    what makes the number explainable rather than a bare integer: "if Alice
+    leaves, 34% of files lose their expert; if Bob also leaves, 51%."
+    ``note`` is set only for the degenerate cases (a single contributor,
+    zero files with any expert) -- null in the normal case.
+
+    This measures the PROJECT's knowledge-distribution risk, never an
+    individual's importance (plan/RULES.md sec 11.4) -- the API attaches a
+    fixed interpretation string alongside this row's data on every read,
+    see ``app/api/analysis.py::KNOWLEDGE_INTERPRETATION_NOTE``, rather than
+    storing that framing redundantly on every row.
+
+    One row per run, like ``Health`` -- uses a UUID PK (not the bigint
+    identity PK the two higher-volume tables above use), matching
+    ``Health``'s existing one-row-per-run convention.
+    """
+
+    __tablename__ = "truck_factor"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False
+    )
+    value: Mapped[int] = mapped_column(Integer, nullable=False)
+    removal_order: Mapped[list] = mapped_column(JSONB, nullable=False)
+    total_files_considered: Mapped[int] = mapped_column(Integer, nullable=False)
+    orphaned_file_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
