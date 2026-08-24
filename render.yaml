@@ -73,3 +73,6 @@ services:
         value: "100"
       - key: COMPASS_MAX_CONCURRENT_RUNS
         value: "3"
+      # --- Session 10: secret scanning -----------------------------------
+      - key: COMPASS_SECRET_SCAN_SALT
+        sync: false # generate: python -c "import secrets; print(secrets.token_urlsafe(32))" -- see DEPLOY.md

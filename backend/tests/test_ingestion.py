@@ -382,3 +382,164 @@ def test_mined_paths_are_posix_even_on_windows(tmp_path):
 
     for commit in mined.commits:
         assert not any("\\" in p for p in commit.file_paths)
+
+
+# ---------------------------------------------------------------------------
+# Session 10, Part F/G: the "secrets" stage's clone-survival restructuring
+# (Known Hazard #6 -- "the riskiest change in this session").
+# ---------------------------------------------------------------------------
+
+
+def test_clone_survives_through_secrets_stage_and_is_deleted_after_success(
+    fixture_repo, db_session, monkeypatch
+):
+    """The clone must still exist while "secrets" runs (it needs `git log
+    -p`), and must be gone once the whole job succeeds."""
+    still_existed_during_secrets = {}
+    original_scan_history = __import__(
+        "app.security.scanner", fromlist=["scan_history"]
+    ).scan_history
+
+    def spy_scan_history(repo_path, *, salt):
+        still_existed_during_secrets["existed"] = Path(repo_path).exists()
+        return original_scan_history(repo_path, salt=salt)
+
+    monkeypatch.setattr("app.jobs.runner.scan_history", spy_scan_history)
+
+    repo_id, job_id = _make_repo_and_job(db_session, str(fixture_repo))
+    run_ingestion_job(repo_id, job_id)
+
+    assert still_existed_during_secrets == {"existed": True}
+
+    repo = db_session.get(Repo, repo_id)
+    run = db_session.get(AnalysisRun, repo.current_run_id)
+    statuses = _stage_statuses(db_session, run.id)
+    assert statuses["persist_facts"] == StageStatus.done
+    assert statuses["secrets"] == StageStatus.done
+
+
+def test_clone_deleted_when_secrets_stage_itself_fails(fixture_repo, db_session, monkeypatch):
+    """The riskiest failure path (Known Hazard #6): if "secrets" raises, the
+    clone must still be deleted (via the outer try/finally, since
+    clone_path is never set to None before this point) -- not left behind
+    to fill the runner's disk."""
+    captured_clone_path = {}
+    original_clone = clone_repo
+
+    def spy_clone(url):
+        path = original_clone(url)
+        captured_clone_path["path"] = path
+        return path
+
+    monkeypatch.setattr("app.jobs.runner.clone_repo", spy_clone)
+
+    def broken_scan_history(repo_path, *, salt):
+        raise RuntimeError("synthetic secrets-scan failure")
+
+    monkeypatch.setattr("app.jobs.runner.scan_history", broken_scan_history)
+
+    repo_id, job_id = _make_repo_and_job(db_session, str(fixture_repo))
+    with pytest.raises(RuntimeError, match="synthetic secrets-scan failure"):
+        run_ingestion_job(repo_id, job_id)
+
+    assert "path" in captured_clone_path
+    assert not Path(captured_clone_path["path"]).exists()
+
+    repo = db_session.get(Repo, repo_id)
+    assert repo.status == RepoStatus.failed
+    failed_run = db_session.scalars(select(AnalysisRun).where(AnalysisRun.repo_id == repo_id)).one()
+    assert failed_run.status == AnalysisRunStatus.failed
+    statuses = _stage_statuses(db_session, failed_run.id)
+    assert statuses["persist_facts"] == StageStatus.done
+    assert statuses["secrets"] == StageStatus.failed
+
+
+def test_secret_committed_then_deleted_is_found_end_to_end_through_the_real_pipeline(
+    tmp_path, db_session
+):
+    """The deleted-secret demo, exercised through the FULL ingestion
+    pipeline (not just scan_history in isolation) -- confirms path_id
+    resolution, persistence, and still_in_head all survive the trip through
+    run_ingestion_job."""
+    from app.db.models import SecretHit
+
+    repo_dir = tmp_path / "secret-e2e-repo"
+    repo_dir.mkdir()
+    _git(repo_dir, "init", "-b", "main")
+    _git(repo_dir, "config", "user.email", "test@example.com")
+    _git(repo_dir, "config", "user.name", "Test User")
+
+    (repo_dir / "app.py").write_text("print('hello')\n")
+    _git(repo_dir, "add", "app.py")
+    _git(repo_dir, "commit", "-m", "commit 1")
+
+    (repo_dir / "config.py").write_text('AWS_KEY = "AKIAQPMNBVCXZLKJHGFD"\n')
+    _git(repo_dir, "add", "config.py")
+    _git(repo_dir, "commit", "-m", "commit 2: add secret")
+
+    _git(repo_dir, "rm", "config.py")
+    _git(repo_dir, "commit", "-m", "commit 3: remove secret")
+
+    repo_id, job_id = _make_repo_and_job(db_session, str(repo_dir))
+    run_ingestion_job(repo_id, job_id)
+
+    hits = db_session.scalars(select(SecretHit).where(SecretHit.repo_id == repo_id)).all()
+    aws_hits = [h for h in hits if h.rule_id == "aws-access-key-id"]
+    assert len(aws_hits) == 1
+    assert aws_hits[0].still_in_head is False
+    assert aws_hits[0].redacted_preview == "AKIA****************FD"
+
+    resolved_path = db_session.scalar(
+        select(RepoPath.path).where(RepoPath.id == aws_hits[0].path_id)
+    )
+    assert resolved_path == "config.py"
+
+
+def test_reanalysis_with_unchanged_head_sha_preserves_dependency_manifest_found_flag(
+    tmp_path, db_session, monkeypatch
+):
+    """Regression test: on a facts-reuse re-analysis, "structure" is marked
+    skipped with a generic reason instead of actually running
+    extract_declared_dependencies again -- without explicitly carrying the
+    PREVIOUS run's dependency_manifest_found flag forward, every
+    re-analysis of an unchanged repo that genuinely HAS a manifest would
+    wrongly report GET /repos/{id}/vulnerabilities' no_supported_manifest
+    as True."""
+    # The declared requests==2.31.0 dependency would otherwise make a REAL
+    # OSV.dev network call -- not what this test is about, and not
+    # hermetic. Stub query_vulnerabilities out entirely.
+    monkeypatch.setattr("app.engines.security.query_vulnerabilities", lambda deps, session: [])
+
+    repo_dir = tmp_path / "manifest-reanalysis-repo"
+    repo_dir.mkdir()
+    _git(repo_dir, "init", "-b", "main")
+    _git(repo_dir, "config", "user.email", "test@example.com")
+    _git(repo_dir, "config", "user.name", "Test User")
+    (repo_dir / "requirements.txt").write_text("requests==2.31.0\n")
+    _git(repo_dir, "add", "requirements.txt")
+    _git(repo_dir, "commit", "-m", "add requirements.txt")
+
+    repo_id, job1_id = _make_repo_and_job(db_session, str(repo_dir))
+    run_ingestion_job(repo_id, job1_id)
+    db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    first_structure = db_session.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == repo.current_run_id, AnalysisStage.name == "structure"
+        )
+    )
+    assert first_structure.summary["dependency_manifest_found"] is True
+
+    job2_id = _new_job(db_session, repo_id)
+    run_ingestion_job(repo_id, job2_id)
+    db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    second_structure = db_session.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == repo.current_run_id, AnalysisStage.name == "structure"
+        )
+    )
+    assert second_structure.status == StageStatus.skipped
+    assert second_structure.summary["dependency_manifest_found"] is True

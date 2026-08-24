@@ -9,6 +9,7 @@ from app.db.models import (
     Contributor,
     Coupling,
     Dependency,
+    DependencyDeclared,
     EntryPoint,
     File,
     FileExpertise,
@@ -20,11 +21,13 @@ from app.db.models import (
     ModuleCoupling,
     RepoManifest,
     RepoPassport,
+    SecretHit,
     Subsystem,
     SubsystemMember,
     Symbol,
     TourStop,
     TruckFactor,
+    Vulnerability,
 )
 
 
@@ -52,6 +55,12 @@ def wipe_facts(repo_id: uuid.UUID, session: Session) -> None:
     session.execute(delete(Dependency).where(Dependency.repo_id == repo_id))
     session.execute(delete(Symbol).where(Symbol.repo_id == repo_id))
     session.execute(delete(RepoManifest).where(RepoManifest.repo_id == repo_id))
+    # Session 10: secret_hits/dependencies_declared are Facts too -- rebuilt
+    # from a fresh clone/history scan whenever head_sha changes, same as
+    # symbols/repo_manifests above. Neither FKs anything but repo_paths, so
+    # order relative to File/Commit doesn't matter.
+    session.execute(delete(SecretHit).where(SecretHit.repo_id == repo_id))
+    session.execute(delete(DependencyDeclared).where(DependencyDeclared.repo_id == repo_id))
     session.execute(delete(File).where(File.repo_id == repo_id))
     session.execute(delete(Commit).where(Commit.repo_id == repo_id))
 
@@ -100,4 +109,8 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
     session.execute(delete(RepoPassport).where(RepoPassport.analysis_run_id == run_id))
     # Session 07: HygieneEvent references only analysis_runs/repos.
     session.execute(delete(HygieneEvent).where(HygieneEvent.analysis_run_id == run_id))
+    # Session 10: Vulnerability references only analysis_runs/repos --
+    # osv_cache is deliberately NEVER pruned here (see OsvCache's docstring:
+    # a global cache outside both the Facts and Insight lifecycles).
+    session.execute(delete(Vulnerability).where(Vulnerability.analysis_run_id == run_id))
     session.execute(delete(AnalysisRun).where(AnalysisRun.id == run_id))

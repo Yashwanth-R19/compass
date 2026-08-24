@@ -80,6 +80,20 @@ class Settings(BaseSettings):
     COMPASS_RATE_LIMIT_USER_PER_DAY: int = 100
     COMPASS_MAX_CONCURRENT_RUNS: int = 3
 
+    # Session 10, Part D.8: the stable salt app/security/scanner.py's
+    # fingerprint() mixes into every secret's SHA-256 -- read from config
+    # ONCE, never generated per-scan. A changing salt would silently break
+    # still_in_head matching (the history scan and the working-tree scan
+    # must fingerprint the same secret identically within one run) and
+    # cross-run deduplication (the same secret found again on a later
+    # re-analysis must produce the same fingerprint). Unlike
+    # COMPASS_TOKEN_ENCRYPTION_KEY, this salt does not gate startup in
+    # production -- a fingerprint is not itself sensitive (it can't be
+    # reversed to the secret value), so an unset default is safe to ship,
+    # just documented as worth overriding in production so fingerprints
+    # aren't guessable across deployments by anyone who knows the default.
+    COMPASS_SECRET_SCAN_SALT: str = "compass-secret-scan-dev-salt"
+
 
 @lru_cache
 def get_settings() -> Settings:

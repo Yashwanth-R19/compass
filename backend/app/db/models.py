@@ -1135,3 +1135,173 @@ class ShareLink(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SecretHit(Base):
+    """Facts (session 10, Part A/B): one detected secret occurrence from
+    ``app/security/scanner.py::scan_history``, found scanning the repo's
+    FULL commit history diff (including secrets later deleted). Keyed by
+    ``repo_id`` only, like every other Facts table -- wiped and fully
+    replaced by ``wipe_facts`` whenever ``head_sha`` changes, same as
+    ``symbols``/``repo_manifests``.
+
+    **Never carries the raw secret value** -- see the five never-re-leak
+    rules in ``app/security/scanner.py``'s module docstring, which this
+    table's own column set enforces structurally: ``fingerprint`` (a salted
+    SHA-256 -- ``sha256(salt + rule_id + normalized_secret_value)``, salt
+    read once from ``app.config.settings``) and ``redacted_preview`` (first
+    4 + last 2 characters, fixed-length mask between, ``None`` for anything
+    shorter than 12 characters) are the only trace of the value itself; there
+    is no column either could leak a raw secret into even by accident.
+
+    ``path_id`` is nullable: a hit's path can legitimately fail to resolve
+    against ``repo_paths`` (e.g. a path under an IGNORE_DIRS-pruned
+    directory the scanner itself also skips, or the diff's file header being
+    ``/dev/null`` for a pure deletion). ``still_in_head`` is computed by a
+    SECOND pass over the current working tree (never inferred from "does the
+    file still exist" -- a file can survive while the specific secret line
+    was removed from it, session 10 Known Hazard #7) and is the single most
+    important field on this table: a secret that is ``still_in_head=False``
+    is the demo this session exists to build -- deleted from the tree,
+    still fully recoverable from public git history.
+
+    Unique on ``(repo_id, fingerprint, commit_sha)`` -- the same physical
+    secret string can be matched by the same rule on more than one
+    line/file within a single commit; ``app/security/scanner.py::
+    persist_secret_hits`` deduplicates to one row per that triple before
+    inserting.
+    """
+
+    __tablename__ = "secret_hits"
+    __table_args__ = (
+        UniqueConstraint(
+            "repo_id", "fingerprint", "commit_sha", name="uq_secret_hits_repo_fingerprint_commit"
+        ),
+        Index("ix_secret_hits_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rule_id: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    path_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=True
+    )
+    commit_sha: Mapped[str] = mapped_column(Text, nullable=False)
+    committed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    redacted_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entropy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    still_in_head: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class DependencyDeclared(Base):
+    """Facts (session 10, Part B/C): one declared dependency parsed from a
+    supported manifest (``requirements*.txt``, ``pyproject.toml``
+    ``[project.dependencies]``, ``package-lock.json``, ``pom.xml`` -- see
+    ``app/ingestion/manifests.py::extract_declared_dependencies``). Keyed by
+    ``repo_id`` only -- wiped and fully replaced by ``wipe_facts`` whenever
+    ``head_sha`` changes, same as ``symbols``/``repo_manifests``.
+
+    ``ecosystem`` is OSV's own exact, case-sensitive ecosystem name
+    (``"PyPI"``, ``"npm"``, or ``"Maven"`` -- session 10 Known Hazard #4).
+    ``version`` is nullable: a manifest can declare a version RANGE (e.g.
+    ``requests>=2.0`` with no lockfile), which is recorded here for
+    completeness but can never be queried against OSV (only an exact,
+    resolved version can) -- ``app/engines/security.py::
+    load_declared_dependencies`` filters these out before calling OSV.
+    ``manifest_path_id`` FKs the permanent ``repo_paths.id`` of the manifest
+    file this row was extracted from. ``scope`` is one of "runtime"/"dev"/
+    "test", best-effort per format (a lockfile's own ``dev`` flag, a
+    requirements filename containing "dev"/"test", a Maven ``<scope>`` tag).
+    """
+
+    __tablename__ = "dependencies_declared"
+    __table_args__ = (Index("ix_dependencies_declared_repo_id", "repo_id"),)
+
+    id: Mapped[int] = bigint_pk()
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ecosystem: Mapped[str] = mapped_column(Text, nullable=False)
+    package_name: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_direct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    manifest_path_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
+    )
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class Vulnerability(Base):
+    """Insight (session 10, Part B/C): one (declared dependency, OSV
+    advisory) match for a run, written by ``app/engines/security.py::
+    fetch_and_persist_vulnerabilities`` -- the one INSIGHT-stage step in the
+    whole pipeline that touches the network (see that function's docstring
+    for why this deliberately isn't an ``Engine``). ``analysis_run_id``
+    versions this table like every other Insight table: a re-analysis
+    re-queries OSV fresh and writes a new set of rows for the new run,
+    leaving older runs' rows untouched.
+
+    ``severity`` is a plain TEXT column (``"low"``/``"med"``/``"high"``/
+    ``"unknown"``), NOT the ``Severity`` enum -- OSV data can genuinely carry
+    no severity information at all (Part C: "mark it unknown -- do not
+    invent a severity"), a fourth value the ``Severity`` enum has no member
+    for. ``SecurityEngine`` maps this to the enum only when constructing the
+    ``findings`` row. ``aliases`` is OSV's own alias list (CVE ids, GHSA
+    ids, ...), JSONB. ``fixed_version`` is nullable: not every advisory has
+    a published fix yet.
+    """
+
+    __tablename__ = "vulnerabilities"
+    __table_args__ = (
+        Index("ix_vulnerabilities_analysis_run_id", "analysis_run_id"),
+        Index("ix_vulnerabilities_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ecosystem: Mapped[str] = mapped_column(Text, nullable=False)
+    package_name: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[str] = mapped_column(Text, nullable=False)
+    osv_id: Mapped[str] = mapped_column(Text, nullable=False)
+    aliases: Mapped[list] = mapped_column(JSONB, nullable=False)
+    severity: Mapped[str] = mapped_column(Text, nullable=False)
+    cvss_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    fixed_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_direct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class OsvCache(Base):
+    """A GLOBAL cache, deliberately OUTSIDE both the Facts and Insight
+    lifecycles (session 10, Part B) -- never touched by ``wipe_facts`` (it
+    isn't repo-scoped at all) and never touched by ``prune_run`` (it isn't
+    run-scoped either). An OSV advisory (e.g. ``GHSA-xxxx-yyyy-zzzz``) is
+    the same fact regardless of which repository or which analysis run asks
+    about it, so it's fetched from OSV.dev once, ever, across every
+    repository Compass analyzes, keyed by the advisory id itself
+    (``osv_id``, a natural TEXT primary key -- no synthetic id needed).
+    ``data`` is the raw OSV vulnerability JSON, verbatim; ``fetched_at`` is
+    when it was cached, purely informational (there is no TTL/eviction for
+    this table -- a published advisory's own content essentially never
+    changes after the fact in a way that would matter here).
+    """
+
+    __tablename__ = "osv_cache"
+
+    osv_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

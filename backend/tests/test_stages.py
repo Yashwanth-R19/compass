@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import insert, select
 
 from app.db.models import (
@@ -18,7 +19,7 @@ from app.db.models import (
     StageStatus,
 )
 from app.db.wipe import prune_run
-from app.jobs.stages import ALL_STAGES, create_pending_stages
+from app.jobs.stages import ALL_STAGES, FACT_STAGES, INSIGHT_STAGES, create_pending_stages, stage
 
 
 def _make_repo(db_session, url: str) -> uuid.UUID:
@@ -154,3 +155,131 @@ def test_prune_run_removes_only_that_runs_insight_rows(db_session):
     # repo_paths is never touched by prune_run -- it's permanent, see
     # app/db/models.py RepoPath docstring.
     assert db_session.scalar(select(RepoPath).where(RepoPath.id == path_id)) is not None
+
+
+# ---------------------------------------------------------------------------
+# Session 10, Part E/G: the ``optional`` stage parameter.
+# ---------------------------------------------------------------------------
+
+
+def test_thirteen_stage_final_order(db_session):
+    """Session 10 Part F: "13 stages, and this is the end state for the
+    whole plan. No later session adds one." -- pins the exact, final
+    canonical order."""
+    assert [s.name for s in FACT_STAGES] == [
+        "clone",
+        "mine",
+        "structure",
+        "persist_facts",
+        "secrets",
+    ]
+    assert [s.name for s in INSIGHT_STAGES] == [
+        "coupling",
+        "subsystems",
+        "architecture",
+        "risk",
+        "knowledge",
+        "onboarding",
+        "security",
+        "rank",
+    ]
+    assert len(ALL_STAGES) == 13
+
+
+def test_optional_stage_that_raises_marks_itself_failed_and_leaves_run_running(db_session):
+    """Part E: an optional stage that raises is marked failed with its
+    error, and the run continues -- the OWNING analysis_runs row is NOT
+    marked failed."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/optional-stage-fail")
+    run_id = _make_run(db_session, repo_id)
+    create_pending_stages(run_id, db_session)
+    db_session.commit()
+
+    # No pytest.raises: optional=True SWALLOWS the exception (see the
+    # dedicated swallowing test below) -- reaching this line at all is part
+    # of what's under test.
+    with stage(run_id, "security", db_session, optional=True):
+        raise ValueError("simulated OSV outage")
+
+    stage_row = db_session.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == run_id, AnalysisStage.name == "security"
+        )
+    )
+    assert stage_row.status == StageStatus.failed
+    assert "simulated OSV outage" in stage_row.error
+
+    run_row = db_session.get(AnalysisRun, run_id)
+    assert run_row.status == AnalysisRunStatus.running  # untouched, NOT failed
+    assert run_row.error is None
+
+
+def test_optional_stage_swallows_exception_so_caller_can_continue(db_session):
+    """The realistic call shape run_ingestion_job actually uses: `with
+    stage(..., optional=True):` with no surrounding try/except -- the
+    exception must not propagate at all, unlike the non-optional case."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/optional-stage-swallow")
+    run_id = _make_run(db_session, repo_id)
+    create_pending_stages(run_id, db_session)
+    db_session.commit()
+
+    # No pytest.raises here -- reaching the line after the `with` block
+    # proves the exception was swallowed.
+    with stage(run_id, "security", db_session, optional=True) as summary:
+        summary["never_written"] = True
+        raise RuntimeError("boom")
+    reached_here = True
+    assert reached_here
+
+    stage_row = db_session.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == run_id, AnalysisStage.name == "security"
+        )
+    )
+    assert stage_row.status == StageStatus.failed
+    assert stage_row.summary is None  # never committed -- the exception rolled it back
+
+
+def test_non_optional_stage_that_raises_still_fails_the_whole_run(db_session):
+    """The default (optional=False) behavior is unchanged: both the stage
+    AND the owning run are marked failed, and the exception re-raises."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/non-optional-stage-fail")
+    run_id = _make_run(db_session, repo_id)
+    create_pending_stages(run_id, db_session)
+    db_session.commit()
+
+    with pytest.raises(RuntimeError), stage(run_id, "risk", db_session):
+        raise RuntimeError("real failure")
+
+    stage_row = db_session.scalar(
+        select(AnalysisStage).where(AnalysisStage.run_id == run_id, AnalysisStage.name == "risk")
+    )
+    assert stage_row.status == StageStatus.failed
+
+    run_row = db_session.get(AnalysisRun, run_id)
+    assert run_row.status == AnalysisRunStatus.failed
+    assert run_row.error == "real failure"
+
+
+def test_optional_stage_failure_lets_subsequent_stages_still_run(db_session):
+    """Part E/G: "lets subsequent stages run" -- a failed optional
+    "security" stage must not prevent "rank" from running right after it,
+    the exact sequence run_ingestion_job's INSIGHT_STAGES loop relies on."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/optional-stage-continues")
+    run_id = _make_run(db_session, repo_id)
+    create_pending_stages(run_id, db_session)
+    db_session.commit()
+
+    with stage(run_id, "security", db_session, optional=True):
+        raise RuntimeError("OSV outage")
+
+    with stage(run_id, "rank", db_session) as summary:
+        summary["findings_ranked"] = 0
+
+    rank_row = db_session.scalar(
+        select(AnalysisStage).where(AnalysisStage.run_id == run_id, AnalysisStage.name == "rank")
+    )
+    assert rank_row.status == StageStatus.done
+
+    run_row = db_session.get(AnalysisRun, run_id)
+    assert run_row.status == AnalysisRunStatus.running  # the run is still healthy

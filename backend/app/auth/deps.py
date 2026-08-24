@@ -107,9 +107,28 @@ def require_repo_access(
     )
 
 
+def secret_findings_visible(repo: Repo, user: User | None) -> bool:
+    """Session 10, Part D.4: secret findings on a PRIVATE repo are visible
+    ONLY to the repo's owner -- never through a share link, even a valid,
+    unrevoked one for the exact run being requested. ``require_repo_access``
+    already grants that share-link access for every OTHER repo-scoped
+    endpoint; this is the one deliberate exception, layered ON TOP OF (not
+    instead of) the normal access check by ``GET /repos/{id}/secrets``,
+    which calls both. A public repo has no such restriction -- its code is
+    already public, and a share link is never even needed to reach it.
+
+    "A share link is for showing someone your architecture, not your leaked
+    credentials" (session 10 Part D.4).
+    """
+    if not repo.is_private:
+        return True
+    return user is not None and user.id == repo.owner_user_id
+
+
 __all__ = [
     "current_user_optional",
     "current_user_required",
     "has_repo_scope",
     "require_repo_access",
+    "secret_findings_visible",
 ]

@@ -5,10 +5,10 @@ from pathlib import PurePosixPath
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Commit, Dependency, File, RepoManifest, RepoPath
+from app.db.models import Commit, Dependency, DependencyDeclared, File, RepoManifest, RepoPath
 from app.db.models import Symbol as SymbolRow
 from app.db.wipe import wipe_facts
-from app.ingestion.manifests import ManifestRow
+from app.ingestion.manifests import DeclaredDependency, ManifestRow
 from app.ingestion.miner import MinedRepo
 from app.languages.base import DependencyEdge, Symbol
 
@@ -92,12 +92,19 @@ def persist_facts(
     dependencies: list[DependencyEdge],
     symbols: list[tuple[str, Symbol]],
     manifests: list[ManifestRow],
+    declared_dependencies: list[DeclaredDependency],
     session: Session,
 ) -> None:
     """Bulk-write mined commits/files, structural dependency edges, symbols,
-    and manifests for ``repo_id`` -- the "persist_facts" stage
-    (app/jobs/stages.py), run only when the miner actually ran (i.e.
-    head_sha changed; see app/jobs/runner.py's reuse-facts check).
+    manifests, and declared dependencies for ``repo_id`` -- the
+    "persist_facts" stage (app/jobs/stages.py), run only when the miner
+    actually ran (i.e. head_sha changed; see app/jobs/runner.py's
+    reuse-facts check).
+
+    ``declared_dependencies`` (session 10, Part C) is written to
+    ``dependencies_declared``, resolving each row's ``manifest_path`` to a
+    ``repo_paths.id`` the SAME way every other path here is -- interned
+    below alongside every other kind of path this function persists.
 
     Wipes and fully replaces commits/files/dependencies/symbols/
     repo_manifests via ``wipe_facts``, but INTERNS PATHS IDEMPOTENTLY: only
@@ -135,6 +142,8 @@ def persist_facts(
         all_paths.add(path)
     for manifest in manifests:
         all_paths.add(manifest.path)
+    for dep in declared_dependencies:
+        all_paths.add(dep.manifest_path)
 
     existing_paths = set(
         session.scalars(select(RepoPath.path).where(RepoPath.repo_id == repo_id)).all()
@@ -233,3 +242,18 @@ def persist_facts(
     ]
     if manifest_rows:
         session.execute(insert(RepoManifest), manifest_rows)
+
+    declared_dependency_rows = [
+        {
+            "repo_id": repo_id,
+            "ecosystem": dep.ecosystem,
+            "package_name": dep.package_name,
+            "version": dep.version,
+            "is_direct": dep.is_direct,
+            "manifest_path_id": path_id_by_path[dep.manifest_path],
+            "scope": dep.scope,
+        }
+        for dep in declared_dependencies
+    ]
+    if declared_dependency_rows:
+        session.execute(insert(DependencyDeclared), declared_dependency_rows)

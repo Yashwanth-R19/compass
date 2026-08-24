@@ -22,6 +22,7 @@ from app.engines.module_coupling import ModuleCouplingEngine
 from app.engines.overlay import OverlayEngine
 from app.engines.passport import PassportEngine
 from app.engines.risk import RiskEngine
+from app.engines.security import SecurityEngine, fetch_and_persist_vulnerabilities
 from app.engines.subsystems import SubsystemEngine
 from app.engines.test_gaps import TestGapEngine
 from app.engines.tour import TourEngine
@@ -67,7 +68,15 @@ FACT_STAGES: tuple[Stage, ...] = (
     Stage("mine", "fact"),
     Stage("structure", "fact"),
     Stage("persist_facts", "fact"),
+    Stage("secrets", "fact"),
 )
+"""Session 10, Part F: ``secrets`` runs LAST among the FACT stages, AFTER
+``persist_facts`` -- it needs BOTH the clone (for ``git log -p``) and
+interned ``repo_paths`` ids (for ``secret_hits.path_id``), and only
+``persist_facts`` produces the second. This is why the clone must now
+survive one stage longer than it used to -- see
+``app/jobs/runner.py``'s restructured clone-deletion point, moved from
+immediately after ``persist_facts`` to immediately after ``secrets``."""
 
 INSIGHT_STAGES: tuple[Stage, ...] = (
     Stage("coupling", "insight", (CouplingEngine().run,)),
@@ -82,8 +91,23 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
         "insight",
         (TourEngine().run, GlossaryEngine().run, HealthEngine().run, PassportEngine().run),
     ),
+    Stage("security", "insight", (fetch_and_persist_vulnerabilities, SecurityEngine().run)),
     Stage("rank", "insight", (FindingsRankEngine().run,)),
 )
+"""Session 10, Part F: ``security`` is placed LAST before ``rank`` --
+deliberately, so its network latency (the OSV.dev lookup) is fully hidden
+behind progressive reveal: every other insight tab has already resolved by
+the time a user could even notice this one is still working.
+``fetch_and_persist_vulnerabilities`` (app/engines/security.py) is NOT an
+``Engine`` -- it's the one deliberate exception to "every insight stage is
+pure DB-only" in this whole pipeline, since it makes a live OSV.dev call.
+``SecurityEngine`` runs second, reading the ``vulnerabilities`` rows that
+function just wrote for this run_id (load-bearing order, same "tuple order
+is execution order" rule every other multi-engine stage follows) alongside
+``secret_hits`` (Facts, written by the earlier "secrets" FACT stage).
+``run_ingestion_job`` marks THIS stage ``optional=True`` when calling
+``stage()`` -- a total OSV outage fails only this one stage, never the
+whole run (app/jobs/stages.py::stage's ``optional`` parameter)."""
 """Fixed order, load-bearing (CLAUDE.md "Engines" section):
 
 - "subsystems" needs Coupling's persisted rows (SubsystemEngine's graph
@@ -133,8 +157,16 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
   onboarding-difficulty formula's inputs are otherwise all already-computed
   by that point. Reordering PassportEngine ahead of HealthEngine within this
   tuple would make it read a row that doesn't exist yet for this run_id.
+- "security" (session 10) needs nothing from an earlier INSIGHT stage --
+  ``fetch_and_persist_vulnerabilities`` reads only ``dependencies_declared``
+  (Facts) and ``SecurityEngine`` reads only ``secret_hits`` (Facts) plus
+  ``vulnerabilities`` (written earlier in this SAME stage, by the callable
+  immediately before it in the tuple). It's placed here, second-to-last,
+  purely to hide its network latency behind progressive reveal -- every
+  other tab has already resolved by the time a user would notice this one
+  still working.
 - "rank" needs every other engine's findings already written for this
-  run_id.
+  run_id -- which is why it must be LAST, after "security" too.
 
 Do not reorder."""
 
@@ -165,7 +197,9 @@ def _get_stage_row(run_id: uuid.UUID, name: str, session: Session) -> AnalysisSt
 
 
 @contextmanager
-def stage(run_id: uuid.UUID, name: str, session: Session) -> Iterator[dict[str, Any]]:
+def stage(
+    run_id: uuid.UUID, name: str, session: Session, *, optional: bool = False
+) -> Iterator[dict[str, Any]]:
     """Marks the ``analysis_stages`` row for ``(run_id, name)`` running ->
     done/failed, COMMITTING at each transition -- the commit-per-stage is
     the whole point of progressive reveal (Part B of the phase spec); never
@@ -173,13 +207,30 @@ def stage(run_id: uuid.UUID, name: str, session: Session) -> Iterator[dict[str, 
 
     Yields a mutable ``dict`` the caller fills in as the stage's summary
     (counts, flags, ...); on success it's stored verbatim as the row's
-    ``summary`` JSONB. On exception, the stage row AND the owning
-    ``analysis_runs`` row are marked failed (with the exception's message)
-    and committed, and the exception re-raises so ``run_ingestion_job``'s
-    outer handler can still do its own cleanup (deleting the clone) and mark
-    the ``jobs``/``repos`` rows -- crucially, WITHOUT touching
-    ``repos.current_run_id``, so a failed re-analysis never blanks out a
-    repo that already had a good run (Part C, step 7).
+    ``summary`` JSONB.
+
+    On exception, the stage row is ALWAYS marked failed (with the
+    exception's message) and committed. What happens to the OWNING
+    ``analysis_runs`` row, and whether the exception re-raises, depends on
+    ``optional`` (session 10, Part E):
+
+    - **``optional=False`` (default, every stage before session 10)** --
+      unchanged behavior: the ``analysis_runs`` row is ALSO marked failed,
+      and the exception re-raises, so ``run_ingestion_job``'s outer handler
+      can still do its own cleanup (deleting the clone) and mark the
+      ``jobs``/``repos`` rows -- crucially, WITHOUT touching
+      ``repos.current_run_id``, so a failed re-analysis never blanks out a
+      repo that already had a good run (Part C, step 7).
+    - **``optional=True``** -- the run is left alone (NOT marked failed) and
+      the exception is SWALLOWED here, not re-raised: the caller's loop over
+      ``INSIGHT_STAGES`` continues to the next stage as if this one had
+      simply finished. This exists because a third-party API outage (the
+      "security" stage's OSV.dev lookup) must never fail a whole analysis --
+      it's the mechanism session 11's "two working sections, one errored"
+      security page depends on: the run still reaches ``ready``, and the
+      failed stage's own row (status + ``error``) is exactly what a later
+      session's UI reads to show that one section as errored rather than
+      pending forever or silently empty.
     """
     row = _get_stage_row(run_id, name, session)
     row.status = StageStatus.running
@@ -196,14 +247,17 @@ def stage(run_id: uuid.UUID, name: str, session: Session) -> Iterator[dict[str, 
         row.finished_at = datetime.now(UTC)
         row.error = str(exc)
 
-        run = session.get(AnalysisRun, run_id)
-        if run is not None:
-            run.status = AnalysisRunStatus.failed
-            run.error = str(exc)
-            run.finished_at = datetime.now(UTC)
+        if not optional:
+            run = session.get(AnalysisRun, run_id)
+            if run is not None:
+                run.status = AnalysisRunStatus.failed
+                run.error = str(exc)
+                run.finished_at = datetime.now(UTC)
 
         session.commit()
-        raise
+
+        if not optional:
+            raise
     else:
         row.status = StageStatus.done
         row.finished_at = datetime.now(UTC)

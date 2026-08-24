@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.analysis import blast_radius
 from app.analysis.identities import mask_email
-from app.auth.deps import require_repo_access
+from app.auth.deps import current_user_optional, require_repo_access, secret_findings_visible
 from app.db.base import get_db
 from app.db.models import (
     AnalysisStage,
@@ -24,11 +24,14 @@ from app.db.models import (
     ModuleCoupling,
     Repo,
     RepoPassport,
+    SecretHit,
     StageStatus,
     Subsystem,
     SubsystemMember,
     TourStop,
     TruckFactor,
+    User,
+    Vulnerability,
 )
 from app.db.paths import load_path_id_map, load_path_map
 from app.db.runs import resolve_run_id
@@ -87,6 +90,8 @@ from app.schemas.analysis import (
     PassportResponse,
     RiskFileOut,
     RiskResponse,
+    SecretHitOut,
+    SecretsResponse,
     SubsystemMemberOut,
     SubsystemOut,
     SubsystemsResponse,
@@ -97,6 +102,8 @@ from app.schemas.analysis import (
     TruckFactorRemovalStepOut,
     TruckFactorResponse,
     UnreferencedFileOut,
+    VulnerabilitiesResponse,
+    VulnerabilityOut,
 )
 
 KNOWLEDGE_INTERPRETATION_NOTE = (
@@ -171,7 +178,20 @@ def _pending_response(run_id: uuid.UUID, stage_name: str, db: Session) -> JSONRe
         )
     )
     status = stage_row.status if stage_row is not None else StageStatus.pending
-    if status in (StageStatus.done, StageStatus.skipped):
+    # Session 10: StageStatus.failed is ALSO a terminal state, not just
+    # done/skipped -- added specifically for the "security" stage, which
+    # can be optional=True (app/jobs/stages.py) and therefore reach
+    # "failed" while its OWNING run still reaches "ready". Before this, a
+    # failed stage's endpoint 202'd forever (never wrong for a NON-optional
+    # stage failure, since that already drags the whole run to "failed"
+    # too, and every later endpoint stays legitimately unresolvable for
+    # that run) -- but for an optional stage specifically, "202 forever" is
+    # actively misleading: the stage will never finish, and the run around
+    # it already has. Proceeding to read the (likely empty, since the
+    # failing stage's own transaction rolled back) real data is honest;
+    # the stage's own status+error, already exposed by GET /repos/{id}/status,
+    # is what a UI reads to render that section as errored specifically.
+    if status in (StageStatus.done, StageStatus.skipped, StageStatus.failed):
         return None
     return JSONResponse(status_code=202, content={"stage": stage_name, "status": status.value})
 
@@ -1311,4 +1331,148 @@ def get_city(
         files=CityFilesOut(columns=CITY_FILE_COLUMNS, rows=rows),
         contributors=contributors,
         bounds=bounds,
+    )
+
+
+_VULN_SEVERITY_SORT_RANK = {"high": 2, "med": 1, "low": 0, "unknown": -1}
+
+
+@router.get("/repos/{repo_id}/secrets", response_model=SecretsResponse)
+def get_secrets(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+    user: User | None = Depends(current_user_optional),
+) -> SecretsResponse | JSONResponse:
+    """Session 10, Part F: every secret detected across this repo's FULL
+    commit history (app/security/scanner.py), Facts-layer (filtered by
+    ``repo_id`` only, not run-scoped -- history scanning doesn't depend on
+    which analysis run is selected). Gates on the "secrets" FACT stage.
+
+    **Part D.4:** secret findings on a PRIVATE repo are visible ONLY to the
+    repo's owner -- NEVER through a share link, even a valid, unrevoked one
+    for the exact run being requested. ``require_repo_access`` already
+    grants that share-link access for every OTHER repo-scoped endpoint;
+    ``secret_findings_visible`` (app/auth/deps.py) is the one deliberate
+    exception, checked here on top of (not instead of) the normal access
+    check.
+    """
+    if not secret_findings_visible(repo, user):
+        raise HTTPException(
+            status_code=403,
+            detail="Secret findings are visible only to this repository's owner.",
+        )
+
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "secrets", db)
+    if pending is not None:
+        return pending
+
+    stage_row = db.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == resolved_run_id, AnalysisStage.name == "secrets"
+        )
+    )
+    stage_summary = (stage_row.summary or {}) if stage_row is not None else {}
+
+    rows = db.scalars(
+        select(SecretHit)
+        .where(SecretHit.repo_id == repo_id)
+        .order_by(SecretHit.still_in_head.desc(), SecretHit.committed_at.desc())
+    ).all()
+    path_map = load_path_map(repo_id, db)
+
+    hits = [
+        SecretHitOut(
+            rule_id=h.rule_id,
+            description=h.description,
+            file_path=path_map.get(h.path_id) if h.path_id is not None else None,
+            commit_sha=h.commit_sha,
+            committed_at=h.committed_at.isoformat(),
+            line_number=h.line_number,
+            redacted_preview=h.redacted_preview,
+            entropy=h.entropy,
+            still_in_head=h.still_in_head,
+        )
+        for h in rows
+    ]
+
+    return SecretsResponse(
+        repo_id=repo_id,
+        hits=hits,
+        still_in_head_count=sum(1 for h in rows if h.still_in_head),
+        total=len(rows),
+        truncated=bool(stage_summary.get("truncated", False)),
+        truncation_reason=stage_summary.get("truncation_reason"),
+    )
+
+
+@router.get("/repos/{repo_id}/vulnerabilities", response_model=VulnerabilitiesResponse)
+def get_vulnerabilities(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> VulnerabilitiesResponse | JSONResponse:
+    """Session 10, Part F: dependency vulnerabilities for the resolved run
+    (app/engines/security.py::fetch_and_persist_vulnerabilities +
+    SecurityEngine), read straight, not recomputed. Gates on the "security"
+    stage -- which, being ``optional=True`` (app/jobs/stages.py), can reach
+    "failed" (an OSV outage) while the run itself still reaches "ready";
+    ``_pending_response`` treats a failed stage as terminal too (session
+    10), so this returns the (honestly empty, since that stage's own
+    transaction rolled back) result rather than 202-ing forever.
+
+    ``no_supported_manifest`` distinguishes "nothing was scanned" from
+    "nothing was found" (Part C) -- read back from the earlier "structure"
+    stage's own summary, the same pattern ``/subsystems``' ``modularity``
+    already uses.
+    """
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "security", db)
+    if pending is not None:
+        return pending
+
+    structure_stage = db.scalar(
+        select(AnalysisStage).where(
+            AnalysisStage.run_id == resolved_run_id, AnalysisStage.name == "structure"
+        )
+    )
+    manifest_found = bool(
+        (structure_stage.summary or {}).get("dependency_manifest_found", False)
+        if structure_stage is not None
+        else False
+    )
+
+    rows = db.scalars(
+        select(Vulnerability).where(Vulnerability.analysis_run_id == resolved_run_id)
+    ).all()
+    ordered = sorted(
+        rows,
+        key=lambda v: (_VULN_SEVERITY_SORT_RANK.get(v.severity, -1), v.cvss_score or 0.0),
+        reverse=True,
+    )
+
+    vulnerabilities = [
+        VulnerabilityOut(
+            ecosystem=v.ecosystem,
+            package_name=v.package_name,
+            version=v.version,
+            osv_id=v.osv_id,
+            aliases=v.aliases,
+            severity=v.severity,
+            cvss_score=v.cvss_score,
+            summary=v.summary,
+            fixed_version=v.fixed_version,
+            published_at=v.published_at.isoformat() if v.published_at else None,
+            is_direct=v.is_direct,
+        )
+        for v in ordered
+    ]
+
+    return VulnerabilitiesResponse(
+        repo_id=repo_id,
+        vulnerabilities=vulnerabilities,
+        no_supported_manifest=not manifest_found,
     )

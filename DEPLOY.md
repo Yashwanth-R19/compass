@@ -162,6 +162,7 @@ blueprint is created (**Environment** tab on the `compass-api` service):
 | `COMPASS_TOKEN_ENCRYPTION_KEY` | The Fernet key generated in step 5 (same value as the repository secret in step 6) |
 | `COMPASS_FRONTEND_URL` | Your Vercel deployment URL — same value as `FRONTEND_ORIGIN` above, used for building OAuth redirect URLs rather than for CORS matching |
 | `COMPASS_ENV` | `production` — **required** for the app to refuse to start with a missing/invalid `COMPASS_TOKEN_ENCRYPTION_KEY` instead of silently deriving an ephemeral one |
+| `COMPASS_SECRET_SCAN_SALT` | A random string, e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"` — not startup-fatal like `COMPASS_TOKEN_ENCRYPTION_KEY` if left unset, but the shipped dev default is public (it's in this repo's `.env.example`), so set a real value here rather than deploying with it |
 
 `ENV`, `COMPASS_WORKER_MODE`, `COMPASS_MAX_REPO_MB`, and the
 `COMPASS_RATE_LIMIT_*`/`COMPASS_MAX_CONCURRENT_RUNS` settings already have

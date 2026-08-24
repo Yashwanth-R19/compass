@@ -473,3 +473,51 @@ class CityResponse(BaseModel):
     files: CityFilesOut
     contributors: list[CityContributorOut]
     bounds: CityBounds
+
+
+# Session 10: secrets-in-history and dependency vulnerabilities (mirrors
+# app/security/scanner.py's SecretHit / app/db/models.py's Vulnerability).
+# Neither ``SecretHitOut`` nor anything downstream of it carries a field a
+# raw secret value could ever be put in -- see scanner.py's five
+# never-re-leak rules.
+
+
+class SecretHitOut(BaseModel):
+    rule_id: str
+    description: str
+    file_path: str | None
+    commit_sha: str
+    committed_at: str
+    line_number: int | None
+    redacted_preview: str | None
+    entropy: float | None
+    still_in_head: bool
+
+
+class SecretsResponse(BaseModel):
+    repo_id: uuid.UUID
+    hits: list[SecretHitOut]
+    still_in_head_count: int
+    total: int
+    truncated: bool
+    truncation_reason: str | None
+
+
+class VulnerabilityOut(BaseModel):
+    ecosystem: str
+    package_name: str
+    version: str
+    osv_id: str
+    aliases: list[str]
+    severity: str
+    cvss_score: float | None
+    summary: str
+    fixed_version: str | None
+    published_at: str | None
+    is_direct: bool
+
+
+class VulnerabilitiesResponse(BaseModel):
+    repo_id: uuid.UUID
+    vulnerabilities: list[VulnerabilityOut]
+    no_supported_manifest: bool

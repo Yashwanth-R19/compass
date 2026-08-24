@@ -737,3 +737,49 @@ export interface CityResponse {
   contributors: CityContributorOut[];
   bounds: CityBounds;
 }
+
+// Session 10: secrets-in-history and dependency vulnerabilities (mirrors
+// backend/app/schemas/analysis.py's SecretHitOut/SecretsResponse/
+// VulnerabilityOut/VulnerabilitiesResponse). Types only, per this
+// session's scope -- hooks, pages, and copy wiring are session 11's job.
+
+export interface SecretHitOut {
+  rule_id: string;
+  description: string;
+  file_path: string | null;
+  commit_sha: string;
+  committed_at: string;
+  line_number: number | null;
+  redacted_preview: string | null;
+  entropy: number | null;
+  still_in_head: boolean;
+}
+
+export interface SecretsResponse {
+  repo_id: string;
+  hits: SecretHitOut[];
+  still_in_head_count: number;
+  total: number;
+  truncated: boolean;
+  truncation_reason: string | null;
+}
+
+export interface VulnerabilityOut {
+  ecosystem: string;
+  package_name: string;
+  version: string;
+  osv_id: string;
+  aliases: string[];
+  severity: string;
+  cvss_score: number | null;
+  summary: string;
+  fixed_version: string | null;
+  published_at: string | null;
+  is_direct: boolean;
+}
+
+export interface VulnerabilitiesResponse {
+  repo_id: string;
+  vulnerabilities: VulnerabilityOut[];
+  no_supported_manifest: boolean;
+}

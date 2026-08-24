@@ -6,12 +6,23 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
+from app.config import settings
 from app.db.base import SessionLocal
-from app.db.models import AnalysisRun, AnalysisRunStatus, File, Job, JobStatus, Repo, RepoStatus
+from app.db.models import (
+    AnalysisRun,
+    AnalysisRunStatus,
+    AnalysisStage,
+    File,
+    Job,
+    JobStatus,
+    Repo,
+    RepoStatus,
+)
+from app.db.paths import load_path_id_map
 from app.engines.context import RunContext
 from app.ingestion.clone_url import resolve_clone_url
 from app.ingestion.cloner import clone_repo, get_remote_head_sha
-from app.ingestion.manifests import extract_manifests
+from app.ingestion.manifests import extract_declared_dependencies, extract_manifests
 from app.ingestion.miner import mine_repo
 from app.ingestion.persist import persist_facts
 from app.jobs.stages import (
@@ -22,6 +33,7 @@ from app.jobs.stages import (
     stage,
 )
 from app.languages.scanner import extract_structural_edges
+from app.security.scanner import persist_secret_hits, scan_history
 
 
 def run_ingestion_job(
@@ -31,14 +43,18 @@ def run_ingestion_job(
     triggered_by_user_id: uuid.UUID | None = None,
 ) -> None:
     """Create a new ``analysis_runs`` row and drive it through the FACT
-    stages (clone -> mine -> structure -> persist_facts, skipped entirely if
-    the remote head_sha is unchanged) and then the INSIGHT stages (coupling
-    -> subsystems -> architecture -> risk -> knowledge -> onboarding -> rank,
-    see ``app/jobs/stages.py::INSIGHT_STAGES`` for the canonical, load-bearing
-    order), tracking progress on both the legacy ``jobs`` row and the
-    per-stage ``analysis_stages``
+    stages (clone -> mine -> structure -> persist_facts -> secrets, skipped
+    entirely if the remote head_sha is unchanged) and then the INSIGHT
+    stages (coupling -> subsystems -> architecture -> risk -> knowledge ->
+    onboarding -> security -> rank, see ``app/jobs/stages.py::INSIGHT_STAGES``
+    for the canonical, load-bearing order), tracking progress on both the
+    legacy ``jobs`` row and the per-stage ``analysis_stages``
     rows throughout (Phase 02: Facts/Insight split + progressive reveal,
     CLAUDE.md).
+
+    Session 10: the clone is now deleted after the "secrets" FACT stage
+    (which needs it for ``git log -p``), not immediately after
+    "persist_facts" -- see the restructured body below.
 
     Transport-agnostic by design: called from FastAPI BackgroundTasks
     (``worker_mode="inline"``/``"inline_fallback"``, app/jobs/dispatch.py) and
@@ -116,13 +132,37 @@ def run_ingestion_job(
         )
 
         if reuse_facts:
-            for s in FACT_STAGES:
-                mark_stage_skipped(
-                    run_id,
-                    s.name,
-                    session,
-                    {"reason": f"head_sha {remote_head_sha[:8]} unchanged; facts reused"},
+            # Session 10: GET /repos/{id}/vulnerabilities reads
+            # "dependency_manifest_found" back from the "structure" stage's
+            # own summary (see that endpoint's docstring) -- on a reuse run
+            # "structure" is marked skipped with a generic reason instead of
+            # actually running extract_declared_dependencies again, so that
+            # flag has to be carried forward from the PREVIOUS run's
+            # "structure" stage explicitly, or every re-analysis of an
+            # unchanged repo would wrongly report "no supported manifest"
+            # even when one genuinely exists (dependencies_declared itself
+            # is unaffected -- it's Facts, untouched by this skip -- only
+            # the stage-summary teaser needs this carry-forward).
+            previous_manifest_found: bool | None = None
+            if previous_run_id is not None:
+                previous_structure_row = session.scalar(
+                    select(AnalysisStage).where(
+                        AnalysisStage.run_id == previous_run_id,
+                        AnalysisStage.name == "structure",
+                    )
                 )
+                if previous_structure_row is not None and previous_structure_row.summary:
+                    previous_manifest_found = previous_structure_row.summary.get(
+                        "dependency_manifest_found"
+                    )
+
+            for s in FACT_STAGES:
+                summary: dict = {
+                    "reason": f"head_sha {remote_head_sha[:8]} unchanged; facts reused"
+                }
+                if s.name == "structure" and previous_manifest_found is not None:
+                    summary["dependency_manifest_found"] = previous_manifest_found
+                mark_stage_skipped(run_id, s.name, session, summary)
             commit_count = session.scalar(select(Repo.commit_count).where(Repo.id == repo_id)) or 0
         else:
             _update_repo(session, repo_id, status=RepoStatus.mining)
@@ -146,6 +186,12 @@ def run_ingestion_job(
                 dependencies = scan_result.edges
                 symbols = scan_result.symbols
                 manifests = extract_manifests(clone_path)
+                # Session 10, Part C: a SEPARATE pass parsing the same four
+                # supported dependency-manifest formats into structured
+                # rows for `dependencies_declared` -- see
+                # app/ingestion/manifests.py's module docstring for why
+                # this isn't folded into `manifests` above.
+                declared_dependencies, manifest_found = extract_declared_dependencies(clone_path)
                 # "dependencies" kept alongside "edges" (session 03's
                 # spec'd key) so RepoLayout's existing structure-stage pill
                 # (frontend/src/pages/RepoLayout.tsx::STAGE_SUMMARY_KEY,
@@ -157,16 +203,53 @@ def run_ingestion_job(
                 summary["symbols"] = len(symbols)
                 summary["manifests"] = len(manifests)
                 summary["by_language"] = scan_result.by_language
+                summary["declared_dependencies"] = len(declared_dependencies)
+                # Read back by GET /repos/{id}/vulnerabilities (session 10,
+                # Part F) to distinguish "no supported manifest" from
+                # "manifest present, genuinely zero vulnerabilities" --
+                # same "read a real column/teaser back from a stage's own
+                # summary" pattern /subsystems' `modularity` already uses.
+                summary["dependency_manifest_found"] = manifest_found
             _update_job(session, job_id, progress=55)
             session.commit()
 
             with stage(run_id, "persist_facts", session) as summary:
-                persist_facts(repo_id, mined, dependencies, symbols, manifests, session)
+                persist_facts(
+                    repo_id, mined, dependencies, symbols, manifests, declared_dependencies, session
+                )
                 summary["commits"] = len(mined.commits)
                 summary["files"] = len(mined.files)
 
+            # Session 10, Part F: "secrets" needs BOTH the clone (for
+            # `git log -p`) and interned repo_paths ids (for
+            # secret_hits.path_id) -- only persist_facts, just above,
+            # produces the second, which is why this FACT stage runs AFTER
+            # it rather than alongside "structure"/"mine". The clone
+            # therefore has to survive one stage longer than it used to;
+            # see the deletion point moved below, out of this stage's body.
+            with stage(run_id, "secrets", session) as summary:
+                path_id_map = load_path_id_map(repo_id, session)
+                scan_result_secrets = scan_history(
+                    clone_path, salt=settings.COMPASS_SECRET_SCAN_SALT
+                )
+                persist_secret_hits(repo_id, scan_result_secrets.hits, path_id_map, session)
+                summary["hits_found"] = len(scan_result_secrets.hits)
+                summary["still_in_head"] = sum(
+                    1 for h in scan_result_secrets.hits if h.still_in_head
+                )
+                summary["commits_scanned"] = scan_result_secrets.commits_scanned
+                summary["truncated"] = scan_result_secrets.truncated
+                if scan_result_secrets.truncation_reason:
+                    summary["truncation_reason"] = scan_result_secrets.truncation_reason
+
             # Clone is disposable and no longer needed -- everything from
             # here on is pure DB-only analysis (master-context.md sec 9).
+            # Session 10: this now happens AFTER "secrets" (see above), not
+            # immediately after persist_facts -- if any FACT stage between
+            # here and there raises, the exception propagates past this
+            # point with clone_path still set, and the outer try/finally at
+            # the bottom of this function deletes it on that failure path
+            # too (session 10 Known Hazard #6).
             _rmtree_force(clone_path)
             clone_path = None
             commit_count = len(mined.commits)
@@ -205,7 +288,11 @@ def run_ingestion_job(
                 session.commit()
                 continue
 
-            with stage(run_id, s.name, session) as summary:
+            # Session 10, Part E: "security" is the one optional stage --
+            # its OSV.dev lookup can fail for reasons entirely outside
+            # Compass's control, and that must fail only this stage, never
+            # the whole run (app/jobs/stages.py::stage's `optional` param).
+            with stage(run_id, s.name, session, optional=(s.name == "security")) as summary:
                 assert s.callables  # every insight stage has at least one
                 for engine_callable in s.callables:
                     summary.update(engine_callable(ctx, session))
