@@ -14,12 +14,15 @@ from app.db.models import (
     FileExpertise,
     FileMetrics,
     Finding,
+    GlossaryTerm,
     Health,
     ModuleCoupling,
     RepoManifest,
+    RepoPassport,
     Subsystem,
     SubsystemMember,
     Symbol,
+    TourStop,
     TruckFactor,
 )
 
@@ -63,12 +66,12 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
     prune the current run.
 
     Insight tables only ever reference Facts tables (repo_paths) or each
-    other in one direction (subsystem_members/module_coupling -> subsystems),
-    so explicit deletes here run those two before ``Subsystem`` itself --
-    belt-and-suspenders alongside Postgres's own ON DELETE CASCADE, matching
-    every other table in this function being deleted explicitly even though
-    their FK to analysis_runs would also cascade. Caller owns the
-    transaction, same as wipe_facts.
+    other in one direction (subsystem_members/module_coupling/tour_stops ->
+    subsystems), so explicit deletes here run those three before
+    ``Subsystem`` itself -- belt-and-suspenders alongside Postgres's own ON
+    DELETE CASCADE, matching every other table in this function being
+    deleted explicitly even though their FK to analysis_runs would also
+    cascade. Caller owns the transaction, same as wipe_facts.
     """
     session.execute(delete(Coupling).where(Coupling.analysis_run_id == run_id))
     session.execute(delete(FileMetrics).where(FileMetrics.analysis_run_id == run_id))
@@ -76,6 +79,9 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
     session.execute(delete(Health).where(Health.analysis_run_id == run_id))
     session.execute(delete(ModuleCoupling).where(ModuleCoupling.analysis_run_id == run_id))
     session.execute(delete(EntryPoint).where(EntryPoint.analysis_run_id == run_id))
+    # Session 06: TourStop.subsystem_id FKs Subsystem too (nullable) -- goes
+    # before the Subsystem delete below, same reasoning as SubsystemMember.
+    session.execute(delete(TourStop).where(TourStop.analysis_run_id == run_id))
     session.execute(
         delete(SubsystemMember).where(
             SubsystemMember.subsystem_id.in_(
@@ -88,4 +94,7 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
     session.execute(delete(FileExpertise).where(FileExpertise.analysis_run_id == run_id))
     session.execute(delete(Contributor).where(Contributor.analysis_run_id == run_id))
     session.execute(delete(TruckFactor).where(TruckFactor.analysis_run_id == run_id))
+    # Session 06: GlossaryTerm/RepoPassport reference only analysis_runs/repos.
+    session.execute(delete(GlossaryTerm).where(GlossaryTerm.analysis_run_id == run_id))
+    session.execute(delete(RepoPassport).where(RepoPassport.analysis_run_id == run_id))
     session.execute(delete(AnalysisRun).where(AnalysisRun.id == run_id))

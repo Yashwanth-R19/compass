@@ -83,7 +83,7 @@ def test_findings_endpoint_gates_on_rank_stage_not_earlier_finding_stages(client
     repo_id = _make_repo(db_session, "https://github.com/fixture/status-findings-gate")
     run_id = _make_run_with_pending_stages(db_session, repo_id)
 
-    for name in ("coupling", "subsystems", "architecture", "risk", "health"):
+    for name in ("coupling", "subsystems", "architecture", "risk", "knowledge", "onboarding"):
         _set_stage_status(db_session, run_id, name, StageStatus.done)
 
     still_pending = client.get(f"/repos/{repo_id}/findings")

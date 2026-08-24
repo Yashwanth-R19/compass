@@ -873,6 +873,126 @@ class Baseline(Base):
     p90: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class TourStop(Base):
+    """Insight (session 06): one stop in ``app/engines/tour.py``'s computed
+    guided reading order for a run. ``position`` is the 1-based reading
+    order (unique per run); ``path_id`` references the permanent
+    ``repo_paths.id``, same reasoning as every other per-file Insight column
+    (see ``FileMetrics``'s docstring). ``reason_code`` is the machine-readable
+    PRIMARY justification this stop was selected (one of "documentation",
+    "entry_point", "subsystem_anchor", "high_centrality", "widely_depended_on",
+    "hotspot" -- see TourEngine's module docstring for the priority order used
+    when a file qualifies under more than one rule). ``reason_detail`` is the
+    JSONB backing those numbers (in_degree/out_degree/pagerank/loc/complexity/
+    risk_score/risk_confidence/subsystem/top_expert/last_touched_at, PLUS a
+    nested ``"reasons"`` object recording every rule that fired for this
+    stop, not just the primary one, so the UI can show secondary
+    justifications) -- TourEngine guarantees this is never an empty object.
+    ``subsystem_id`` is the subsystem this stop's file belongs to (nullable
+    only because a run could in principle have zero subsystems, e.g. a
+    zero-file repo); ``ON DELETE CASCADE`` since a pruned subsystem set
+    means this stop's subsystem context no longer exists either.
+    """
+
+    __tablename__ = "tour_stops"
+    __table_args__ = (
+        UniqueConstraint("analysis_run_id", "position", name="uq_tour_stops_run_id_position"),
+        Index("ix_tour_stops_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    path_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("repo_paths.id", ondelete="CASCADE"), nullable=False
+    )
+    reason_code: Mapped[str] = mapped_column(Text, nullable=False)
+    reason_detail: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    subsystem_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("subsystems.id", ondelete="CASCADE"), nullable=True
+    )
+
+
+class GlossaryTerm(Base):
+    """Insight (session 06): one ranked domain-vocabulary term from
+    ``app/engines/glossary.py::GlossaryEngine``, mined from ``symbols.name``
+    values and file stems only -- never file contents (engines have no
+    filesystem access). ``score`` is the HEURISTIC
+    ``log(1 + occurrences) * (1 + subsystem_spread / total_subsystems)``
+    formula (see that engine's module docstring); ``subsystem_spread`` is how
+    many distinct subsystems contain an occurrence of this term.
+    ``defining_path_ids`` is up to 5 ``repo_paths.id`` values -- files
+    containing a SYMBOL (not just a filename) whose tokenized name includes
+    this term, the "go read this" links a glossary entry is useless without.
+    ``rank`` is 0-indexed, score desc, ties broken by term asc (determinism).
+    """
+
+    __tablename__ = "glossary_terms"
+    __table_args__ = (
+        Index("ix_glossary_terms_analysis_run_id", "analysis_run_id"),
+        Index("ix_glossary_terms_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    term: Mapped[str] = mapped_column(Text, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    occurrences: Mapped[int] = mapped_column(Integer, nullable=False)
+    subsystem_spread: Mapped[int] = mapped_column(Integer, nullable=False)
+    defining_path_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class RepoPassport(Base):
+    """Insight (session 06): one row per run, ``app/engines/passport.py::
+    PassportEngine`` -- pure aggregation over every other engine's output for
+    this run (must run after HealthEngine, in the same "onboarding" stage,
+    since ``data`` embeds the health row -- see app/jobs/stages.py). ``data``
+    is validated against ``app/engines/passport.py::RepoPassportData``
+    (a Pydantic model) before being stored, never a hand-built dict.
+    ``onboarding_difficulty``/``difficulty_breakdown`` are the EXPLICITLY
+    HEURISTIC 0-100 composite score and its component breakdown (raw +
+    normalized value per component) -- see that engine's module docstring;
+    NOT locked by master-context.md, same honesty convention as
+    ``HealthEngine``'s composite. Like ``Health``/``TruckFactor``, one row
+    per run -- UUID PK, not the bigint identity PK the two higher-volume
+    tables above use.
+    """
+
+    __tablename__ = "repo_passport"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    onboarding_difficulty: Mapped[float] = mapped_column(Float, nullable=False)
+    difficulty_breakdown: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
 class ShareLink(Base):
     """A share link grants read access to ONE analysis run, not to the
     repository (session 02, Part E/CLAUDE.md) -- ``run_id`` is a FK straight

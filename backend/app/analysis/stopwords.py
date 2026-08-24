@@ -61,7 +61,45 @@ _DOMAIN_STOPWORDS: frozenset[str] = frozenset(
 """Session 04 Part B's literal list -- generic, structurally-common terms
 that name a file's ROLE, not the domain it belongs to."""
 
-STOPWORDS: frozenset[str] = _PYTHON_KEYWORDS | _JS_TS_KEYWORDS | _JAVA_KEYWORDS | _DOMAIN_STOPWORDS
+_GENERIC_PROGRAMMING_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "get", "set", "add", "remove", "delete", "create", "update",
+        "find", "list", "new", "init", "main", "run", "exec", "handle",
+        "process", "parse", "build", "make", "test", "spec", "mock",
+        "util", "utils", "helper", "helpers", "common", "core", "base",
+        "impl", "abstract", "factory", "manager", "service", "controller",
+        "handler", "provider", "wrapper", "adapter", "data", "info",
+        "item", "items", "value", "values", "obj", "object", "type",
+        "types", "class", "interface", "enum", "const", "var", "temp",
+        "tmp", "foo", "bar",
+    }
+)  # fmt: skip
+"""Session 06 Part C's literal list -- generic verbs/nouns that name a
+symbol's ROLE in the code (a getter, a factory, a handler) rather than
+anything about the domain the codebase models. Kept separate from
+``_DOMAIN_STOPWORDS`` (session 04, tuned for subsystem-label naming) so each
+list stays independently auditable/tunable per plan/RULES.md sec 3, even
+though ``STOPWORDS`` below unions every set for both callers."""
+
+_FRAMEWORK_NOISE_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "react", "component", "props", "state", "hook", "use", "django",
+        "flask", "fastapi", "spring", "bean", "autowired", "express",
+        "router", "route", "middleware",
+    }
+)  # fmt: skip
+"""Session 06 Part C's literal list -- framework/library vocabulary that
+appears constantly across unrelated codebases using the same framework, so
+it never identifies THIS repo's domain."""
+
+STOPWORDS: frozenset[str] = (
+    _PYTHON_KEYWORDS
+    | _JS_TS_KEYWORDS
+    | _JAVA_KEYWORDS
+    | _DOMAIN_STOPWORDS
+    | _GENERIC_PROGRAMMING_STOPWORDS
+    | _FRAMEWORK_NOISE_STOPWORDS
+)
 
 # Inserts a split point between a lowercase/digit and a following uppercase
 # letter ("fooBar" -> "foo Bar"), and between a run of uppercase letters and

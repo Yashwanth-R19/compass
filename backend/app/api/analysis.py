@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.analysis.identities import mask_email
@@ -17,12 +17,15 @@ from app.db.models import (
     FileExpertise,
     FileMetrics,
     Finding,
+    GlossaryTerm,
     Health,
     ModuleCoupling,
     Repo,
+    RepoPassport,
     StageStatus,
     Subsystem,
     SubsystemMember,
+    TourStop,
     TruckFactor,
 )
 from app.db.paths import load_path_id_map, load_path_map
@@ -35,6 +38,7 @@ from app.engines.architecture import (
 from app.engines.context import RunContext
 from app.engines.coupling import confidence_hint, is_low_confidence
 from app.engines.module_coupling import is_module_coupling_low_confidence
+from app.engines.passport import RepoPassportData
 from app.engines.risk import max_coupling_by_path
 from app.schemas.analysis import (
     ArchitectureResponse,
@@ -51,6 +55,8 @@ from app.schemas.analysis import (
     ExpertiseResponse,
     FindingOut,
     FindingsResponse,
+    GlossaryResponse,
+    GlossaryTermOut,
     HealthResponse,
     HiddenDependencyOut,
     HiddenDependencyResponse,
@@ -60,11 +66,14 @@ from app.schemas.analysis import (
     LayeringViolationOut,
     ModuleCouplingPairOut,
     ModuleCouplingResponse,
+    PassportResponse,
     RiskFileOut,
     RiskResponse,
     SubsystemMemberOut,
     SubsystemOut,
     SubsystemsResponse,
+    TourResponse,
+    TourStopOut,
     TruckFactorRemovalStepOut,
     TruckFactorResponse,
 )
@@ -77,6 +86,16 @@ KNOWLEDGE_INTERPRETATION_NOTE = (
 """plan/RULES.md sec 11.4: the truck-factor response must always carry this
 framing, not just the number. A fixed string, not derived per-repo -- the
 interpretation is the same regardless of the computed value."""
+
+GLOSSARY_LIMITATION_NOTE = (
+    "This extracts the repository's own vocabulary -- terms that appear often in its "
+    "class, function, and file names -- not their definitions. Compass does not know "
+    "what these words mean in this domain, only that the codebase revolves around "
+    "them; the linked files are where a reader would go to find out."
+)
+"""Session 06 Part C's honest limitation, surfaced on every /glossary response
+(not just documented in the engine's own docstring) -- session 08 must reflect
+this same distinction in the UI copy."""
 
 # Calibration is always "heuristic" until Release C wires a CorpusBaseline in
 # behind the same BaselineProvider interface (master-context.md sec 9,
@@ -294,9 +313,12 @@ def get_health(
     """The single composite health score (app/engines/health.py) -- read
     straight, not recomputed, since it's already a persisted aggregate of
     the other engines' output for this analysis run. One row per run_id now
-    (Phase 02), not per repo_id."""
+    (Phase 02), not per repo_id. Gates on "onboarding" (session 06: the
+    standalone "health" stage no longer exists -- HealthEngine now runs
+    inside "onboarding", after Tour/Glossary and before Passport; see
+    app/jobs/stages.py)."""
     resolved_run_id = _resolve_run_or_404(repo, run_id, db)
-    pending = _pending_response(resolved_run_id, "health", db)
+    pending = _pending_response(resolved_run_id, "onboarding", db)
     if pending is not None:
         return pending
 
@@ -716,4 +738,122 @@ def get_truck_factor(
         orphaned_file_count=row.orphaned_file_count,
         note=row.note,
         interpretation=KNOWLEDGE_INTERPRETATION_NOTE,
+    )
+
+
+@router.get("/repos/{repo_id}/tour", response_model=TourResponse)
+def get_tour(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> TourResponse | JSONResponse:
+    """The computed guided reading order (session 06, app/engines/tour.py),
+    already ordered/capped by ``TourEngine`` -- read straight, not
+    recomputed. ``subsystems_covered``/``of`` are derived fresh from the
+    persisted stops themselves (a distinct-subsystem count over real rows),
+    not read back from the "onboarding" stage's JSONB teaser -- unlike
+    ``modularity`` on ``/subsystems``, this number has an underlying column
+    to compute it from directly, so there is no reason to trust a teaser
+    over the real data."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "onboarding", db)
+    if pending is not None:
+        return pending
+
+    rows = db.scalars(
+        select(TourStop)
+        .where(TourStop.analysis_run_id == resolved_run_id)
+        .order_by(TourStop.position)
+    ).all()
+    path_map = load_path_map(repo_id, db)
+
+    stops = [
+        TourStopOut(
+            position=r.position,
+            file_path=path_map[r.path_id],
+            reason_code=r.reason_code,
+            reason_detail=r.reason_detail,
+            subsystem_label=(r.reason_detail or {}).get("subsystem"),
+        )
+        for r in rows
+    ]
+    total_subsystems = (
+        db.scalar(
+            select(func.count())
+            .select_from(Subsystem)
+            .where(Subsystem.analysis_run_id == resolved_run_id)
+        )
+        or 0
+    )
+    subsystems_covered = len({r.subsystem_id for r in rows if r.subsystem_id is not None})
+
+    return TourResponse(
+        repo_id=repo_id, stops=stops, subsystems_covered=subsystems_covered, of=total_subsystems
+    )
+
+
+@router.get("/repos/{repo_id}/glossary", response_model=GlossaryResponse)
+def get_glossary(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> GlossaryResponse | JSONResponse:
+    """Ranked domain-vocabulary terms (session 06, app/engines/glossary.py),
+    already scored/ranked -- read straight, not recomputed. Every response
+    carries the fixed ``limitation`` note (GLOSSARY_LIMITATION_NOTE above):
+    this is vocabulary, not definitions."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "onboarding", db)
+    if pending is not None:
+        return pending
+
+    rows = db.scalars(
+        select(GlossaryTerm)
+        .where(GlossaryTerm.analysis_run_id == resolved_run_id)
+        .order_by(GlossaryTerm.rank)
+    ).all()
+    path_map = load_path_map(repo_id, db)
+
+    terms = [
+        GlossaryTermOut(
+            term=r.term,
+            score=r.score,
+            occurrences=r.occurrences,
+            subsystem_spread=r.subsystem_spread,
+            defining_paths=[path_map[pid] for pid in r.defining_path_ids if pid in path_map],
+            rank=r.rank,
+        )
+        for r in rows
+    ]
+    return GlossaryResponse(repo_id=repo_id, terms=terms, limitation=GLOSSARY_LIMITATION_NOTE)
+
+
+@router.get("/repos/{repo_id}/passport", response_model=PassportResponse)
+def get_passport(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> PassportResponse | JSONResponse:
+    """The one-page computed repo passport plus the onboarding-difficulty
+    score (session 06, app/engines/passport.py) -- read straight, not
+    recomputed. ``calibration: "heuristic"`` labels the difficulty score
+    honestly, same convention as /risk and /health."""
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "onboarding", db)
+    if pending is not None:
+        return pending
+
+    row = db.scalar(select(RepoPassport).where(RepoPassport.analysis_run_id == resolved_run_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Passport not computed for this run.")
+
+    return PassportResponse(
+        repo_id=repo_id,
+        calibration=CALIBRATION_LABEL,
+        onboarding_difficulty=row.onboarding_difficulty,
+        difficulty_breakdown=row.difficulty_breakdown,
+        data=RepoPassportData.model_validate(row.data),
     )

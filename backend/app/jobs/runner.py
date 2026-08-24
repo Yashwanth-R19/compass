@@ -33,7 +33,7 @@ def run_ingestion_job(
     """Create a new ``analysis_runs`` row and drive it through the FACT
     stages (clone -> mine -> structure -> persist_facts, skipped entirely if
     the remote head_sha is unchanged) and then the INSIGHT stages (coupling
-    -> subsystems -> architecture -> risk -> knowledge -> health -> rank,
+    -> subsystems -> architecture -> risk -> knowledge -> onboarding -> rank,
     see ``app/jobs/stages.py::INSIGHT_STAGES`` for the canonical, load-bearing
     order), tracking progress on both the legacy ``jobs`` row and the
     per-stage ``analysis_stages``

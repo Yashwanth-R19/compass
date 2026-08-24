@@ -15,11 +15,14 @@ from app.engines.coupling import CouplingEngine
 from app.engines.entrypoints import EntryPointEngine
 from app.engines.expertise import ExpertiseEngine
 from app.engines.findings import FindingsRankEngine
+from app.engines.glossary import GlossaryEngine
 from app.engines.health import HealthEngine
 from app.engines.module_coupling import ModuleCouplingEngine
 from app.engines.overlay import OverlayEngine
+from app.engines.passport import PassportEngine
 from app.engines.risk import RiskEngine
 from app.engines.subsystems import SubsystemEngine
+from app.engines.tour import TourEngine
 from app.engines.truck_factor import TruckFactorEngine
 
 StageKind = Literal["fact", "insight"]
@@ -72,7 +75,11 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
     ),
     Stage("risk", "insight", (RiskEngine().run,)),
     Stage("knowledge", "insight", (ExpertiseEngine().run, TruckFactorEngine().run)),
-    Stage("health", "insight", (HealthEngine().run,)),
+    Stage(
+        "onboarding",
+        "insight",
+        (TourEngine().run, GlossaryEngine().run, HealthEngine().run, PassportEngine().run),
+    ),
     Stage("rank", "insight", (FindingsRankEngine().run,)),
 )
 """Fixed order, load-bearing (CLAUDE.md "Engines" section):
@@ -99,8 +106,22 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
   algorithm never recomputes DOA itself). run_ingestion_job skips this
   whole stage (StageStatus.skipped, not run) when the repo has zero
   commits -- see that module's Part D degenerate-case handling.
-- "health" needs Risk's file_metrics plus Architecture's cycles and
-  Overlay's (now inside "architecture") hidden-dependency count.
+- "onboarding" (session 06) folds the former standalone "health" stage in
+  alongside the two new onboarding engines -- TourEngine and GlossaryEngine
+  both read Coupling/Subsystems/Architecture/Risk/Knowledge output from
+  earlier stages but don't depend on each other or on Health, so they run
+  first (in this fixed relative order for no reason beyond "Tour before
+  Glossary" being the order the session prompt names them in -- neither
+  actually reads the other's output). HealthEngine runs third, UNCHANGED
+  from its pre-session-06 behavior (needs Risk's file_metrics plus
+  Architecture's cycles and Overlay's hidden-dependency count -- see its own
+  docstring). **PassportEngine runs FOURTH, strictly after HealthEngine, in
+  the SAME stage** -- this is the one new load-bearing order dependency
+  session 06 introduces: PassportEngine's ``data.health`` embeds the
+  ``health`` row HealthEngine writes earlier in this same stage, and the
+  onboarding-difficulty formula's inputs are otherwise all already-computed
+  by that point. Reordering PassportEngine ahead of HealthEngine within this
+  tuple would make it read a row that doesn't exist yet for this run_id.
 - "rank" needs every other engine's findings already written for this
   run_id.
 

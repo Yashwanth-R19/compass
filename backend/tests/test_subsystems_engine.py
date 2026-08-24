@@ -260,15 +260,21 @@ def test_path_prefix_naming_wins_when_majority_share_prefix():
 
 
 def test_identifier_naming_used_when_no_prefix_meets_coverage():
+    # Placeholder tokens deliberately avoid "foo"/"bar"/"baz"/"qux" -- session
+    # 06 added them to the shared STOPWORDS set (app/analysis/stopwords.py)
+    # for the glossary engine's generic-programming word list, which this
+    # engine's identifier-naming fallback also reads; picking metasyntactic
+    # words that are still real (non-stopword) tokens keeps this test's
+    # actual point -- "most frequent non-stopword token wins" -- intact.
     path_map = {
-        1: "backend/a/foo_bar.py",
-        2: "frontend/b/foo_baz.py",
-        3: "tools/c/qux_foo.py",
+        1: "backend/a/widget_gadget.py",
+        2: "frontend/b/widget_sprocket.py",
+        3: "tools/c/thing_widget.py",
     }
     assert _path_prefix_label({1, 2, 3}, path_map) is None
 
     label = _identifier_label({1, 2, 3}, path_map, symbol_names_by_path_id={}, used_labels=set())
-    assert label == "foo"  # most frequent non-stopword token across the three stems
+    assert label == "widget"  # most frequent non-stopword token across the three stems
 
 
 def test_repo_with_no_edges_at_all_produces_singleton_unclustered_subsystem_and_does_not_crash(

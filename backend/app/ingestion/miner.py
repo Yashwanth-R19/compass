@@ -4,7 +4,7 @@ import subprocess
 from collections.abc import Iterator
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import lizard
@@ -51,6 +51,35 @@ LANGUAGE_BY_EXT = {
 
 FIX_RE = re.compile(r"\b(fix|bug|patch|resolve|close[sd]?)\b", re.IGNORECASE)
 REVERT_RE = re.compile(r"^\s*revert\b", re.IGNORECASE)
+
+_ISO_DATETIME_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
+"""Bug-fix follow-up (post-session-06 manual QA): real repository history
+occasionally contains a corrupted committer-date UTC offset from a decades-
+old buggy git client -- e.g. psf/requests commit ``5e6ecdad``, whose
+``--date=iso-strict`` committer date is literally ``2011-09-08T02:38:50+518:00``
+(not a valid +/-HH:MM offset). ``datetime.fromisoformat`` raises
+``ValueError`` on that exact input, breaking the streaming parse loop
+mid-stream in ``mine_repo`` -- see ``_parse_git_datetime`` and the
+``mine_repo`` docstring note on the SIGPIPE this used to cause."""
+
+
+def _parse_git_datetime(value: str) -> datetime:
+    """Parses one of git's ``--date=iso-strict`` timestamps, tolerating a
+    corrupted UTC offset instead of crashing the whole mining run over one
+    bad commit. When the offset itself is unparseable, it is dropped and the
+    naive local datetime is treated as UTC -- a deliberately conservative
+    fallback (we have no way to recover what the real offset was, so we do
+    not invent one), not a silent data-quality guess: the alternative would
+    be either fabricating a timezone or refusing to mine the whole repo
+    because of one 2011-era client bug."""
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        match = _ISO_DATETIME_PREFIX_RE.match(value)
+        if not match:
+            raise
+        return datetime.fromisoformat(match.group(1)).replace(tzinfo=UTC)
+
 
 RECORD_SEP = "\x1e"
 UNIT_SEP = "\x1f"
@@ -194,7 +223,7 @@ def _parse_commit_record(record: str) -> MinedCommit:
     touches = _parse_numstat_block(rest)
 
     message = subject if not body else f"{subject}\n\n{body}"
-    committed_at = datetime.fromisoformat(committer_date)
+    committed_at = _parse_git_datetime(committer_date)
 
     file_paths = [t[0] for t in touches]
     added_lines = [t[1] for t in touches]
@@ -236,6 +265,21 @@ def _run_git_log(repo_path: str) -> subprocess.Popen:
 def mine_repo(repo_path: str) -> MinedRepo:
     """Pure(ish): reads the local clone at ``repo_path``, returns mined facts.
     Never touches the DB -- persist.py is the only thing that writes them.
+
+    Bug-fix follow-up (post-session-06 manual QA): this used to be a single
+    ``try/finally``, where the ``finally`` block unconditionally closed
+    ``proc.stdout`` and raised ``RuntimeError`` on a non-zero exit code --
+    including when the ``try`` block itself was already propagating a real
+    exception (e.g. a malformed commit timestamp, see
+    ``_parse_git_datetime``). Closing the pipe before ``git`` finished
+    writing made the still-running process see a broken pipe and exit via
+    SIGPIPE (observed: exit 141), and Python's own "an exception raised
+    inside a ``finally`` replaces the one already propagating" rule then
+    silently swapped the real, actionable error for an opaque "git log
+    failed with exit code 141: " with no indication a parse error ever
+    happened. The ``except``/``else`` split below keeps that exit-code check
+    on the success path only, so a genuine parse failure always surfaces as
+    itself.
     """
     commits: list[MinedCommit] = []
     file_agg: dict[str, dict] = {}
@@ -263,14 +307,20 @@ def mine_repo(repo_path: str) -> MinedRepo:
                 agg["commit_count"] += 1
                 agg["first_seen"] = min(agg["first_seen"], commit.committed_at)
                 agg["last_seen"] = max(agg["last_seen"], commit.committed_at)
-    finally:
+    except BaseException:
+        if proc.stdout is not None:
+            proc.stdout.close()
+        proc.wait()
+        raise
+    else:
         if proc.stdout is not None:
             proc.stdout.close()
         returncode = proc.wait()
         if returncode != 0:
             stderr = proc.stderr.read() if proc.stderr else ""
             raise RuntimeError(f"git log failed with exit code {returncode}: {stderr}")
-        if proc.stderr is not None:
+    finally:
+        if proc.stderr is not None and not proc.stderr.closed:
             proc.stderr.close()
 
     existing_paths = _final_tree_paths(repo_path)

@@ -1,8 +1,10 @@
 import uuid
+from typing import Any
 
 from pydantic import BaseModel
 
 from app.db.models import Severity
+from app.engines.passport import RepoPassportData
 
 
 class CouplingPairOut(BaseModel):
@@ -244,3 +246,48 @@ class TruckFactorResponse(BaseModel):
     orphaned_file_count: int
     note: str | None
     interpretation: str
+
+
+# Session 06: guided reading order, domain glossary, repo passport (mirrors
+# app/engines/{tour,glossary,passport}.py's computed output). ``PassportResponse``
+# reuses ``RepoPassportData`` (the SAME Pydantic model ``PassportEngine`` validates
+# against before persisting ``repo_passport.data``) rather than re-declaring an
+# equivalent nested schema a second time -- one shape, one source of truth.
+
+
+class TourStopOut(BaseModel):
+    position: int
+    file_path: str
+    reason_code: str
+    reason_detail: dict[str, Any]
+    subsystem_label: str | None
+
+
+class TourResponse(BaseModel):
+    repo_id: uuid.UUID
+    stops: list[TourStopOut]
+    subsystems_covered: int
+    of: int
+
+
+class GlossaryTermOut(BaseModel):
+    term: str
+    score: float
+    occurrences: int
+    subsystem_spread: int
+    defining_paths: list[str]
+    rank: int
+
+
+class GlossaryResponse(BaseModel):
+    repo_id: uuid.UUID
+    terms: list[GlossaryTermOut]
+    limitation: str
+
+
+class PassportResponse(BaseModel):
+    repo_id: uuid.UUID
+    calibration: str
+    onboarding_difficulty: float
+    difficulty_breakdown: dict[str, Any]
+    data: RepoPassportData

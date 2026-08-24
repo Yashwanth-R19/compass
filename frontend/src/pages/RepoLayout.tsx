@@ -38,7 +38,7 @@ const STAGE_LABEL: Record<StageName, string> = {
   architecture: "Architecture",
   risk: "Risk",
   knowledge: "Knowledge",
-  health: "Health",
+  onboarding: "Onboarding",
   rank: "Rank",
 };
 
@@ -48,7 +48,10 @@ const STAGE_LABEL: Record<StageName, string> = {
 // folded into "architecture" (still reads its own hidden-dependency count,
 // alongside architecture's own cycles_found, but a pill only shows one key,
 // so cycles_found -- the FIRST engine in that stage's tuple -- keeps its
-// spot here); "subsystems" is new.
+// spot here); "subsystems" is new. Session 06: the standalone "health" stage
+// folded into "onboarding" (TourEngine -> GlossaryEngine -> HealthEngine ->
+// PassportEngine, all merged into one summary dict) -- "stops", the first
+// engine's own key, keeps the pill's spot the same way "cycles_found" did.
 const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
   mine: "commits",
   structure: "dependencies",
@@ -58,7 +61,7 @@ const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
   architecture: "cycles_found",
   risk: "findings_emitted",
   knowledge: "contributors",
-  health: "score",
+  onboarding: "stops",
   rank: "findings_ranked",
 };
 

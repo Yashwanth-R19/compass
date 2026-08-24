@@ -18,7 +18,7 @@ export type StageName =
   | "architecture"
   | "risk"
   | "knowledge"
-  | "health"
+  | "onboarding"
   | "rank";
 export type StageStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -386,4 +386,166 @@ export interface TruckFactorResponse {
   orphaned_file_count: number;
   note: string | null;
   interpretation: string;
+}
+
+// Session 06: guided reading order, domain glossary, repo passport (mirrors
+// backend/app/schemas/analysis.py's TourResponse/GlossaryResponse/
+// PassportResponse, and app/engines/passport.py's RepoPassportData, which
+// PassportResponse.data embeds directly rather than a separate parallel shape).
+
+export type TourReasonCode =
+  | "documentation"
+  | "entry_point"
+  | "subsystem_anchor"
+  | "high_centrality"
+  | "widely_depended_on"
+  | "hotspot";
+
+export interface TourStopOut {
+  position: number;
+  file_path: string;
+  reason_code: TourReasonCode;
+  reason_detail: Record<string, unknown>;
+  subsystem_label: string | null;
+}
+
+export interface TourResponse {
+  repo_id: string;
+  stops: TourStopOut[];
+  subsystems_covered: number;
+  of: number;
+}
+
+export interface GlossaryTermOut {
+  term: string;
+  score: number;
+  occurrences: number;
+  subsystem_spread: number;
+  defining_paths: string[];
+  rank: number;
+}
+
+export interface GlossaryResponse {
+  repo_id: string;
+  terms: GlossaryTermOut[];
+  limitation: string;
+}
+
+export interface PassportIdentity {
+  name: string;
+  owner: string;
+  url: string;
+  primary_language: string;
+  language_breakdown: Record<string, number>;
+  license_spdx: string | null;
+  has_readme: boolean;
+  readme_lines: number;
+}
+
+export interface PassportScale {
+  files: number;
+  loc: number;
+  commits: number;
+  contributors: number;
+  subsystems: number;
+  age_days: number;
+  first_commit_at: string | null;
+  last_commit_at: string | null;
+}
+
+export interface PassportCadence {
+  commits_last_30d: number;
+  commits_last_90d: number;
+  commits_last_365d: number;
+  median_commits_per_active_week: number;
+  active_days: number;
+  longest_gap_days: number;
+  is_dormant: boolean;
+}
+
+export interface PassportTopContributor {
+  name: string;
+  share: number;
+  is_stale: boolean;
+}
+
+export interface PassportTeam {
+  active_contributors: number;
+  stale_contributors: number;
+  bot_commit_ratio: number;
+  truck_factor: number;
+  top_contributors: PassportTopContributor[];
+}
+
+export interface PassportSubsystemSummary {
+  label: string;
+  file_count: number;
+  cohesion: number;
+}
+
+export interface PassportEntryPointSummary {
+  path: string;
+  kind: EntryPointKind;
+}
+
+export interface PassportShape {
+  subsystems: PassportSubsystemSummary[];
+  entry_points: PassportEntryPointSummary[];
+  modularity: number;
+}
+
+export interface PassportHotspotFile {
+  path: string;
+  risk_score: number;
+  risk_confidence: number;
+}
+
+export interface PassportHotspots {
+  top_risk_files: PassportHotspotFile[];
+  churn_concentration: number;
+}
+
+export interface PassportHealth {
+  score: number;
+  high_risk_ratio: number;
+  cycle_count: number;
+  hidden_dependency_count: number;
+  calibration: string;
+}
+
+// A structured orientation fact -- a CODE plus its backing PARAMS, never a
+// rendered sentence. Session 08 owns the wording, in lib/copy.ts, with an
+// exhaustiveness test there -- never build a sentence from these in a page.
+export type FirstPrCode =
+  | "HIGH_CHURN_CONCENTRATION"
+  | "LOW_TRUCK_FACTOR"
+  | "ORPHANED_HOTSPOT"
+  | "HIDDEN_DEPENDENCIES"
+  | "CIRCULAR_DEPENDENCIES"
+  | "DORMANT"
+  | "NO_TESTS"
+  | "LOW_COHESION_SUBSYSTEM";
+
+export interface PassportFirstPrItem {
+  code: FirstPrCode;
+  params: Record<string, unknown>;
+}
+
+export interface RepoPassportData {
+  identity: PassportIdentity;
+  scale: PassportScale;
+  cadence: PassportCadence;
+  team: PassportTeam;
+  shape: PassportShape;
+  hotspots: PassportHotspots;
+  health: PassportHealth;
+  first_pr: PassportFirstPrItem[];
+}
+
+export interface PassportResponse {
+  repo_id: string;
+  calibration: string;
+  onboarding_difficulty: number;
+  difficulty_breakdown: Record<string, { raw: number; normalized: number; weight: number }>;
+  data: RepoPassportData;
 }
