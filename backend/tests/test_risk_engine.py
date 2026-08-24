@@ -63,7 +63,13 @@ def _add_file(
     complexity: float,
     commit_count: int,
     language: str = "python",
+    churn_weighted: float | None = None,
 ) -> uuid.UUID:
+    # churn_weighted defaults to churn_total (weight ~= 1.0) -- this fixture
+    # sets first_seen/last_seen to now(), so a file that was "just touched"
+    # realistically has no recency decay applied yet (session 07, Risk v2:
+    # RiskEngine now reads churn_weighted, not churn_total, for the locked
+    # formula's churn*complexity term -- see app/engines/risk.py).
     path_id = _intern_paths(db_session, repo_id, [path])[path]
     now = datetime.now(UTC)
     file = File(
@@ -78,6 +84,7 @@ def _add_file(
         first_seen=now,
         last_seen=now,
         is_deleted=False,
+        churn_weighted=churn_weighted if churn_weighted is not None else float(churn_total),
     )
     db_session.add(file)
     db_session.flush()
@@ -250,3 +257,81 @@ def test_no_files_is_a_harmless_noop(db_session):
     metadata = RiskEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
     db_session.commit()
     assert metadata == {"files_scored": 0, "findings_emitted": 0}
+
+
+def test_recency_weighted_churn_outranks_identical_stale_churn(db_session):
+    """Session 07, Risk v2, Part G: a file whose churn all happened 2 years
+    ago must score LOWER than an identical file (same churn_total,
+    complexity, commit_count) whose churn happened last month --
+    churn_weighted, not churn_total, feeds the locked formula's
+    churn*complexity term. Asserts the ordering FLIPS relative to what
+    churn_total alone would have produced (both files have identical
+    churn_total, so a churn_total-based formula would tie them)."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/risk-recency")
+    # Same churn_total/complexity/commit_count on both -- only churn_weighted
+    # differs, isolating the measurement's effect on the ranking.
+    _add_file(
+        db_session,
+        repo_id,
+        "recent.py",
+        churn_total=1000,
+        complexity=10.0,
+        commit_count=5,
+        churn_weighted=950.0,  # churn happened ~last month -- weight ~= 1.0
+    )
+    _add_file(
+        db_session,
+        repo_id,
+        "stale.py",
+        churn_total=1000,
+        complexity=10.0,
+        commit_count=5,
+        churn_weighted=250.0,  # 1000 * 0.5 ** (730/365) == 1000 * 0.25, ~2 years old
+    )
+    db_session.commit()
+
+    run_id = _make_run(db_session, repo_id)
+    RiskEngine().run(RunContext(repo_id=repo_id, run_id=run_id), db_session)
+    db_session.commit()
+
+    rows = {
+        m.path_id: m
+        for m in db_session.scalars(
+            select(FileMetrics).where(FileMetrics.analysis_run_id == run_id)
+        ).all()
+    }
+    by_path = {
+        f.path: rows[f.path_id]
+        for f in db_session.scalars(select(File).where(File.repo_id == repo_id)).all()
+    }
+
+    assert by_path["recent.py"].risk_score > by_path["stale.py"].risk_score
+    assert by_path["recent.py"].hotspot_rank == 0
+    assert by_path["stale.py"].hotspot_rank == 1
+
+
+def test_engine_version_defaults_to_current_and_old_runs_stay_readable(db_session):
+    """Session 07: new analysis_runs rows default to CURRENT_ENGINE_VERSION
+    (2) -- the audit trail for the churn measurement swap above. A run
+    explicitly created with engine_version=1 (simulating a pre-session-07
+    row) must remain readable, not rejected or migrated in place."""
+    from app.db.models import CURRENT_ENGINE_VERSION, AnalysisRun, AnalysisRunStatus, Repo
+
+    repo_id = _make_repo(db_session, "https://github.com/fixture/risk-engine-version")
+
+    new_run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.running, head_sha="new-sha")
+    db_session.add(new_run)
+    db_session.commit()
+    assert new_run.engine_version == CURRENT_ENGINE_VERSION == 2
+
+    old_run = AnalysisRun(
+        repo_id=repo_id, status=AnalysisRunStatus.ready, head_sha="old-sha", engine_version=1
+    )
+    db_session.add(old_run)
+    db_session.commit()
+
+    reread = db_session.get(AnalysisRun, old_run.id)
+    assert reread is not None
+    assert reread.engine_version == 1
+    assert reread.repo_id == repo_id
+    assert db_session.get(Repo, repo_id) is not None

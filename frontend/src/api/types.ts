@@ -84,12 +84,19 @@ export interface LayeringViolationOut {
   severity: Severity;
 }
 
+export interface UnreferencedFileOut {
+  file_path: string;
+  loc: number;
+}
+
 export interface ArchitectureResponse {
   repo_id: string;
   nodes: string[];
   edges: DependencyEdgeOut[];
   cycles: CycleOut[];
   layering_violations: LayeringViolationOut[];
+  unreferenced_files: UnreferencedFileOut[];
+  unreferenced_files_caveat: string;
 }
 
 export interface HiddenDependencyOut {
@@ -116,6 +123,15 @@ export interface RiskFileOut {
   complexity: number;
   commit_count: number;
   max_coupling_degree: number;
+  // Session 07 (Risk v2): surfaced alongside risk_score as evidence, never
+  // folded into it -- the locked formula's weights are unchanged.
+  churn_weighted: number;
+  instability_score: number | null;
+  revert_cycle_count: number | null;
+  test_classification: string | null;
+  test_cochange_ratio: number | null;
+  expert_count: number;
+  is_orphaned_knowledge: boolean;
 }
 
 export interface RiskResponse {
@@ -548,4 +564,91 @@ export interface PassportResponse {
   onboarding_difficulty: number;
   difficulty_breakdown: Record<string, { raw: number; normalized: number; weight: number }>;
   data: RepoPassportData;
+}
+
+// Session 07: blast radius (mirrors backend/app/analysis/blast_radius.py's
+// dataclasses via app/schemas/analysis.py -- pure on-demand computation,
+// never persisted), commit hygiene, and test gap / maintenance analysis
+// (mirror app/engines/{hygiene,test_gaps}.py). No new StageName value --
+// blast radius gates on "coupling"; hygiene and test-gaps both gate on
+// "risk" (HygieneEngine/TestGapEngine run inside that stage, after
+// RiskEngine -- no standalone stage).
+
+export interface BlastRadiusAffectedFileOut {
+  file_path: string;
+  hop_distance: number | null;
+  coupling_degree: number | null;
+  risk_score: number | null;
+}
+
+export interface BlastRadiusEvidenceOut {
+  affected_path: string;
+  shared_commit_count: number;
+  shared_commit_percentage: number;
+  example_shas: string[];
+}
+
+export interface BlastRadiusExpertOut {
+  contributor_id: number;
+  canonical_name: string;
+}
+
+export interface BlastRadiusResponse {
+  repo_id: string;
+  file_path: string;
+  depth: number;
+  depth_capped: boolean;
+  node_cap_engaged: boolean;
+  structural_affected: BlastRadiusAffectedFileOut[];
+  historical_affected: BlastRadiusAffectedFileOut[];
+  surprising_affected: BlastRadiusAffectedFileOut[];
+  total_affected_count: number;
+  percentage_of_repo_files: number;
+  subsystems_touched: string[];
+  experts_to_review: BlastRadiusExpertOut[];
+  total_affected_risk_score: number;
+  commits_touching_path: number;
+  historical_evidence: BlastRadiusEvidenceOut[];
+}
+
+export type HygieneEventKind = "oversized" | "fixup_churn" | "risky_commit";
+
+export interface HygieneEventOut {
+  kind: HygieneEventKind;
+  commit_sha: string;
+  occurred_at: string;
+  detail: Record<string, unknown>;
+  severity_hint: string;
+}
+
+export interface HygieneFileOut {
+  file_path: string;
+  instability_score: number | null;
+  revert_cycle_count: number | null;
+  oversized_commit_count: number | null;
+  fixup_commit_count: number | null;
+}
+
+export interface HygieneResponse {
+  repo_id: string;
+  events_by_kind: Partial<Record<HygieneEventKind, HygieneEventOut[]>>;
+  files: HygieneFileOut[];
+  insufficient_history_for_oversized: boolean;
+}
+
+export type TestGapClassification = "no_test" | "stale_test" | "tracked";
+
+export interface TestGapFileOut {
+  file_path: string;
+  classification: TestGapClassification;
+  test_cochange_ratio: number | null;
+  mapped_test_paths: string[];
+}
+
+export interface TestGapsResponse {
+  repo_id: string;
+  files: TestGapFileOut[];
+  test_file_ratio: number;
+  mean_test_cochange_ratio: number;
+  limitation: string;
 }
