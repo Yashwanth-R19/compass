@@ -4,6 +4,7 @@ import { ApiError, apiDelete, apiGet, apiGetOrPending, apiPost, onUnauthorized }
 import type {
   ArchitectureResponse,
   BlastRadiusResponse,
+  CityResponse,
   ContributorsResponse,
   CouplingResponse,
   EntryPointsResponse,
@@ -309,6 +310,18 @@ export function useBlastRadius(
     queryFn: () =>
       apiGetOrPending<BlastRadiusResponse>(`/repos/${repoId}/blast-radius?${params.toString()}`),
     enabled: Boolean(repoId) && Boolean(path),
+  });
+}
+
+/** Session 09, Part E: the joined codebase-map/city payload. Gates on
+ * "onboarding" (backend-side), like passport/tour/glossary/health. */
+export function useCity(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["city", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<CityResponse>(`/repos/${repoId}/city${qs}`),
+    enabled: Boolean(repoId),
   });
 }
 

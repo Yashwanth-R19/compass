@@ -9,6 +9,9 @@ import { PassportPage } from "./pages/onboard/PassportPage";
 import { TourPage } from "./pages/onboard/TourPage";
 import { PeoplePage } from "./pages/onboard/PeoplePage";
 import { GlossaryPage } from "./pages/onboard/GlossaryPage";
+import { MapPage } from "./pages/onboard/MapPage";
+import { ImpactPage } from "./pages/onboard/ImpactPage";
+import { CityPage } from "./pages/onboard/CityPage";
 import { FindingsPage } from "./pages/audit/FindingsPage";
 import { CouplingPage } from "./pages/audit/CouplingPage";
 import { ArchitecturePage } from "./pages/audit/ArchitecturePage";
@@ -36,14 +39,16 @@ function App() {
             <Route path="repos/:repoId" element={<RepoLayout />}>
               <Route index element={<RepoIndexRedirect />} />
 
-              {/* Onboard mode: passport | tour | people | glossary. map,
-                  impact, and city arrive in session 09 -- do not add them
-                  here ahead of that session (Known Hazard #8). */}
+              {/* Onboard mode: passport | tour | people | glossary | map |
+                  impact | city (the last three added session 09). */}
               <Route path="onboard" element={<Navigate to="passport" replace />} />
               <Route path="onboard/passport" element={<PassportPage />} />
               <Route path="onboard/tour" element={<TourPage />} />
               <Route path="onboard/people" element={<PeoplePage />} />
               <Route path="onboard/glossary" element={<GlossaryPage />} />
+              <Route path="onboard/map" element={<MapPage />} />
+              <Route path="onboard/impact" element={<ImpactPage />} />
+              <Route path="onboard/city" element={<CityPage />} />
 
               {/* Audit mode: findings | coupling | architecture | risk |
                   health -- fleshed out further in session 11. */}

@@ -44,11 +44,19 @@ from app.engines.passport import RepoPassportData
 from app.engines.risk import max_coupling_by_path
 from app.engines.test_gaps import MIN_COMMITS_FOR_STALE_CLASSIFICATION
 from app.schemas.analysis import (
+    CITY_FILE_COLUMNS,
     ArchitectureResponse,
     BlastRadiusAffectedFileOut,
     BlastRadiusEvidenceOut,
     BlastRadiusExpertOut,
     BlastRadiusResponse,
+    CityBounds,
+    CityContributorOut,
+    CityFileRow,
+    CityFilesOut,
+    CityMetricBounds,
+    CityResponse,
+    CitySubsystemOut,
     ContributorAliasOut,
     ContributorOut,
     ContributorsResponse,
@@ -1173,4 +1181,134 @@ def get_test_gaps(
         test_file_ratio=test_file_ratio,
         mean_test_cochange_ratio=mean_ratio,
         limitation=TEST_GAP_LIMITATION_NOTE,
+    )
+
+
+@router.get("/repos/{repo_id}/city", response_model=CityResponse)
+def get_city(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> CityResponse | JSONResponse:
+    """Session 09, Part E: the ONE backend addition this session makes --
+    everything the codebase map's treemap and the 3D city need in a single
+    round trip, joined from data every earlier engine in this run already
+    computed. THIS ENDPOINT COMPUTES NOTHING NEW: no engine, no formula, no
+    ranking decision -- if a future change needs to calculate something
+    here, it belongs in an engine instead, not in this handler. Gates on
+    "onboarding" (the LAST insight stage in the fixed pipeline order -- see
+    app/jobs/stages.py), which guarantees "risk"/"knowledge"/"subsystems"
+    have already finished for this run, so every join below reads real
+    data rather than degrading to nulls the way a stage-agnostic endpoint
+    would have to.
+
+    `files` is COLUMNAR (`CITY_FILE_COLUMNS` + one `rows` tuple per file, in
+    that exact column order) rather than one JSON object per file --
+    measured on a synthetic ~5,000-file payload (see CLAUDE.md's "Codebase
+    map" section for the measurement script): ~1.29MB as array-of-objects
+    vs ~0.50MB columnar, which is why this is columnar from the start rather
+    than only past some future repo-size threshold. `bounds` is computed
+    once, here, from these same rows, so the treemap's colour-by-risk mode,
+    the map, and the city never each derive their own min/max scale from a
+    possibly-differently-filtered view of the data (Part E: "the client
+    never derives its own scale").
+    """
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "onboarding", db)
+    if pending is not None:
+        return pending
+
+    subsystem_rows = db.scalars(
+        select(Subsystem)
+        .where(Subsystem.analysis_run_id == resolved_run_id)
+        .order_by(Subsystem.rank)
+    ).all()
+    subsystems = [
+        CitySubsystemOut(id=s.id, label=s.label, file_count=s.file_count, total_loc=s.total_loc)
+        for s in subsystem_rows
+    ]
+
+    subsystem_by_path: dict[int, int] = dict(
+        db.execute(
+            select(SubsystemMember.path_id, SubsystemMember.subsystem_id)
+            .join(Subsystem, Subsystem.id == SubsystemMember.subsystem_id)
+            .where(Subsystem.analysis_run_id == resolved_run_id)
+        ).all()
+    )
+
+    # Highest-doa_normalized expert per file -- the identical "best_by_path"
+    # pattern get_knowledge_map already uses (session 05), not re-derived
+    # differently here.
+    best_expert_by_path: dict[int, int] = {}
+    best_doa_by_path: dict[int, float] = {}
+    for path_id, contributor_id, doa_normalized in db.execute(
+        select(
+            FileExpertise.path_id, FileExpertise.contributor_id, FileExpertise.doa_normalized
+        ).where(FileExpertise.analysis_run_id == resolved_run_id)
+    ).all():
+        current = best_doa_by_path.get(path_id)
+        if current is None or doa_normalized > current:
+            best_doa_by_path[path_id] = doa_normalized
+            best_expert_by_path[path_id] = contributor_id
+
+    # LEFT joined -- RiskEngine scores every non-deleted file, but this
+    # endpoint must never silently drop a file just because its
+    # file_metrics row is somehow missing; the map/city need every file to
+    # lay out a complete picture, not only the scored subset /risk returns.
+    file_rows = db.execute(
+        select(File, FileMetrics)
+        .outerjoin(
+            FileMetrics,
+            (FileMetrics.path_id == File.path_id)
+            & (FileMetrics.analysis_run_id == resolved_run_id),
+        )
+        .where(File.repo_id == repo_id, File.is_deleted.is_(False))
+        .order_by(File.path)
+    ).all()
+
+    rows: list[CityFileRow] = [
+        (
+            file.path,
+            subsystem_by_path.get(file.path_id),
+            file.current_loc,
+            file.complexity,
+            metrics.risk_score if metrics is not None else None,
+            metrics.risk_confidence if metrics is not None else None,
+            best_expert_by_path.get(file.path_id),
+            int(file.last_seen.timestamp()),
+            file.commit_count,
+            file.is_test,
+            file.churn_weighted,
+        )
+        for file, metrics in file_rows
+    ]
+
+    def _bounds(values: list[float]) -> CityMetricBounds:
+        if not values:
+            return CityMetricBounds(min=0.0, max=0.0)
+        return CityMetricBounds(min=min(values), max=max(values))
+
+    bounds = CityBounds(
+        loc=_bounds([float(r[2]) for r in rows]),
+        complexity=_bounds([r[3] for r in rows]),
+        risk_score=_bounds([r[4] for r in rows if r[4] is not None]),
+        churn_weighted=_bounds([r[10] for r in rows]),
+        commit_count=_bounds([float(r[8]) for r in rows]),
+        last_modified_at=_bounds([float(r[7]) for r in rows]),
+    )
+
+    contributor_rows = db.execute(
+        select(Contributor.id, Contributor.canonical_name)
+        .where(Contributor.analysis_run_id == resolved_run_id)
+        .order_by(Contributor.rank)
+    ).all()
+    contributors = [CityContributorOut(id=cid, name=name) for cid, name in contributor_rows]
+
+    return CityResponse(
+        repo_id=repo_id,
+        subsystems=subsystems,
+        files=CityFilesOut(columns=CITY_FILE_COLUMNS, rows=rows),
+        contributors=contributors,
+        bounds=bounds,
     )

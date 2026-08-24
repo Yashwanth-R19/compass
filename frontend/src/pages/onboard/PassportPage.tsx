@@ -44,7 +44,7 @@ export function PassportPage() {
     <StageGate query={passport} loadingLabel="Computing the repo passport…">
       {(data) => (
         <div className="flex flex-col gap-6">
-          <IdentityStrip data={data.data} />
+          <IdentityStrip data={data.data} repoId={repo.id} />
           <DifficultyCard
             difficulty={data.onboarding_difficulty}
             breakdown={data.difficulty_breakdown}
@@ -62,7 +62,7 @@ export function PassportPage() {
 
 // --- 1. Identity strip -----------------------------------------------------
 
-function IdentityStrip({ data }: { data: RepoPassportData }) {
+function IdentityStrip({ data, repoId }: { data: RepoPassportData; repoId: string }) {
   const { identity, scale, cadence } = data;
   const totalFiles = Object.values(identity.language_breakdown).reduce((a, b) => a + b, 0);
   const languageShares = Object.entries(identity.language_breakdown)
@@ -70,7 +70,18 @@ function IdentityStrip({ data }: { data: RepoPassportData }) {
     .sort((a, b) => b.share - a.share);
 
   return (
-    <Card title={`${identity.owner}/${identity.name}`} subtitle={identity.url}>
+    <Card
+      title={`${identity.owner}/${identity.name}`}
+      subtitle={identity.url}
+      action={
+        <Link
+          to={`/repos/${repoId}/onboard/city`}
+          className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+        >
+          Explore in 3D city →
+        </Link>
+      }
+    >
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
           <span className="font-medium text-slate-900 dark:text-slate-100">

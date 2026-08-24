@@ -389,3 +389,87 @@ class TestGapsResponse(BaseModel):
     test_file_ratio: float
     mean_test_cochange_ratio: float
     limitation: str
+
+
+# Session 09, Part E: the codebase-map/city payload. A pure JOIN of
+# already-computed Insight/Facts data -- see app/api/analysis.py::get_city's
+# docstring and CLAUDE.md's "Codebase map" section for the "computes nothing
+# new" rule this endpoint must never violate.
+
+
+class CitySubsystemOut(BaseModel):
+    id: int
+    label: str
+    file_count: int
+    total_loc: int
+
+
+class CityContributorOut(BaseModel):
+    id: int
+    name: str
+
+
+class CityMetricBounds(BaseModel):
+    min: float
+    max: float
+
+
+class CityBounds(BaseModel):
+    """Min/max for every metric a colour or height mode can map to (Part E:
+    "computed server-side, so the client never derives its own scale") --
+    computed once here from the same file rows the response embeds, never
+    recomputed by the frontend."""
+
+    loc: CityMetricBounds
+    complexity: CityMetricBounds
+    risk_score: CityMetricBounds
+    churn_weighted: CityMetricBounds
+    commit_count: CityMetricBounds
+    last_modified_at: CityMetricBounds
+
+
+# Column order for the columnar `files` encoding below -- see
+# get_city's docstring for why this is columns+rows rather than
+# one-object-per-file (measured on a synthetic 5,000-file repo: ~1.29MB as
+# objects vs ~0.50MB columnar, see CLAUDE.md). ANY caller decoding
+# `CityFilesOut.rows` must index by this exact, fixed order.
+CITY_FILE_COLUMNS: list[str] = [
+    "path",
+    "subsystem_id",
+    "loc",
+    "complexity",
+    "risk_score",
+    "risk_confidence",
+    "principal_expert_id",
+    "last_modified_at",
+    "commit_count",
+    "is_test",
+    "churn_weighted",
+]
+
+CityFileRow = tuple[
+    str,  # path
+    int | None,  # subsystem_id
+    int,  # loc
+    float,  # complexity
+    float | None,  # risk_score
+    float | None,  # risk_confidence
+    int | None,  # principal_expert_id
+    int,  # last_modified_at (unix seconds)
+    int,  # commit_count
+    bool,  # is_test
+    float,  # churn_weighted
+]
+
+
+class CityFilesOut(BaseModel):
+    columns: list[str]
+    rows: list[CityFileRow]
+
+
+class CityResponse(BaseModel):
+    repo_id: uuid.UUID
+    subsystems: list[CitySubsystemOut]
+    files: CityFilesOut
+    contributors: list[CityContributorOut]
+    bounds: CityBounds

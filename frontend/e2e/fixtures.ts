@@ -236,3 +236,161 @@ export const expertiseResponse = {
     },
   ],
 };
+
+// --- Session 09: codebase map + impact explorer fixtures -------------------
+
+export const subsystemsResponse = {
+  repo_id: REPO_ID,
+  modularity: 0.42,
+  subsystems: [
+    {
+      label: "billing",
+      label_source: "path_prefix",
+      file_count: 2,
+      total_loc: 150,
+      internal_edges: 1,
+      external_edges: 1,
+      cohesion: 0.8,
+      rank: 0,
+      members: [
+        { file_path: "src/app.py", centrality: 0.5 },
+        { file_path: "src/billing/invoice.py", centrality: 0.3 },
+      ],
+    },
+    {
+      label: "auth",
+      label_source: "path_prefix",
+      file_count: 1,
+      total_loc: 50,
+      internal_edges: 0,
+      external_edges: 1,
+      cohesion: 0.0,
+      rank: 1,
+      members: [{ file_path: "src/auth/login.py", centrality: 0.2 }],
+    },
+  ],
+};
+
+export const moduleCouplingSubsystemResponse = {
+  repo_id: REPO_ID,
+  granularity: "subsystem",
+  low_confidence: false,
+  pairs: [
+    {
+      module_a: "billing",
+      module_b: "auth",
+      granularity: "subsystem",
+      shared_revs: 6,
+      coupling_degree: 0.6,
+      avg_revs: 8,
+      confidence: "medium",
+    },
+  ],
+};
+
+export const architectureResponse = {
+  repo_id: REPO_ID,
+  nodes: ["src/app.py", "src/billing/invoice.py", "src/auth/login.py"],
+  edges: [{ from_path: "src/app.py", to_path: "src/billing/invoice.py" }],
+  cycles: [],
+  layering_violations: [],
+  unreferenced_files: [],
+  unreferenced_files_caveat: "A file can appear here even when it's genuinely used.",
+};
+
+export const couplingResponse = {
+  repo_id: REPO_ID,
+  low_confidence: false,
+  pairs: [
+    {
+      file_a_path: "src/app.py",
+      file_b_path: "src/auth/login.py",
+      coupling_degree: 0.6,
+      shared_revs: 6,
+      avg_revs: 8,
+      confidence: "medium",
+    },
+  ],
+};
+
+export const hiddenDependenciesResponse = {
+  repo_id: REPO_ID,
+  pairs: [
+    {
+      file_a_path: "src/app.py",
+      file_b_path: "src/auth/login.py",
+      coupling_degree: 0.6,
+      shared_revs: 6,
+      severity: "med",
+      confidence: "medium",
+    },
+  ],
+};
+
+export const cityResponse = {
+  repo_id: REPO_ID,
+  subsystems: [
+    { id: 1, label: "billing", file_count: 2, total_loc: 150 },
+    { id: 2, label: "auth", file_count: 1, total_loc: 50 },
+  ],
+  files: {
+    columns: [
+      "path",
+      "subsystem_id",
+      "loc",
+      "complexity",
+      "risk_score",
+      "risk_confidence",
+      "principal_expert_id",
+      "last_modified_at",
+      "commit_count",
+      "is_test",
+      "churn_weighted",
+    ],
+    rows: [
+      ["src/app.py", 1, 120, 4, 0.5, 0.7, 1, 1750000000, 40, false, 12.5],
+      ["src/billing/invoice.py", 1, 30, 2, 0.3, 0.5, null, 1740000000, 10, false, 3.0],
+      ["src/auth/login.py", 2, 50, 3, 0.8, 0.6, 1, 1760000000, 20, false, 8.0],
+    ],
+  },
+  contributors: [{ id: 1, name: "Jane Doe" }],
+  bounds: {
+    loc: { min: 30, max: 120 },
+    complexity: { min: 2, max: 4 },
+    risk_score: { min: 0.3, max: 0.8 },
+    churn_weighted: { min: 3.0, max: 12.5 },
+    commit_count: { min: 10, max: 40 },
+    last_modified_at: { min: 1740000000, max: 1760000000 },
+  },
+};
+
+export const blastRadiusResponse = {
+  repo_id: REPO_ID,
+  file_path: "src/app.py",
+  depth: 3,
+  depth_capped: false,
+  node_cap_engaged: false,
+  structural_affected: [
+    { file_path: "src/billing/invoice.py", hop_distance: 1, coupling_degree: null, risk_score: 0.3 },
+  ],
+  historical_affected: [
+    { file_path: "src/auth/login.py", hop_distance: null, coupling_degree: 0.6, risk_score: 0.8 },
+  ],
+  surprising_affected: [
+    { file_path: "src/auth/login.py", hop_distance: null, coupling_degree: 0.6, risk_score: 0.8 },
+  ],
+  total_affected_count: 2,
+  percentage_of_repo_files: 0.02,
+  subsystems_touched: ["billing", "auth"],
+  experts_to_review: [{ contributor_id: 1, canonical_name: "Jane Doe" }],
+  total_affected_risk_score: 1.1,
+  commits_touching_path: 47,
+  historical_evidence: [
+    {
+      affected_path: "src/auth/login.py",
+      shared_commit_count: 31,
+      shared_commit_percentage: 0.6595744680851063,
+      example_shas: ["abc1234def5678"],
+    },
+  ],
+};

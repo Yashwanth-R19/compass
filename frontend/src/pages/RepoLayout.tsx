@@ -35,6 +35,8 @@ const ONBOARD_TABS = [
   { to: "onboard/tour", label: "Tour" },
   { to: "onboard/people", label: "People" },
   { to: "onboard/glossary", label: "Glossary" },
+  { to: "onboard/map", label: "Map" },
+  { to: "onboard/impact", label: "Impact" },
 ];
 
 // findings/coupling/architecture/risk/health -- fleshed out in session 11;

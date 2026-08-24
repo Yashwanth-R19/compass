@@ -171,6 +171,12 @@ function TourStopItem({
             >
               See who knows this file →
             </Link>
+            <Link
+              to={`/repos/${repoId}/onboard/impact?path=${encodeURIComponent(stop.file_path)}`}
+              className="w-fit font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+            >
+              See its blast radius →
+            </Link>
           </div>
         ) : null}
       </div>

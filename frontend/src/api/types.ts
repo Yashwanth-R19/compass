@@ -660,3 +660,80 @@ export interface TestGapsResponse {
   mean_test_cochange_ratio: number;
   limitation: string;
 }
+
+// Session 09, Part E: the codebase-map/city payload (mirrors
+// backend/app/schemas/analysis.py's City* models). `files` is COLUMNAR --
+// see CITY_FILE_COLUMNS below, which must match the backend's
+// CITY_FILE_COLUMNS constant exactly, in order. A pure join, no new
+// computation (CLAUDE.md's "Codebase map" section).
+
+export interface CitySubsystemOut {
+  id: number;
+  label: string;
+  file_count: number;
+  total_loc: number;
+}
+
+export interface CityContributorOut {
+  id: number;
+  name: string;
+}
+
+export interface CityMetricBounds {
+  min: number;
+  max: number;
+}
+
+export interface CityBounds {
+  loc: CityMetricBounds;
+  complexity: CityMetricBounds;
+  risk_score: CityMetricBounds;
+  churn_weighted: CityMetricBounds;
+  commit_count: CityMetricBounds;
+  last_modified_at: CityMetricBounds;
+}
+
+// One row per file, in this exact order -- kept in sync by hand with the
+// backend's CITY_FILE_COLUMNS (app/schemas/analysis.py). A named tuple
+// type, not `unknown[]`, so a column reorder on either side is a
+// type-checker error at every call site, not a silent index mismatch.
+export type CityFileRow = [
+  path: string,
+  subsystem_id: number | null,
+  loc: number,
+  complexity: number,
+  risk_score: number | null,
+  risk_confidence: number | null,
+  principal_expert_id: number | null,
+  last_modified_at: number,
+  commit_count: number,
+  is_test: boolean,
+  churn_weighted: number,
+];
+
+export const CITY_FILE_COLUMNS = [
+  "path",
+  "subsystem_id",
+  "loc",
+  "complexity",
+  "risk_score",
+  "risk_confidence",
+  "principal_expert_id",
+  "last_modified_at",
+  "commit_count",
+  "is_test",
+  "churn_weighted",
+] as const;
+
+export interface CityFilesOut {
+  columns: string[];
+  rows: CityFileRow[];
+}
+
+export interface CityResponse {
+  repo_id: string;
+  subsystems: CitySubsystemOut[];
+  files: CityFilesOut;
+  contributors: CityContributorOut[];
+  bounds: CityBounds;
+}
