@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { useRisk } from "../api/hooks";
-import { Card } from "../components/Card";
-import { StageGate } from "../components/StageGate";
-import { confidenceLabel, formatPercent, formatScore } from "../lib/format";
-import type { RiskFileOut, RiskResponse } from "../api/types";
-import type { RepoOutletContext } from "./RepoLayout";
+import { useRisk } from "../../api/hooks";
+import { Card } from "../../components/Card";
+import { StageGate } from "../../components/StageGate";
+import { confidenceLabel, formatPercent, formatScore } from "../../lib/format";
+import type { RiskFileOut, RiskResponse } from "../../api/types";
+import type { RepoOutletContext } from "../RepoLayout";
 
 type SortKey =
   | "hotspot_rank"

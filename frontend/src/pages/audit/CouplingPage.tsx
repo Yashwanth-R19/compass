@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import ForceGraph2D from "react-force-graph-2d";
-import { useCoupling, useHiddenDeps } from "../api/hooks";
-import { Card } from "../components/Card";
-import { GraphCanvas } from "../components/GraphCanvas";
-import { GraphCapNotice } from "../components/GraphCapNotice";
-import { StageGate } from "../components/StageGate";
-import { useCappedGraph, type CappableEdge, type CappableNode } from "../hooks/useGraphCap";
-import { fileName, formatPercent } from "../lib/format";
-import type { RepoOutletContext } from "./RepoLayout";
+import { useCoupling, useHiddenDeps } from "../../api/hooks";
+import { Card } from "../../components/Card";
+import { GraphCanvas } from "../../components/GraphCanvas";
+import { GraphCapNotice } from "../../components/GraphCapNotice";
+import { StageGate } from "../../components/StageGate";
+import { useCappedGraph, type CappableEdge, type CappableNode } from "../../hooks/useGraphCap";
+import { fileName, formatPercent } from "../../lib/format";
+import type { RepoOutletContext } from "../RepoLayout";
 
 interface CouplingEdge extends CappableEdge {
   isHidden: boolean;

@@ -150,6 +150,14 @@ export interface HealthResponse {
   computed_at: string;
 }
 
+// The finding categories actually emitted by any engine (grep for
+// `"category":` under backend/app/engines/) -- FindingOut.category is kept
+// as a loose `string` below (mirroring the backend's own `str`, session
+// 01), but lib/copy.ts's FINDING_CATEGORY_COPY is keyed on this literal
+// union so a category missing its copy fails to compile, not just to render.
+export type FindingCategory =
+  "risk" | "architecture" | "hidden_dependency" | "knowledge" | "hygiene" | "test_gap";
+
 export interface FindingOut {
   id: string;
   category: string;

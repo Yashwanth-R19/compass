@@ -1,17 +1,12 @@
-import type { FindingOut } from "../api/types";
-import {
-  SEVERITY_CLASSES,
-  SEVERITY_LABEL,
-  confidenceLabel,
-  formatPercent,
-  shortSha,
-} from "../lib/format";
+import type { FindingCategory, FindingOut } from "../api/types";
+import { EvidenceLink } from "./EvidenceLink";
+import { FINDING_CATEGORY_COPY } from "../lib/copy";
+import { SEVERITY_CLASSES, SEVERITY_LABEL, confidenceLabel, formatPercent } from "../lib/format";
 
-const CATEGORY_LABEL: Record<string, string> = {
-  risk: "Risk",
-  architecture: "Architecture",
-  hidden_dependency: "Hidden dependency",
-};
+function categoryLabel(category: string): string {
+  const copy = FINDING_CATEGORY_COPY[category as FindingCategory];
+  return copy ? copy() : category;
+}
 
 export function FindingItem({
   finding,
@@ -20,10 +15,6 @@ export function FindingItem({
   finding: FindingOut;
   repoUrl?: string | null;
 }) {
-  const commitUrl =
-    repoUrl && finding.evidence_sha
-      ? `${repoUrl.replace(/\/$/, "")}/commit/${finding.evidence_sha}`
-      : null;
   const confLabel = confidenceLabel(finding.confidence);
 
   return (
@@ -35,7 +26,7 @@ export function FindingItem({
           {SEVERITY_LABEL[finding.severity]}
         </span>
         <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          {CATEGORY_LABEL[finding.category] ?? finding.category}
+          {categoryLabel(finding.category)}
         </span>
         <span
           className={`text-xs ${confLabel === "low" ? "text-amber-600 dark:text-amber-400" : "text-slate-400 dark:text-slate-500"}`}
@@ -47,18 +38,11 @@ export function FindingItem({
       <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{finding.title}</p>
       <p className="text-sm text-slate-500 dark:text-slate-400">{finding.detail}</p>
       {finding.evidence_sha ? (
-        commitUrl ? (
-          <a
-            href={commitUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="w-fit rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-indigo-600 hover:underline dark:bg-slate-800 dark:text-indigo-400"
-          >
-            {shortSha(finding.evidence_sha)}
-          </a>
+        repoUrl ? (
+          <EvidenceLink repoUrl={repoUrl} sha={finding.evidence_sha} />
         ) : (
           <span className="w-fit rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-            {shortSha(finding.evidence_sha)}
+            {finding.evidence_sha.slice(0, 7)}
           </span>
         )
       ) : null}

@@ -3,17 +3,31 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiDelete, apiGet, apiGetOrPending, apiPost, onUnauthorized } from "./client";
 import type {
   ArchitectureResponse,
+  BlastRadiusResponse,
+  ContributorsResponse,
   CouplingResponse,
+  EntryPointsResponse,
+  ExpertiseResponse,
   FindingsResponse,
+  GlossaryResponse,
   HealthResponse,
   HiddenDependencyResponse,
+  HygieneResponse,
+  KnowledgeMapResponse,
+  ModuleCouplingGranularity,
+  ModuleCouplingResponse,
   MyGithubReposResponse,
   MyReposResponse,
+  PassportResponse,
   RepoCreateResponse,
   RepoOut,
   RepoStatusResponse,
   RiskResponse,
   ShareLinkOut,
+  SubsystemsResponse,
+  TestGapsResponse,
+  TourResponse,
+  TruckFactorResponse,
   UserOut,
 } from "./types";
 
@@ -134,6 +148,170 @@ export function useFindings(repoId: string | undefined, category?: string, share
     enabled: Boolean(repoId),
   });
 }
+// --- Sessions 04-07: subsystems, knowledge, onboarding, blast radius -------
+// Same share-threading pattern as every hook above -- an explicit `share`
+// param appends `?share=<slug>` so a share-link viewer's requests carry it
+// through to `require_repo_access` on the backend.
+
+export function useSubsystems(repoId: string | undefined, includeMembers = true, share?: string) {
+  const params = new URLSearchParams();
+  if (!includeMembers) params.set("include_members", "false");
+  if (share) params.set("share", share);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+
+  return useQuery({
+    queryKey: ["subsystems", repoId, includeMembers, share ?? null],
+    queryFn: () => apiGetOrPending<SubsystemsResponse>(`/repos/${repoId}/subsystems${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useEntryPoints(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["entry-points", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<EntryPointsResponse>(`/repos/${repoId}/entry-points${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useModuleCoupling(
+  repoId: string | undefined,
+  granularity: ModuleCouplingGranularity = "directory",
+  share?: string,
+) {
+  const params = new URLSearchParams({ granularity });
+  if (share) params.set("share", share);
+
+  return useQuery({
+    queryKey: ["module-coupling", repoId, granularity, share ?? null],
+    queryFn: () =>
+      apiGetOrPending<ModuleCouplingResponse>(
+        `/repos/${repoId}/module-coupling?${params.toString()}`,
+      ),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useContributors(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["contributors", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<ContributorsResponse>(`/repos/${repoId}/contributors${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+/** The flagship "who do I ask" lookup (session 08, Part E) -- only enabled
+ * once a path has actually been picked, so selecting a file in FilePicker
+ * is what triggers the request, not every keystroke while typing. */
+export function useExpertise(repoId: string | undefined, path: string | undefined, share?: string) {
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+  if (share) params.set("share", share);
+
+  return useQuery({
+    queryKey: ["expertise", repoId, path ?? null, share ?? null],
+    queryFn: () =>
+      apiGetOrPending<ExpertiseResponse>(`/repos/${repoId}/expertise?${params.toString()}`),
+    enabled: Boolean(repoId) && Boolean(path),
+  });
+}
+
+export function useKnowledgeMap(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["knowledge-map", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<KnowledgeMapResponse>(`/repos/${repoId}/knowledge-map${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useTruckFactor(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["truck-factor", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<TruckFactorResponse>(`/repos/${repoId}/truck-factor${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useTour(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["tour", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<TourResponse>(`/repos/${repoId}/tour${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useGlossary(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["glossary", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<GlossaryResponse>(`/repos/${repoId}/glossary${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+/** Feeds passport sections 2 (difficulty), 5 (team), 6 (shape), and 7
+ * (health) from ONE request (Known Hazard #6) -- pages must never issue a
+ * second fetch for any of those sections. */
+export function usePassport(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["passport", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<PassportResponse>(`/repos/${repoId}/passport${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useHygiene(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["hygiene", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<HygieneResponse>(`/repos/${repoId}/hygiene${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useTestGaps(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["test-gaps", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<TestGapsResponse>(`/repos/${repoId}/test-gaps${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+export function useBlastRadius(
+  repoId: string | undefined,
+  path: string | undefined,
+  depth = 3,
+  share?: string,
+) {
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+  params.set("depth", String(depth));
+  if (share) params.set("share", share);
+
+  return useQuery({
+    queryKey: ["blast-radius", repoId, path ?? null, depth, share ?? null],
+    queryFn: () =>
+      apiGetOrPending<BlastRadiusResponse>(`/repos/${repoId}/blast-radius?${params.toString()}`),
+    enabled: Boolean(repoId) && Boolean(path),
+  });
+}
+
 // --- Session 02: auth, history, sharing ------------------------------------
 
 /** The current session's user, or `null` when logged out -- never throws for

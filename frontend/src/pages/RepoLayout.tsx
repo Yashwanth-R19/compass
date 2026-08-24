@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { NavLink, Outlet, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import {
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   useCreateShareLink,
   useMe,
@@ -13,12 +20,84 @@ import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
 import type { RepoOut, StageName, StageOut, StageStatus } from "../api/types";
 
-const TABS = [
-  { to: "overview", label: "Overview" },
-  { to: "coupling", label: "Coupling" },
-  { to: "architecture", label: "Architecture" },
-  { to: "risk", label: "Risk" },
+// Session 08, Part A: the product has two primary modes, switched at the top
+// of every repo page and remembered across visits. Each tab's `to` is
+// relative to RepoLayout's own route ("repos/:repoId") -- NavLink here is
+// rendered directly in this component's JSX, never inside a further-nested
+// Route element, so plain relative segments resolve the same way the
+// pre-dual-mode TABS list always did.
+export type RepoMode = "onboard" | "audit";
+
+const MODE_STORAGE_KEY = "compass:mode";
+
+const ONBOARD_TABS = [
+  { to: "onboard/passport", label: "Passport" },
+  { to: "onboard/tour", label: "Tour" },
+  { to: "onboard/people", label: "People" },
+  { to: "onboard/glossary", label: "Glossary" },
 ];
+
+// findings/coupling/architecture/risk/health -- fleshed out in session 11;
+// this session wires the shell and moves the pre-existing pages into it.
+const AUDIT_TABS = [
+  { to: "audit/findings", label: "Findings" },
+  { to: "audit/coupling", label: "Coupling" },
+  { to: "audit/architecture", label: "Architecture" },
+  { to: "audit/risk", label: "Risk" },
+  { to: "audit/health", label: "Health" },
+];
+
+function modeFromPathname(pathname: string): RepoMode | null {
+  if (/\/onboard(\/|$)/.test(pathname)) return "onboard";
+  if (/\/audit(\/|$)/.test(pathname)) return "audit";
+  return null;
+}
+
+function readStoredMode(): RepoMode {
+  try {
+    return window.localStorage.getItem(MODE_STORAGE_KEY) === "audit" ? "audit" : "onboard";
+  } catch {
+    // Private window / blocked site data -- default to Onboard, same as a
+    // genuinely first-time visitor (Part A: "default to Onboard on a first
+    // visit").
+    return "onboard";
+  }
+}
+
+function storeMode(mode: RepoMode) {
+  try {
+    window.localStorage.setItem(MODE_STORAGE_KEY, mode);
+  } catch {
+    // Nothing to do -- the switch still works for this visit, it just won't
+    // be remembered for the next one.
+  }
+}
+
+/** The bare `/repos/:repoId` index route -- lands on whichever mode was last
+ * used (Onboard by default, Part A), preserving `?share=`/any other query
+ * string so a share link still works after the redirect. */
+export function RepoIndexRedirect() {
+  const { repoId } = useParams<{ repoId: string }>();
+  const location = useLocation();
+  const mode = readStoredMode();
+  const target = mode === "audit" ? "audit/findings" : "onboard/passport";
+  return <Navigate to={`/repos/${repoId}/${target}${location.search}`} replace />;
+}
+
+/** Session 02 shipped share links pointing at the pre-dual-mode paths
+ * (`/repos/:id/overview|coupling|architecture|risk`) -- breaking them here
+ * would be a regression a user actually notices (Known Hazard #1), so every
+ * one of those paths keeps working via an explicit redirect to its new
+ * home, preserving `?share=`. Absolute target paths (not a relative `to`)
+ * deliberately sidestep any ambiguity in how relative resolution treats a
+ * `<Navigate>` rendered as a LEAF route's own element (a different context
+ * than the tab NavLinks above, which resolve relative to the layout
+ * route). */
+export function LegacyRedirect({ to }: { to: string }) {
+  const { repoId } = useParams<{ repoId: string }>();
+  const location = useLocation();
+  return <Navigate to={`/repos/${repoId}/${to}${location.search}`} replace />;
+}
 
 const REPO_STATUS_LABEL: Record<string, string> = {
   pending: "Queued",
@@ -82,10 +161,21 @@ export function RepoLayout() {
   const { repoId } = useParams<{ repoId: string }>();
   const [searchParams] = useSearchParams();
   const share = searchParams.get("share") ?? undefined;
+  const location = useLocation();
 
   const { data: repo, isPending, isError, error, refetch } = useRepo(repoId, share);
   const status = useRepoStatus(repoId, share);
   const me = useMe();
+
+  const mode = modeFromPathname(location.pathname) ?? readStoredMode();
+
+  // Persists whichever mode the URL actually reflects, so switching modes
+  // via a tab click, a pasted link, or the switcher itself all count the
+  // same way toward "the last mode used" (Part A).
+  useEffect(() => {
+    const detected = modeFromPathname(location.pathname);
+    if (detected) storeMode(detected);
+  }, [location.pathname]);
 
   if (isPending) return <LoadingState label="Loading repo…" />;
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
@@ -160,13 +250,19 @@ export function RepoLayout() {
         ) : null}
 
         {showTabs ? (
-          <nav className="mt-4 flex gap-5 border-b border-slate-200 dark:border-slate-800">
-            {TABS.map((tab) => (
-              <NavLink key={tab.to} to={tab.to} className={tabClass}>
-                {tab.label}
-              </NavLink>
-            ))}
-          </nav>
+          <>
+            <ModeSwitcher mode={mode} />
+            {/* Audit mode's 5 tabs don't fit in 360px alongside "Architecture" --
+                scrolls horizontally INSIDE the nav rather than widening the
+                whole page body (no page may scroll horizontally itself). */}
+            <nav className="mt-3 flex gap-5 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+              {(mode === "audit" ? AUDIT_TABS : ONBOARD_TABS).map((tab) => (
+                <NavLink key={tab.to} to={tab.to} className={(a) => `shrink-0 ${tabClass(a)}`}>
+                  {tab.label}
+                </NavLink>
+              ))}
+            </nav>
+          </>
         ) : null}
       </div>
 
@@ -183,6 +279,30 @@ export function RepoLayout() {
       ) : (
         <LoadingState label="Starting analysis…" />
       )}
+    </div>
+  );
+}
+
+/** The primary Onboard/Audit switcher (Part A) -- sits above the tab bar in
+ * both modes. Always jumps to the target mode's own default tab; it does
+ * not try to remember a per-mode "last sub-tab" (out of scope for this
+ * session's function-and-IA-only mandate). */
+function ModeSwitcher({ mode }: { mode: RepoMode }) {
+  const modeButtonClass = (active: boolean) =>
+    `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+      active
+        ? "bg-indigo-600 text-white"
+        : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+    }`;
+
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
+      <NavLink to="onboard/passport" className={() => modeButtonClass(mode === "onboard")}>
+        Onboard
+      </NavLink>
+      <NavLink to="audit/findings" className={() => modeButtonClass(mode === "audit")}>
+        Audit
+      </NavLink>
     </div>
   );
 }

@@ -4,11 +4,16 @@ import { AppShell } from "./components/AppShell";
 import { HomePage } from "./pages/HomePage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SharedRedirectPage } from "./pages/SharedRedirectPage";
-import { RepoLayout } from "./pages/RepoLayout";
-import { OverviewPage } from "./pages/OverviewPage";
-import { CouplingPage } from "./pages/CouplingPage";
-import { ArchitecturePage } from "./pages/ArchitecturePage";
-import { RiskPage } from "./pages/RiskPage";
+import { LegacyRedirect, RepoIndexRedirect, RepoLayout } from "./pages/RepoLayout";
+import { PassportPage } from "./pages/onboard/PassportPage";
+import { TourPage } from "./pages/onboard/TourPage";
+import { PeoplePage } from "./pages/onboard/PeoplePage";
+import { GlossaryPage } from "./pages/onboard/GlossaryPage";
+import { FindingsPage } from "./pages/audit/FindingsPage";
+import { CouplingPage } from "./pages/audit/CouplingPage";
+import { ArchitecturePage } from "./pages/audit/ArchitecturePage";
+import { RiskPage } from "./pages/audit/RiskPage";
+import { HealthPage } from "./pages/audit/HealthPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,11 +34,32 @@ function App() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="shared/:slug" element={<SharedRedirectPage />} />
             <Route path="repos/:repoId" element={<RepoLayout />}>
-              <Route index element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<OverviewPage />} />
-              <Route path="coupling" element={<CouplingPage />} />
-              <Route path="architecture" element={<ArchitecturePage />} />
-              <Route path="risk" element={<RiskPage />} />
+              <Route index element={<RepoIndexRedirect />} />
+
+              {/* Onboard mode: passport | tour | people | glossary. map,
+                  impact, and city arrive in session 09 -- do not add them
+                  here ahead of that session (Known Hazard #8). */}
+              <Route path="onboard" element={<Navigate to="passport" replace />} />
+              <Route path="onboard/passport" element={<PassportPage />} />
+              <Route path="onboard/tour" element={<TourPage />} />
+              <Route path="onboard/people" element={<PeoplePage />} />
+              <Route path="onboard/glossary" element={<GlossaryPage />} />
+
+              {/* Audit mode: findings | coupling | architecture | risk |
+                  health -- fleshed out further in session 11. */}
+              <Route path="audit" element={<Navigate to="findings" replace />} />
+              <Route path="audit/findings" element={<FindingsPage />} />
+              <Route path="audit/coupling" element={<CouplingPage />} />
+              <Route path="audit/architecture" element={<ArchitecturePage />} />
+              <Route path="audit/risk" element={<RiskPage />} />
+              <Route path="audit/health" element={<HealthPage />} />
+
+              {/* Pre-dual-mode paths (session 02 share links point at
+                  these) -- redirect rather than 404 (Known Hazard #1). */}
+              <Route path="overview" element={<LegacyRedirect to="onboard/passport" />} />
+              <Route path="coupling" element={<LegacyRedirect to="audit/coupling" />} />
+              <Route path="architecture" element={<LegacyRedirect to="audit/architecture" />} />
+              <Route path="risk" element={<LegacyRedirect to="audit/risk" />} />
             </Route>
             <Route
               path="*"

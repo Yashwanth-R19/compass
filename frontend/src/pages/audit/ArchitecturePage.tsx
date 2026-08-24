@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import ForceGraph2D from "react-force-graph-2d";
-import { useArchitecture } from "../api/hooks";
-import { Card } from "../components/Card";
-import { GraphCanvas } from "../components/GraphCanvas";
-import { GraphCapNotice } from "../components/GraphCapNotice";
-import { StageGate } from "../components/StageGate";
-import { useCappedGraph, type CappableEdge, type CappableNode } from "../hooks/useGraphCap";
-import { SEVERITY_CLASSES, SEVERITY_LABEL, fileName } from "../lib/format";
-import type { RepoOutletContext } from "./RepoLayout";
+import { useArchitecture } from "../../api/hooks";
+import { Card } from "../../components/Card";
+import { GraphCanvas } from "../../components/GraphCanvas";
+import { GraphCapNotice } from "../../components/GraphCapNotice";
+import { StageGate } from "../../components/StageGate";
+import { useCappedGraph, type CappableEdge, type CappableNode } from "../../hooks/useGraphCap";
+import { SEVERITY_CLASSES, SEVERITY_LABEL, fileName } from "../../lib/format";
+import type { RepoOutletContext } from "../RepoLayout";
 
 interface ArchEdge extends CappableEdge {
   inCycle: boolean;
