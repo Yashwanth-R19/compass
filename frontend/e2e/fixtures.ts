@@ -364,6 +364,99 @@ export const cityResponse = {
   },
 };
 
+// --- Session 11: Audit mode -- findings deep-link, and a failed optional
+// "security" stage rendering one errored section next to a working one. ----
+
+export const findingsResponse = {
+  repo_id: REPO_ID,
+  findings: [
+    {
+      id: "f1",
+      category: "hidden_dependency",
+      severity: "med",
+      confidence: 0.7,
+      file_path: "src/app.py",
+      evidence_sha: null,
+      title: "Hidden dependency: src/app.py <-> src/auth/login.py",
+      detail:
+        "These files change together in 6 commits (coupling_degree=0.60) but neither imports the other.",
+      rank: 0,
+    },
+  ],
+};
+
+// A second repo, deliberately separate from REPO_ID, whose "security" stage
+// (session 10's `optional=True` stage) has failed while the run itself
+// still reached "ready" -- the exact scenario session 10's Part E exists
+// for, and this page must render two sections where only one is errored.
+export const REPO_ID_2 = "33333333-3333-3333-3333-333333333333";
+export const RUN_ID_2 = "44444444-4444-4444-4444-444444444444";
+
+export const repoOutSecurityFail = {
+  ...repoOut,
+  id: REPO_ID_2,
+  url: "https://github.com/acme/leaky",
+  owner: "acme",
+  name: "leaky",
+};
+
+export const repoStatusSecurityFailed = {
+  repo_id: REPO_ID_2,
+  repo_status: "ready",
+  current_run_id: RUN_ID_2,
+  run_id: RUN_ID_2,
+  run_status: "ready",
+  run_error: null,
+  stages: [
+    {
+      name: "secrets",
+      status: "done",
+      started_at: null,
+      finished_at: null,
+      error: null,
+      summary: { hits_found: 1 },
+    },
+    {
+      name: "security",
+      status: "failed",
+      started_at: null,
+      finished_at: null,
+      error: "OSV.dev request failed after 3 attempts",
+      summary: null,
+    },
+  ],
+};
+
+export const secretsResponseWithHistoryHit = {
+  repo_id: REPO_ID_2,
+  hits: [
+    {
+      rule_id: "aws-access-key-id",
+      description: "AWS Access Key ID",
+      file_path: "config/old_settings.py",
+      commit_sha: "deadbeef1234567890",
+      committed_at: "2025-06-01T00:00:00Z",
+      line_number: 12,
+      redacted_preview: "AKIA****************XZ",
+      entropy: null,
+      still_in_head: false,
+    },
+  ],
+  still_in_head_count: 0,
+  total: 1,
+  truncated: false,
+  truncation_reason: null,
+};
+
+// The "security" stage failed, so this is the honestly-empty 200 the real
+// backend's `_pending_response` returns rather than hanging -- the page's
+// "errored" treatment comes from `/status`'s stage row, not this response.
+export const vulnerabilitiesResponseEmpty = {
+  repo_id: REPO_ID_2,
+  vulnerabilities: [],
+  no_supported_manifest: false,
+};
+
 export const blastRadiusResponse = {
   repo_id: REPO_ID,
   file_path: "src/app.py",

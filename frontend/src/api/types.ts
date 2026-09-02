@@ -13,12 +13,14 @@ export type StageName =
   | "mine"
   | "structure"
   | "persist_facts"
+  | "secrets"
   | "coupling"
   | "subsystems"
   | "architecture"
   | "risk"
   | "knowledge"
   | "onboarding"
+  | "security"
   | "rank";
 export type StageStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -155,8 +157,16 @@ export interface HealthResponse {
 // as a loose `string` below (mirroring the backend's own `str`, session
 // 01), but lib/copy.ts's FINDING_CATEGORY_COPY is keyed on this literal
 // union so a category missing its copy fails to compile, not just to render.
+// Session 11 added "secret"/"vulnerability" (app/engines/security.py).
 export type FindingCategory =
-  "risk" | "architecture" | "hidden_dependency" | "knowledge" | "hygiene" | "test_gap";
+  | "risk"
+  | "architecture"
+  | "hidden_dependency"
+  | "knowledge"
+  | "hygiene"
+  | "test_gap"
+  | "secret"
+  | "vulnerability";
 
 export interface FindingOut {
   id: string;

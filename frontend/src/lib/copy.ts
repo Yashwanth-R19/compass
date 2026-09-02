@@ -113,6 +113,9 @@ export const FINDING_CATEGORY_COPY: Record<FindingCategory, () => string> = {
   knowledge: () => "Knowledge",
   hygiene: () => "Hygiene",
   test_gap: () => "Test gap",
+  // Session 11: app/engines/security.py::SecurityEngine.
+  secret: () => "Secret",
+  vulnerability: () => "Vulnerability",
 };
 
 // --- Commit hygiene ----------------------------------------------------

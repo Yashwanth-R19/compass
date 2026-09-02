@@ -16,6 +16,8 @@ import { FindingsPage } from "./pages/audit/FindingsPage";
 import { CouplingPage } from "./pages/audit/CouplingPage";
 import { ArchitecturePage } from "./pages/audit/ArchitecturePage";
 import { RiskPage } from "./pages/audit/RiskPage";
+import { SecurityPage } from "./pages/audit/SecurityPage";
+import { HygienePage } from "./pages/audit/HygienePage";
 import { HealthPage } from "./pages/audit/HealthPage";
 
 const queryClient = new QueryClient({
@@ -51,12 +53,16 @@ function App() {
               <Route path="onboard/city" element={<CityPage />} />
 
               {/* Audit mode: findings | coupling | architecture | risk |
-                  health -- fleshed out further in session 11. */}
+                  security | hygiene | health -- fleshed out in session 11
+                  (security + hygiene are new; the other five were moved
+                  into this shell, unfleshed, in session 08). */}
               <Route path="audit" element={<Navigate to="findings" replace />} />
               <Route path="audit/findings" element={<FindingsPage />} />
               <Route path="audit/coupling" element={<CouplingPage />} />
               <Route path="audit/architecture" element={<ArchitecturePage />} />
               <Route path="audit/risk" element={<RiskPage />} />
+              <Route path="audit/security" element={<SecurityPage />} />
+              <Route path="audit/hygiene" element={<HygienePage />} />
               <Route path="audit/health" element={<HealthPage />} />
 
               {/* Pre-dual-mode paths (session 02 share links point at

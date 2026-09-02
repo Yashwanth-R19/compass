@@ -9,6 +9,10 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
+  // The default 30s budget stopped being enough once session 11 extended
+  // this single flow with Audit mode (a second full page load plus more
+  // graph rendering) -- still one test, not a suite, just a longer one.
+  timeout: 60_000,
   use: {
     baseURL: "http://localhost:5173",
     trace: "retain-on-failure",

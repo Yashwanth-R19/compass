@@ -39,13 +39,16 @@ const ONBOARD_TABS = [
   { to: "onboard/impact", label: "Impact" },
 ];
 
-// findings/coupling/architecture/risk/health -- fleshed out in session 11;
-// this session wires the shell and moves the pre-existing pages into it.
+// findings/coupling/architecture/risk/security/hygiene/health -- fleshed out
+// in session 11 (security + hygiene are new tabs this session; the other
+// five moved the pre-existing pages into this shell in session 08).
 const AUDIT_TABS = [
   { to: "audit/findings", label: "Findings" },
   { to: "audit/coupling", label: "Coupling" },
   { to: "audit/architecture", label: "Architecture" },
   { to: "audit/risk", label: "Risk" },
+  { to: "audit/security", label: "Security" },
+  { to: "audit/hygiene", label: "Hygiene" },
   { to: "audit/health", label: "Health" },
 ];
 
@@ -114,12 +117,14 @@ const STAGE_LABEL: Record<StageName, string> = {
   mine: "Mine",
   structure: "Structure",
   persist_facts: "Persist",
+  secrets: "Secrets",
   coupling: "Coupling",
   subsystems: "Subsystems",
   architecture: "Architecture",
   risk: "Risk",
   knowledge: "Knowledge",
   onboarding: "Onboarding",
+  security: "Security",
   rank: "Rank",
 };
 
@@ -137,12 +142,14 @@ const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
   mine: "commits",
   structure: "dependencies",
   persist_facts: "commits",
+  secrets: "hits_found",
   coupling: "pairs_found",
   subsystems: "subsystems",
   architecture: "cycles_found",
   risk: "findings_emitted",
   knowledge: "contributors",
   onboarding: "stops",
+  security: "vulnerabilities_found",
   rank: "findings_ranked",
 };
 

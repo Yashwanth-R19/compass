@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiDelete, apiGet, apiGetOrPending, apiPost, onUnauthorized } from "./client";
 import type {
+  AnalysisRunsResponse,
   ArchitectureResponse,
   BlastRadiusResponse,
   CityResponse,
@@ -24,12 +25,14 @@ import type {
   RepoOut,
   RepoStatusResponse,
   RiskResponse,
+  SecretsResponse,
   ShareLinkOut,
   SubsystemsResponse,
   TestGapsResponse,
   TourResponse,
   TruckFactorResponse,
   UserOut,
+  VulnerabilitiesResponse,
 } from "./types";
 
 const POLL_INTERVAL_MS = 1500;
@@ -322,6 +325,73 @@ export function useCity(repoId: string | undefined, share?: string) {
     queryKey: ["city", repoId, share ?? null],
     queryFn: () => apiGetOrPending<CityResponse>(`/repos/${repoId}/city${qs}`),
     enabled: Boolean(repoId),
+  });
+}
+
+// --- Session 10 endpoints, wired up in session 11: secrets, vulnerabilities -
+
+/** Gates on the "secrets" FACT stage. Secret findings on a private repo are
+ * visible only to the repo's own owner (never through a share link) --
+ * enforced server-side; an unauthorized viewer gets a 403 here like any
+ * other ApiError, surfaced through StageGate's normal error branch. */
+export function useSecrets(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["secrets", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<SecretsResponse>(`/repos/${repoId}/secrets${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+/** Gates on the "security" stage, which is `optional=True` (session 10) --
+ * an OSV.dev outage fails only that one stage while the run still reaches
+ * "ready". This is a normal StageGate consumer either way: a failed stage is
+ * terminal for the 202 contract, so this resolves to an honestly-empty 200
+ * rather than hanging, and the security PAGE is what renders that section as
+ * errored (reading `status.stages` for "security", not this hook). */
+export function useVulnerabilities(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["vulnerabilities", repoId, share ?? null],
+    queryFn: () =>
+      apiGetOrPending<VulnerabilitiesResponse>(`/repos/${repoId}/vulnerabilities${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+/** Every past analysis run for this repo, newest first -- not gated on any
+ * stage (a plain repo-scoped list). Used by HealthPage's run-history
+ * sparkline (Part F): the data has existed since the Facts/Insight split,
+ * this is the first page to read it. */
+export function useRuns(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["runs", repoId, share ?? null],
+    queryFn: () => apiGet<AnalysisRunsResponse>(`/repos/${repoId}/runs${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+/** Fetches `/health?run_id=<id>` for several past runs at once (HealthPage's
+ * sparkline) -- there is no bulk "health history" endpoint, so this is N
+ * requests to the SAME endpoint every other page already reads for the
+ * current run, just parameterized per run_id. `enabled` follows each query
+ * independently, matching every other FetchResult-shaped hook. */
+export function useHealthHistory(repoId: string | undefined, runIds: string[], share?: string) {
+  return useQueries({
+    queries: runIds.map((runId) => {
+      const params = new URLSearchParams({ run_id: runId });
+      if (share) params.set("share", share);
+      return {
+        queryKey: ["health", repoId, runId, share ?? null],
+        queryFn: () =>
+          apiGetOrPending<HealthResponse>(`/repos/${repoId}/health?${params.toString()}`),
+        enabled: Boolean(repoId),
+      };
+    }),
   });
 }
 

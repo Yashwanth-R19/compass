@@ -1,6 +1,7 @@
 import { expect, test, type Route } from "@playwright/test";
 import {
   REPO_ID,
+  REPO_ID_2,
   architectureResponse,
   blastRadiusResponse,
   cityResponse,
@@ -8,29 +9,38 @@ import {
   couplingResponse,
   entryPointsResponse,
   expertiseResponse,
+  findingsResponse,
   hiddenDependenciesResponse,
   knowledgeMapResponse,
   moduleCouplingSubsystemResponse,
   passportResponse,
   repoOut,
+  repoOutSecurityFail,
   repoStatus,
+  repoStatusSecurityFailed,
+  secretsResponseWithHistoryHit,
   subsystemsResponse,
   tourResponse,
   truckFactorResponse,
+  vulnerabilitiesResponseEmpty,
 } from "./fixtures";
 
 const API_URL = "http://localhost:8000";
 
 // One Playwright test, not a suite (RULES.md sec 8 / Part H): "the Onboard
 // product works" end to end against a mocked API -- Onboard -> passport ->
-// tour -> people -> map -> impact. Every backend call this flow can make is
-// routed here explicitly; anything unmatched falls through to a 404 fixture
-// rather than a real network call, so a missed mock fails loudly (a hung/
-// failed request) instead of silently hitting localhost:8000. Session 09
-// extends this SAME test (not a new spec file) with the map's
-// expand/collapse interaction and the impact explorer's file-select flow,
-// per that session's own "extend the single existing test" instruction.
-test("Onboard mode: passport -> tour -> people -> map -> impact", async ({ page }) => {
+// tour -> people -> map -> impact -> Audit findings -> a deep link -> a
+// failed optional stage rendering one errored section. Every backend call
+// this flow can make is routed here explicitly; anything unmatched falls
+// through to a 404 fixture rather than a real network call, so a missed
+// mock fails loudly (a hung/failed request) instead of silently hitting
+// localhost:8000. Session 09 extended this SAME test with the map's
+// expand/collapse interaction and the impact explorer's file-select flow;
+// session 11 extends it again with Audit mode, per the same "extend the
+// single existing test" instruction each prior session has followed.
+test("Onboard mode: passport -> tour -> people -> map -> impact -> Audit findings", async ({
+  page,
+}) => {
   await page.route(`${API_URL}/**`, (route: Route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -88,6 +98,26 @@ test("Onboard mode: passport -> tour -> people -> map -> impact", async ({ page 
     if (path === `/repos/${REPO_ID}/blast-radius`) {
       expect(url.searchParams.get("path")).toBe("src/app.py");
       return route.fulfill({ json: blastRadiusResponse });
+    }
+    // Session 11: Audit mode -- findings + its coupling deep link.
+    if (path === `/repos/${REPO_ID}/findings`) {
+      return route.fulfill({ json: findingsResponse });
+    }
+
+    // Session 11: a second, separate repo whose "security" stage failed --
+    // the security page must render its vulnerabilities section as errored
+    // while secrets (a different stage) works normally.
+    if (path === `/repos/${REPO_ID_2}`) {
+      return route.fulfill({ json: repoOutSecurityFail });
+    }
+    if (path === `/repos/${REPO_ID_2}/status`) {
+      return route.fulfill({ json: repoStatusSecurityFailed });
+    }
+    if (path === `/repos/${REPO_ID_2}/secrets`) {
+      return route.fulfill({ json: secretsResponseWithHistoryHit });
+    }
+    if (path === `/repos/${REPO_ID_2}/vulnerabilities`) {
+      return route.fulfill({ json: vulnerabilitiesResponseEmpty });
     }
 
     return route.fulfill({ status: 404, json: { detail: `unmocked path: ${path}` } });
@@ -159,4 +189,41 @@ test("Onboard mode: passport -> tour -> people -> map -> impact", async ({ page 
   // appears more than once on the page -- .first() is the correct
   // assertion, not a workaround.
   await expect(page.getByText("src/auth/login.py").first()).toBeVisible();
+
+  // --- Session 11: Audit mode -- Findings -> expand -> follow its deep
+  // link -> land on Coupling with the SAME pair focused, not just the tab.
+  await page.getByRole("link", { name: "Audit" }).click();
+  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/audit/findings$`));
+
+  const findingTitle = "Hidden dependency: src/app.py <-> src/auth/login.py";
+  await expect(page.getByText(findingTitle)).toBeVisible();
+  // Collapsed by default -- the deep link only appears once expanded.
+  await expect(page.getByRole("link", { name: "View in Coupling" })).toHaveCount(0);
+
+  await page.getByText(findingTitle).click();
+  const couplingDeepLink = page.getByRole("link", { name: "View in Coupling" });
+  await expect(couplingDeepLink).toBeVisible();
+  await couplingDeepLink.click();
+
+  // Lands on Coupling, forced to FILE granularity (a hidden_dependency
+  // finding's signature is always a file pair) with "hidden only" already
+  // applied -- and the exact pair from the finding is what's shown, not
+  // just the tab in general.
+  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/audit/coupling\\?`));
+  await expect(page.getByText(/hidden only/i)).toBeVisible();
+  await expect(page.getByText("app.py ↔ login.py")).toBeVisible();
+  await expect(page.getByText("hidden", { exact: true }).first()).toBeVisible();
+
+  // --- Session 11: Security page, a DIFFERENT repo whose "security" stage
+  // (session 10's optional stage) failed -- one section errored, the other
+  // (secrets, a separate stage) working normally. This is the visible
+  // payoff of per-stage failure isolation (session 10 Part E).
+  await page.goto(`/repos/${REPO_ID_2}/audit/security`);
+  await expect(
+    page.getByRole("heading", { name: "Removed from code but still in git history" }),
+  ).toBeVisible();
+  await expect(page.getByText("AWS Access Key ID")).toBeVisible();
+  await expect(page.getByText(/should be rotated/)).toBeVisible();
+  await expect(page.getByText("This section couldn't be computed")).toBeVisible();
+  await expect(page.getByText(/OSV.dev request failed/)).toBeVisible();
 });

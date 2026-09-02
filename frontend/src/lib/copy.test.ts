@@ -38,6 +38,7 @@ const FIRST_PR_CODES = [
 ] as const;
 
 // grep for `"category":` under backend/app/engines/ to reproduce this list.
+// Session 11 added "secret"/"vulnerability" (app/engines/security.py).
 const FINDING_CATEGORIES = [
   "risk",
   "architecture",
@@ -45,6 +46,8 @@ const FINDING_CATEGORIES = [
   "knowledge",
   "hygiene",
   "test_gap",
+  "secret",
+  "vulnerability",
 ] as const;
 
 const HYGIENE_EVENT_KINDS = ["oversized", "fixup_churn", "risky_commit"] as const;
