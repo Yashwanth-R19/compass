@@ -109,6 +109,19 @@ _user_limiter = TokenBucketLimiter(
     per_day=settings.COMPASS_RATE_LIMIT_USER_PER_DAY,
 )
 
+# Session 12: a SEPARATE bucket pair for narrative GENERATION specifically
+# (app/api/narrative.py) -- "how many repos can you submit" and "how many
+# LLM calls can you trigger" are different resources. Only charged on the
+# path that would actually call a provider; a cache hit never touches this.
+_narrative_anon_limiter = TokenBucketLimiter(
+    per_hour=settings.COMPASS_NARRATIVE_RATE_LIMIT_ANON_PER_HOUR,
+    per_day=settings.COMPASS_NARRATIVE_RATE_LIMIT_ANON_PER_DAY,
+)
+_narrative_user_limiter = TokenBucketLimiter(
+    per_hour=settings.COMPASS_NARRATIVE_RATE_LIMIT_USER_PER_HOUR,
+    per_day=settings.COMPASS_NARRATIVE_RATE_LIMIT_USER_PER_DAY,
+)
+
 
 def get_client_ip(request: Request) -> str:
     """The first entry of ``X-Forwarded-For``, or the direct connection's
@@ -150,6 +163,28 @@ def check_analysis_rate_limit(request: Request, user: User | None) -> None:
         )
 
 
+def check_narrative_rate_limit(request: Request, user: User | None) -> None:
+    """Raises HTTP 429 if this caller's narrative-GENERATION quota is
+    exhausted. Call this only from the code path that is about to make a
+    live provider call -- a cache hit costs nothing and must never be rate-
+    limited (app/api/narrative.py)."""
+    if user is not None:
+        key = f"user:{user.id}"
+        limiter = _narrative_user_limiter
+    else:
+        key = f"ip:{get_client_ip(request)}"
+        limiter = _narrative_anon_limiter
+
+    allowed, retry_after = limiter.try_consume(key)
+    if not allowed:
+        retry_after_seconds = int(retry_after) + 1
+        raise HTTPException(
+            status_code=429,
+            detail=f"Narrative generation rate limit exceeded. Try again in {retry_after_seconds} seconds.",
+            headers={"Retry-After": str(retry_after_seconds)},
+        )
+
+
 def check_concurrency_cap(db: Session) -> None:
     """Raises HTTP 429 if ``COMPASS_MAX_CONCURRENT_RUNS`` analysis runs are
     already ``running`` system-wide. Excess submissions are rejected, not
@@ -177,5 +212,6 @@ __all__ = [
     "TokenBucketLimiter",
     "check_analysis_rate_limit",
     "check_concurrency_cap",
+    "check_narrative_rate_limit",
     "get_client_ip",
 ]

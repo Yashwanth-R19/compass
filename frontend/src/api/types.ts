@@ -793,3 +793,18 @@ export interface VulnerabilitiesResponse {
   vulnerabilities: VulnerabilityOut[];
   no_supported_manifest: boolean;
 }
+
+// Session 12: the narrative layer (mirrors backend/app/schemas/narrative.py).
+// Exactly three surfaces exist -- see CLAUDE.md's "Narrative layer" section
+// and Known Hazard #8 ("do not put narrative on more than three surfaces").
+export type NarrativeSurface = "passport" | "risk_file" | "security";
+export type NarrativeUnavailableReason = "no_keys" | "pool_exhausted" | "rejected" | "disabled";
+
+export interface NarrativeResponse {
+  available: boolean;
+  content: string | null;
+  provider: string | null;
+  model: string | null;
+  generated_at: string | null;
+  reason: NarrativeUnavailableReason | null;
+}

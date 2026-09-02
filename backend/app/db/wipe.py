@@ -19,6 +19,7 @@ from app.db.models import (
     Health,
     HygieneEvent,
     ModuleCoupling,
+    Narrative,
     RepoManifest,
     RepoPassport,
     SecretHit,
@@ -113,4 +114,8 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
     # osv_cache is deliberately NEVER pruned here (see OsvCache's docstring:
     # a global cache outside both the Facts and Insight lifecycles).
     session.execute(delete(Vulnerability).where(Vulnerability.analysis_run_id == run_id))
+    # Session 12: narratives are cached LLM output keyed by analysis_run_id,
+    # like everything else Insight -- pruning a run must not leave an
+    # orphaned narrative behind for a run_id that no longer exists.
+    session.execute(delete(Narrative).where(Narrative.analysis_run_id == run_id))
     session.execute(delete(AnalysisRun).where(AnalysisRun.id == run_id))

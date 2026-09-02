@@ -163,11 +163,16 @@ blueprint is created (**Environment** tab on the `compass-api` service):
 | `COMPASS_FRONTEND_URL` | Your Vercel deployment URL — same value as `FRONTEND_ORIGIN` above, used for building OAuth redirect URLs rather than for CORS matching |
 | `COMPASS_ENV` | `production` — **required** for the app to refuse to start with a missing/invalid `COMPASS_TOKEN_ENCRYPTION_KEY` instead of silently deriving an ephemeral one |
 | `COMPASS_SECRET_SCAN_SALT` | A random string, e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"` — not startup-fatal like `COMPASS_TOKEN_ENCRYPTION_KEY` if left unset, but the shipped dev default is public (it's in this repo's `.env.example`), so set a real value here rather than deploying with it |
+| `COMPASS_GEMINI_KEYS` | Comma-separated Google Gemini API key(s) — get one free at [Google AI Studio](https://aistudio.google.com/apikey) ("Create API key"). Optional: leave unset and the narrative layer (session 12, CLAUDE.md) just reports `{"available": false, "reason": "no_keys"}` everywhere — nothing else in Compass depends on it |
+| `COMPASS_GROQ_KEYS` | Comma-separated Groq API key(s) — get one free at [console.groq.com/keys](https://console.groq.com/keys). Also optional, same fallback as above; configure either or both providers, or neither |
+| `COMPASS_ADMIN_TOKEN` | A random string (same generation command as `COMPASS_SECRET_SCAN_SALT`) — gates `POST /internal/runs/{id}/pregenerate-narratives` (session 16's showcase-repo pre-generation). Unlike the salt above, leaving this unset makes that ONE endpoint permanently unreachable (503), never silently open, since it guards a real action rather than a fingerprint |
 
-`ENV`, `COMPASS_WORKER_MODE`, `COMPASS_MAX_REPO_MB`, and the
-`COMPASS_RATE_LIMIT_*`/`COMPASS_MAX_CONCURRENT_RUNS` settings already have
-correct defaults in `render.yaml` and don't need dashboard values unless you
-want to override them.
+`ENV`, `COMPASS_WORKER_MODE`, `COMPASS_MAX_REPO_MB`,
+`COMPASS_GEMINI_MODEL`/`COMPASS_GROQ_MODEL`, and the
+`COMPASS_RATE_LIMIT_*`/`COMPASS_NARRATIVE_RATE_LIMIT_*`/
+`COMPASS_MAX_CONCURRENT_RUNS` settings already have correct defaults in
+`render.yaml` and don't need dashboard values unless you want to override
+them.
 
 **Migrations run via `render.yaml`'s `dockerCommand`** (`alembic upgrade
 head && uvicorn ...`), not a separate pre-deploy step — Render's **free**

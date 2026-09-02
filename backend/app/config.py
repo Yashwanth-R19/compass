@@ -94,6 +94,42 @@ class Settings(BaseSettings):
     # aren't guessable across deployments by anyone who knows the default.
     COMPASS_SECRET_SCAN_SALT: str = "compass-secret-scan-dev-salt"
 
+    # Session 12: the narrative layer's key pool (app/narrative/pool.py).
+    # Comma-separated lists, one provider per variable -- an absent/empty
+    # variable means that provider is simply unavailable, and the system
+    # must (and does) work correctly with EVERY one of these unset, which is
+    # the default for anyone self-hosting Compass without paying for an LLM
+    # key. Never logged: app/narrative/pool.py feeds every configured value
+    # into app/jobs/log_redaction.py's scrub list at import time.
+    COMPASS_GEMINI_KEYS: str = ""
+    COMPASS_GROQ_KEYS: str = ""
+    # Model names live in config, not in code (Known Hazard #3) -- a
+    # free-tier provider renaming or retiring a model is an env var change,
+    # not a code change, and app/narrative/providers.py maps an
+    # unknown-model response onto the `auth` failure kind (never retried in
+    # a loop) specifically because this can happen without warning.
+    COMPASS_GEMINI_MODEL: str = "gemini-2.0-flash"
+    COMPASS_GROQ_MODEL: str = "llama-3.1-8b-instant"
+
+    # Session 12, Part F: rate limiting for narrative GENERATION specifically
+    # (a cache hit costs nothing and is never rate-limited) -- a separate
+    # TokenBucketLimiter pair from POST /repos's, since "how many repos can
+    # you submit" and "how many LLM calls can you trigger" are different
+    # resources with different sensible limits, even though both reuse the
+    # same app/api/limits.py machinery.
+    COMPASS_NARRATIVE_RATE_LIMIT_ANON_PER_HOUR: int = 5
+    COMPASS_NARRATIVE_RATE_LIMIT_ANON_PER_DAY: int = 15
+    COMPASS_NARRATIVE_RATE_LIMIT_USER_PER_HOUR: int = 20
+    COMPASS_NARRATIVE_RATE_LIMIT_USER_PER_DAY: int = 60
+
+    # Session 12, Part D: the shared secret gating
+    # POST /internal/runs/{id}/pregenerate-narratives (session 16's showcase-
+    # repo pre-generation). Empty means the endpoint is unreachable -- it
+    # never falls back to "no token required" the way an empty
+    # COMPASS_SECRET_SCAN_SALT safely does, since this one guards a real
+    # network-calling action, not a fingerprint salt.
+    COMPASS_ADMIN_TOKEN: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

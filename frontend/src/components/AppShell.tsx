@@ -1,6 +1,38 @@
 import { Link, Outlet } from "react-router-dom";
 import { githubLoginUrl } from "../api/client";
 import { useLogout, useMe } from "../api/hooks";
+import { setNarrativeEnabled, useNarrativeEnabled } from "../lib/narrativePref";
+
+/** Session 12, Part E: the single global "narrative phrasing" toggle,
+ * always visible in the header regardless of route or repo. Defaults to
+ * off (Known Hazard #5) and every page remains fully usable either way --
+ * this control only decides whether `NarrativeBlock` instances fetch and
+ * render anything at all. */
+function NarrativeToggle() {
+  const enabled = useNarrativeEnabled();
+
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+      <span className="hidden sm:inline">Narrative</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label="Toggle generated narrative phrasing"
+        onClick={() => setNarrativeEnabled(!enabled)}
+        className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
+          enabled ? "bg-violet-500" : "bg-slate-300 dark:bg-slate-700"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+            enabled ? "translate-x-3.5" : "translate-x-0.5"
+          }`}
+        />
+      </button>
+    </label>
+  );
+}
 
 export function AppShell() {
   const me = useMe();
@@ -18,6 +50,7 @@ export function AppShell() {
           </Link>
 
           <div className="flex items-center gap-3">
+            <NarrativeToggle />
             <Link
               to="/"
               className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"

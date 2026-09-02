@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiDelete, apiGet, apiGetOrPending, apiPost, onUnauthorized } from "./client";
+import { useNarrativeEnabled } from "../lib/narrativePref";
 import type {
   AnalysisRunsResponse,
   ArchitectureResponse,
@@ -20,6 +21,8 @@ import type {
   ModuleCouplingResponse,
   MyGithubReposResponse,
   MyReposResponse,
+  NarrativeResponse,
+  NarrativeSurface,
   PassportResponse,
   RepoCreateResponse,
   RepoOut,
@@ -463,5 +466,31 @@ export function useCreateShareLink() {
 export function useRevokeShareLink() {
   return useMutation({
     mutationFn: (runId: string) => apiDelete<{ status: string }>(`/runs/${runId}/share`),
+  });
+}
+
+/** Session 12: the one hook `NarrativeBlock` uses for all three surfaces.
+ * Never fires while the global toggle (`lib/narrativePref.ts`) is off --
+ * narrative rule 3 ("every page is fully usable with narrative off") means
+ * a disabled toggle should cost zero requests, not just render nothing.
+ * `GET /repos/{id}/narrative` never answers 202 (see the backend's own
+ * module docstring), so this is a plain `apiGet`, not `apiGetOrPending`. */
+export function useNarrative(
+  repoId: string | undefined,
+  surface: NarrativeSurface,
+  subject?: string,
+  share?: string,
+) {
+  const enabled = useNarrativeEnabled();
+  const params = new URLSearchParams({ surface });
+  if (subject) params.set("subject", subject);
+  if (share) params.set("share", share);
+
+  return useQuery({
+    queryKey: ["narrative", repoId, surface, subject ?? null, share ?? null],
+    queryFn: () => apiGet<NarrativeResponse>(`/repos/${repoId}/narrative?${params.toString()}`),
+    enabled: Boolean(repoId) && enabled && (surface !== "risk_file" || Boolean(subject)),
+    retry: false,
+    staleTime: Infinity,
   });
 }

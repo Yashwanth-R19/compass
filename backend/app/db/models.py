@@ -1305,3 +1305,52 @@ class OsvCache(Base):
     osv_id: Mapped[str] = mapped_column(Text, primary_key=True)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Narrative(Base):
+    """Insight (session 12, Part D): one cached LLM-phrased narrative for a
+    run -- ``app/narrative/generate.py`` writes these, lazily, the first
+    time ``GET /repos/{id}/narrative`` is asked for a given
+    ``(surface, subject_key)``; every later call for the same triple reads
+    this row instead of calling a provider again. ``surface`` is one of
+    ``"passport"``/``"risk_file"``/``"security"``; ``subject_key`` is the
+    file path for ``"risk_file"`` (one surface, many narratives) and left
+    unused (empty string, never a raw ``NULL`` -- see the API layer's
+    comment on why) for the two whole-run surfaces. ``factpack_hash`` is a
+    sha256 of the serialized fact pack that produced ``content`` -- a
+    changed fact pack (in practice: this would only happen if the DATA
+    itself changed, which for a fixed ``analysis_run_id`` should never
+    happen, but the hash is what makes a mismatch a cache-invalidation
+    signal rather than silently ever serving stale prose) triggers
+    regeneration. ``provider``/``model`` are surfaced by the API for
+    transparency -- the UI shows which model phrased a given narrative.
+
+    No ``repo_id`` column: this table is looked up ONLY by
+    ``analysis_run_id`` (a run already implies exactly one repo), unlike
+    most other Insight tables, which also carry a denormalised ``repo_id``
+    for cheap repo-scoped queries that don't apply here -- the session
+    prompt's own column list for this table is exhaustive and doesn't
+    include one.
+    """
+
+    __tablename__ = "narratives"
+    __table_args__ = (
+        UniqueConstraint(
+            "analysis_run_id", "surface", "subject_key", name="uq_narratives_run_surface_subject"
+        ),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    surface: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    factpack_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

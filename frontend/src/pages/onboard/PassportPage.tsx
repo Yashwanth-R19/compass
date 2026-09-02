@@ -5,6 +5,7 @@ import { useEntryPoints, usePassport, useTruckFactor } from "../../api/hooks";
 import { Card } from "../../components/Card";
 import { ContributorChip } from "../../components/ContributorChip";
 import { HeuristicNote } from "../../components/HeuristicNote";
+import { NarrativeBlock } from "../../components/NarrativeBlock";
 import { ScoreGauge } from "../../components/ScoreGauge";
 import { StageGate } from "../../components/StageGate";
 import { SubsystemBadge } from "../../components/SubsystemBadge";
@@ -54,6 +55,7 @@ export function PassportPage() {
           <TeamShapeCard data={data.data} repoId={repo.id} share={share} />
           <ShapeCard data={data.data} repoId={repo.id} share={share} />
           <HealthCard data={data.data} />
+          <NarrativeBlock surface="passport" />
         </div>
       )}
     </StageGate>

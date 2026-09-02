@@ -76,3 +76,12 @@ services:
       # --- Session 10: secret scanning -----------------------------------
       - key: COMPASS_SECRET_SCAN_SALT
         sync: false # generate: python -c "import secrets; print(secrets.token_urlsafe(32))" -- see DEPLOY.md
+      # --- Session 12: narrative layer -- both key vars are OPTIONAL; the
+      # system works correctly with either or both left unset (see DEPLOY.md
+      # and CLAUDE.md's "Narrative layer" section) --------------------------
+      - key: COMPASS_GEMINI_KEYS
+        sync: false # comma-separated Gemini API key(s), or leave empty
+      - key: COMPASS_GROQ_KEYS
+        sync: false # comma-separated Groq API key(s), or leave empty
+      - key: COMPASS_ADMIN_TOKEN
+        sync: false # generate like COMPASS_SECRET_SCAN_SALT -- gates POST /internal/runs/{id}/pregenerate-narratives

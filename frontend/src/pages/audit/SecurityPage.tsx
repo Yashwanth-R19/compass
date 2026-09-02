@@ -5,6 +5,7 @@ import type { SecretHitOut, Severity, VulnerabilityOut } from "../../api/types";
 import { Card } from "../../components/Card";
 import { EvidenceLink } from "../../components/EvidenceLink";
 import { LoadingState } from "../../components/LoadingState";
+import { NarrativeBlock } from "../../components/NarrativeBlock";
 import { PartialResultNotice } from "../../components/PartialResultNotice";
 import { SEVERITY_LABEL } from "../../lib/format";
 import type { RepoOutletContext } from "../RepoLayout";
@@ -47,6 +48,7 @@ export function SecurityPage() {
         failed={securityFailed}
         error={securityStage?.error ?? null}
       />
+      <NarrativeBlock surface="security" />
     </div>
   );
 }

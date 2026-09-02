@@ -22,12 +22,20 @@ dependencies = [
     "tree-sitter-java>=0.21,<0.24",
     "cryptography>=43,<44",
     "pyjwt>=2.9,<2.10",
+    # Session 12: the narrative layer's provider adapters (app/narrative/providers.py)
+    # are plain JSON POSTs over httpx -- no provider SDK, per the session
+    # prompt's explicit "two SDKs is two dependency trees for no benefit."
+    # Already present as a dev-only dependency (FastAPI's TestClient); moved
+    # to a real runtime dependency here since production code now imports it
+    # directly too.
+    "httpx>=0.28,<0.29",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3,<8.4",
-    "httpx>=0.28,<0.29",
+    # httpx moved to the main dependency list above (session 12) -- kept out
+    # of this list now to avoid declaring it twice.
     "ruff>=0.8,<0.9",
     "black>=24.10,<25",
     "mypy>=1.13,<1.14",

@@ -15,6 +15,7 @@ import { ConfidenceMeter } from "../../components/ConfidenceMeter";
 import { Card } from "../../components/Card";
 import { HeuristicNote } from "../../components/HeuristicNote";
 import { MetricRow } from "../../components/MetricRow";
+import { NarrativeBlock } from "../../components/NarrativeBlock";
 import { StageGate } from "../../components/StageGate";
 import { TEST_CLASSIFICATION_COPY } from "../../lib/copy";
 import { confidenceLabel, formatPercent, formatScore } from "../../lib/format";
@@ -278,6 +279,7 @@ function RiskEvidence({ file, repoId }: { file: RiskFileOut; repoId: string }) {
       >
         View blast radius →
       </Link>
+      <NarrativeBlock surface="risk_file" subject={file.file_path} />
     </div>
   );
 }
