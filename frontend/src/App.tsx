@@ -12,6 +12,8 @@ import { GlossaryPage } from "./pages/onboard/GlossaryPage";
 import { MapPage } from "./pages/onboard/MapPage";
 import { ImpactPage } from "./pages/onboard/ImpactPage";
 import { CityPage } from "./pages/onboard/CityPage";
+import { EvolutionPage } from "./pages/onboard/EvolutionPage";
+import { ComparePage } from "./pages/ComparePage";
 import { FindingsPage } from "./pages/audit/FindingsPage";
 import { CouplingPage } from "./pages/audit/CouplingPage";
 import { ArchitecturePage } from "./pages/audit/ArchitecturePage";
@@ -51,6 +53,7 @@ function App() {
               <Route path="onboard/map" element={<MapPage />} />
               <Route path="onboard/impact" element={<ImpactPage />} />
               <Route path="onboard/city" element={<CityPage />} />
+              <Route path="onboard/evolution" element={<EvolutionPage />} />
 
               {/* Audit mode: findings | coupling | architecture | risk |
                   security | hygiene | health -- fleshed out in session 11
@@ -64,6 +67,11 @@ function App() {
               <Route path="audit/security" element={<SecurityPage />} />
               <Route path="audit/hygiene" element={<HygienePage />} />
               <Route path="audit/health" element={<HealthPage />} />
+
+              {/* Session 13: run-vs-run compare -- not part of either mode's
+                  tab bar, reached via the header's "Compare" button
+                  (RepoLayout.tsx) whenever a repo has >= 2 runs. */}
+              <Route path="compare" element={<ComparePage />} />
 
               {/* Pre-dual-mode paths (session 02 share links point at
                   these) -- redirect rather than 404 (Known Hazard #1). */}

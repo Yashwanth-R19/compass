@@ -808,3 +808,166 @@ export interface NarrativeResponse {
   generated_at: string | null;
   reason: NarrativeUnavailableReason | null;
 }
+
+// Session 13: the evolution timeline (mirrors backend/app/schemas/timeline.py).
+// Every field is HISTORY-DERIVED -- see TimelineResponse.not_covered, rendered
+// verbatim on EvolutionPage, never paraphrased into something stronger.
+
+export interface TimelineCouplingPairOut {
+  path_a: string;
+  path_b: string;
+  shared_revs: number;
+  coupling_degree: number;
+}
+
+// Deliberately NOT called "risk" -- churn alone, since complexity at a
+// historical revision was never measured (see the backend engine's own
+// HONESTY CONSTRAINT docstring).
+export interface TimelineHotspotOut {
+  path: string;
+  churn_to_date: number;
+}
+
+export interface TimelineContributorShareOut {
+  name: string;
+  commits: number;
+  share: number;
+}
+
+export interface TimelineSnapshotOut {
+  position: number;
+  commit_sha: string;
+  at_date: string;
+  commit_index: number;
+  file_count: number;
+  churn_to_date: number;
+  commits_to_date: number;
+  active_contributors: number;
+  contributor_shares: TimelineContributorShareOut[];
+  coupling_pairs_count: number;
+  top_coupling_pairs: TimelineCouplingPairOut[];
+  churn_ranked_hotspots: TimelineHotspotOut[];
+}
+
+export interface TimelineMetricBounds {
+  min: number;
+  max: number;
+}
+
+// Server-computed, fixed across every snapshot (Part D/F) -- the scrubber
+// must build every axis domain from THIS, never from the currently-displayed
+// snapshot's own data, or the chart rescales per frame and nothing appears
+// to move (Known Hazard #4).
+export interface TimelineBounds {
+  file_count: TimelineMetricBounds;
+  churn_to_date: TimelineMetricBounds;
+  commits_to_date: TimelineMetricBounds;
+  active_contributors: TimelineMetricBounds;
+  coupling_pairs_count: TimelineMetricBounds;
+  hotspot_churn: TimelineMetricBounds;
+}
+
+export interface TimelineResolution {
+  history: number;
+}
+
+export interface TimelineResponse {
+  repo_id: string;
+  snapshots: TimelineSnapshotOut[];
+  bounds: TimelineBounds;
+  resolution: TimelineResolution;
+  covers: string[];
+  not_covered: string;
+}
+
+// Session 13: run-vs-run compare (mirrors backend/app/schemas/compare.py).
+
+export interface HeadlineDeltaOut {
+  metric: string;
+  label: string;
+  before: number | null;
+  after: number | null;
+  delta: number | null;
+  higher_is_better: boolean | null;
+}
+
+export interface RiskMoverOut {
+  file_path: string;
+  hotspot_rank_before: number | null;
+  hotspot_rank_after: number | null;
+  rank_delta: number;
+  risk_score_before: number | null;
+  risk_score_after: number | null;
+  risk_score_delta: number;
+  max_coupling_degree_before: number;
+  max_coupling_degree_after: number;
+}
+
+export interface CompareFindingOut {
+  signature: string;
+  category: string;
+  severity: Severity;
+  confidence: number;
+  title: string;
+  file_path: string | null;
+}
+
+export interface FindingsDiffOut {
+  appeared: CompareFindingOut[];
+  resolved: CompareFindingOut[];
+  persisted: CompareFindingOut[];
+  appeared_total: number;
+  resolved_total: number;
+  persisted_total: number;
+}
+
+export type SubsystemChangeKind = "appeared" | "disappeared" | "merged" | "split";
+
+export interface SubsystemChangeOut {
+  kind: SubsystemChangeKind;
+  label: string;
+  detail: string;
+  file_count_before: number | null;
+  file_count_after: number | null;
+}
+
+export type ContributorChangeKind = "joined" | "left" | "went_stale";
+
+export interface ContributorChangeOut {
+  kind: ContributorChangeKind;
+  name: string;
+}
+
+export type CouplingChangeKind = "appeared" | "strengthened" | "weakened" | "vanished";
+
+export interface CouplingChangeOut {
+  kind: CouplingChangeKind;
+  file_a_path: string;
+  file_b_path: string;
+  coupling_degree_before: number | null;
+  coupling_degree_after: number | null;
+}
+
+export interface SecurityDiffOut {
+  vulnerabilities_introduced: number;
+  vulnerabilities_remediated: number;
+  secrets_introduced: number;
+  secrets_caveat: string;
+}
+
+export interface CompareResponse {
+  repo_id: string;
+  run_before: string;
+  run_after: string;
+  engine_version_before: number;
+  engine_version_after: number;
+  engine_version_differs: boolean;
+  headline: HeadlineDeltaOut[];
+  risk_movers_worsened: RiskMoverOut[];
+  risk_movers_improved: RiskMoverOut[];
+  findings: FindingsDiffOut;
+  subsystem_changes: SubsystemChangeOut[];
+  contributor_changes: ContributorChangeOut[];
+  coupling_changes: CouplingChangeOut[];
+  security: SecurityDiffOut;
+}

@@ -1354,3 +1354,45 @@ class Narrative(Base):
     model: Mapped[str] = mapped_column(Text, nullable=False)
     factpack_hash: Mapped[str] = mapped_column(Text, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Snapshot(Base):
+    """Insight (session 13, Part C): one row per history-derived point on the
+    evolution timeline, ``app/engines/timeline.py::TimelineEngine``.
+    ``position`` is the 0-indexed chronological order within this run (unique
+    per run); ``commit_index`` is that same point's index into the repo's
+    FULL chronologically-sorted commit list (what
+    ``app/analysis/snapshots.py::select_snapshot_points`` spaced evenly by).
+    ``metrics`` is the whole per-snapshot payload -- file_count,
+    churn_to_date, commits_to_date, active_contributors, contributor_shares,
+    coupling_pairs_count, top_coupling_pairs, churn_ranked_hotspots (see that
+    engine's module docstring for the HONESTY CONSTRAINT this table's
+    contents are governed by: every field here is history-derived, nothing
+    structural -- no import graph, subsystems, complexity, or cycles, at any
+    historical point). Stored as one compact JSONB blob per snapshot rather
+    than per-file table copies, since the whole point is a small, fixed
+    number of points (HISTORY_SNAPSHOTS = 24) summarizing the WHOLE repo at
+    that point, not per-file rows that would multiply by file count.
+    """
+
+    __tablename__ = "snapshots"
+    __table_args__ = (
+        UniqueConstraint("analysis_run_id", "position", name="uq_snapshots_run_id_position"),
+        Index("ix_snapshots_repo_id", "repo_id"),
+    )
+
+    id: Mapped[int] = bigint_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    repo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repos.id", ondelete="CASCADE"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    commit_sha: Mapped[str] = mapped_column(Text, nullable=False)
+    at_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    commit_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False)

@@ -10,6 +10,7 @@ from app.db.models import (
     AnalysisStage,
     Commit,
     File,
+    Finding,
     Health,
     Job,
     JobStatus,
@@ -543,3 +544,47 @@ def test_reanalysis_with_unchanged_head_sha_preserves_dependency_manifest_found_
     )
     assert second_structure.status == StageStatus.skipped
     assert second_structure.summary["dependency_manifest_found"] is True
+
+
+def test_no_finding_in_a_completed_run_has_a_null_signature(tmp_path, db_session):
+    """Session 13, Part C: every finding-emitting engine (sessions 04, 05,
+    07, 10) must set ``findings.signature`` -- session 01 added that column
+    specifically so session 13's run-vs-run compare can match findings
+    reliably instead of falling back to "everything is new" (Known Hazard
+    #5). Runs the REAL pipeline end to end (no mocked engines) against a
+    small local repo crafted to exercise more than one finding category:
+    a.py/b.py always change together with no import between them (coupling
+    AND, since there's no structural edge, a hidden-dependency finding via
+    OverlayEngine), and every non-deleted file gets at least one RiskEngine
+    finding unconditionally (top-N by hotspot rank, no minimum score floor)."""
+    repo_dir = tmp_path / "signature-coverage-repo"
+    repo_dir.mkdir()
+    _git(repo_dir, "init", "-b", "main")
+    _git(repo_dir, "config", "user.email", "test@example.com")
+    _git(repo_dir, "config", "user.name", "Test User")
+
+    (repo_dir / "a.py").write_text("def a():\n    return 1\n")
+    (repo_dir / "b.py").write_text("def b():\n    return 2\n")
+    _git(repo_dir, "add", "a.py", "b.py")
+    _git(repo_dir, "commit", "-m", "add a.py and b.py")
+
+    for i in range(6):
+        (repo_dir / "a.py").write_text(f"def a():\n    return {i}\n")
+        (repo_dir / "b.py").write_text(f"def b():\n    return {i}\n")
+        _git(repo_dir, "add", "a.py", "b.py")
+        _git(repo_dir, "commit", "-m", f"co-change {i}")
+
+    repo_id, job_id = _make_repo_and_job(db_session, str(repo_dir))
+    run_ingestion_job(repo_id, job_id)
+    db_session.expire_all()
+
+    repo = db_session.get(Repo, repo_id)
+    assert repo.current_run_id is not None
+
+    findings = db_session.scalars(
+        select(Finding).where(Finding.analysis_run_id == repo.current_run_id)
+    ).all()
+    assert findings, "expected at least one finding (RiskEngine emits unconditionally)"
+    assert all(
+        f.signature is not None for f in findings
+    ), f"findings with a NULL signature: {[f.id for f in findings if f.signature is None]}"

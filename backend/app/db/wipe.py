@@ -23,6 +23,7 @@ from app.db.models import (
     RepoManifest,
     RepoPassport,
     SecretHit,
+    Snapshot,
     Subsystem,
     SubsystemMember,
     Symbol,
@@ -118,4 +119,6 @@ def prune_run(run_id: uuid.UUID, session: Session) -> None:
     # like everything else Insight -- pruning a run must not leave an
     # orphaned narrative behind for a run_id that no longer exists.
     session.execute(delete(Narrative).where(Narrative.analysis_run_id == run_id))
+    # Session 13: evolution-timeline snapshots reference only analysis_runs/repos.
+    session.execute(delete(Snapshot).where(Snapshot.analysis_run_id == run_id))
     session.execute(delete(AnalysisRun).where(AnalysisRun.id == run_id))

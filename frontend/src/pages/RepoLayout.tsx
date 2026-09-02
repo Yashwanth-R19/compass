@@ -13,6 +13,7 @@ import {
   useRepo,
   useRepoStatus,
   useRevokeShareLink,
+  useRuns,
 } from "../api/hooks";
 import { ApiError } from "../api/client";
 import { LoadingState } from "../components/LoadingState";
@@ -37,6 +38,7 @@ const ONBOARD_TABS = [
   { to: "onboard/glossary", label: "Glossary" },
   { to: "onboard/map", label: "Map" },
   { to: "onboard/impact", label: "Impact" },
+  { to: "onboard/evolution", label: "Evolution" },
 ];
 
 // findings/coupling/architecture/risk/security/hygiene/health -- fleshed out
@@ -175,6 +177,7 @@ export function RepoLayout() {
   const { data: repo, isPending, isError, error, refetch } = useRepo(repoId, share);
   const status = useRepoStatus(repoId, share);
   const me = useMe();
+  const runs = useRuns(repoId, share);
 
   const mode = modeFromPathname(location.pathname) ?? readStoredMode();
 
@@ -236,6 +239,7 @@ export function RepoLayout() {
             >
               {REPO_STATUS_LABEL[displayStatus] ?? displayStatus}
             </span>
+            {(runs.data?.runs.length ?? 0) >= 2 ? <CompareLink /> : null}
             {me.data && status.data?.current_run_id ? (
               <ShareButton runId={status.data.current_run_id} />
             ) : null}
@@ -338,6 +342,21 @@ function stageSummaryValue(stage: StageOut): string | null {
   const value = stage.summary[key];
   if (typeof value !== "number") return null;
   return Math.round(value).toLocaleString();
+}
+
+/** Session 13, Part G: "add a compare entry point to the repo header
+ * whenever a repository has >= 2 runs" -- not part of either mode's tab bar
+ * (compare isn't Onboard or Audit content, it's a third, cross-run view), so
+ * a plain header link is the entry point rather than a tab. */
+function CompareLink() {
+  return (
+    <NavLink
+      to="compare"
+      className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+    >
+      Compare
+    </NavLink>
+  );
 }
 
 /** Creates/copies/revokes a share link for the repo's current run. Only a

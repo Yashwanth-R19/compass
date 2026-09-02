@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONTRIBUTOR_CHANGE_COPY,
+  COUPLING_CHANGE_COPY,
   ENTRY_POINT_KIND_COPY,
   FINDING_CATEGORY_COPY,
   FIRST_PR_COPY,
@@ -7,6 +9,7 @@ import {
   HYGIENE_KIND_COPY,
   HYGIENE_KIND_LABEL,
   LABEL_SOURCE_COPY,
+  SUBSYSTEM_CHANGE_COPY,
   TEST_CLASSIFICATION_COPY,
   TOUR_REASON_COPY,
 } from "./copy";
@@ -64,6 +67,14 @@ const ENTRY_POINT_KINDS = [
 const TEST_GAP_CLASSIFICATIONS = ["no_test", "stale_test", "tracked"] as const;
 
 const LABEL_SOURCES = ["path_prefix", "identifiers", "fallback"] as const;
+
+// Session 13, app/analysis/compare.py -- these three are frontend-only
+// literal unions layered over the backend's plain `str` fields (same
+// pattern as EntryPointKind/TourReasonCode), reproduced here by hand from
+// that module's own `kind=`/SecurityDiffOut docstrings.
+const SUBSYSTEM_CHANGE_KINDS = ["appeared", "disappeared", "merged", "split"] as const;
+const CONTRIBUTOR_CHANGE_KINDS = ["joined", "left", "went_stale"] as const;
+const COUPLING_CHANGE_KINDS = ["appeared", "strengthened", "weakened", "vanished"] as const;
 
 // A representative, non-empty params object for each params-taking map --
 // enough for every branch to have something to interpolate, so a function
@@ -177,6 +188,36 @@ describe("copy.ts exhaustiveness", () => {
         `missing LABEL_SOURCE_COPY entry for "${source}"`,
       ).toBeTypeOf("function");
       expect(LABEL_SOURCE_COPY[source]().trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("SUBSYSTEM_CHANGE_COPY covers every subsystem change kind", () => {
+    for (const kind of SUBSYSTEM_CHANGE_KINDS) {
+      expect(
+        SUBSYSTEM_CHANGE_COPY[kind],
+        `missing SUBSYSTEM_CHANGE_COPY entry for "${kind}"`,
+      ).toBeTypeOf("function");
+      expect(SUBSYSTEM_CHANGE_COPY[kind]().trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("CONTRIBUTOR_CHANGE_COPY covers every contributor change kind", () => {
+    for (const kind of CONTRIBUTOR_CHANGE_KINDS) {
+      expect(
+        CONTRIBUTOR_CHANGE_COPY[kind],
+        `missing CONTRIBUTOR_CHANGE_COPY entry for "${kind}"`,
+      ).toBeTypeOf("function");
+      expect(CONTRIBUTOR_CHANGE_COPY[kind]().trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("COUPLING_CHANGE_COPY covers every coupling change kind", () => {
+    for (const kind of COUPLING_CHANGE_KINDS) {
+      expect(
+        COUPLING_CHANGE_COPY[kind],
+        `missing COUPLING_CHANGE_COPY entry for "${kind}"`,
+      ).toBeTypeOf("function");
+      expect(COUPLING_CHANGE_COPY[kind]().trim().length).toBeGreaterThan(0);
     }
   });
 });
