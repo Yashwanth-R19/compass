@@ -94,7 +94,7 @@ function Breadcrumb({
 }) {
   const segments = currentDir === "" ? [] : currentDir.split("/");
   return (
-    <nav className="mb-2 flex flex-wrap items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+    <nav className="mb-2 flex flex-wrap items-center gap-1 text-xs text-ink-muted">
       <button type="button" onClick={() => onNavigate("")} className="hover:underline">
         root
       </button>
@@ -102,7 +102,7 @@ function Breadcrumb({
         const path = segments.slice(0, i + 1).join("/");
         return (
           <span key={path} className="flex items-center gap-1">
-            <span className="text-slate-300 dark:text-slate-600">/</span>
+            <span className="text-ink-faint">/</span>
             <button type="button" onClick={() => onNavigate(path)} className="hover:underline">
               {seg}
             </button>

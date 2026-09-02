@@ -11,10 +11,18 @@ import { LoadingState } from "./LoadingState";
  * genuinely no results renders the empty state, and the two are never
  * conflated (CLAUDE.md: "conflating them is the most common way
  * progressive reveal ends up feeling broken").
+ *
+ * Session 15, Part D: `skeleton` lets a page supply a placeholder shaped
+ * like its OWN eventual content (a table skeleton for a table, a gauge
+ * skeleton for a gauge) instead of the generic `LoadingState` fallback --
+ * "every skeleton matches the shape of what it becomes, so nothing jumps on
+ * load." Purely additive; every pre-session-15 call site (no `skeleton`
+ * passed) is unaffected.
  */
 export function StageGate<T>({
   query,
   loadingLabel = "Loading…",
+  skeleton,
   emptyTitle = "Nothing here yet",
   emptyMessage,
   isEmpty,
@@ -22,13 +30,14 @@ export function StageGate<T>({
 }: {
   query: UseQueryResult<FetchResult<T>, unknown>;
   loadingLabel?: string;
+  skeleton?: ReactNode;
   emptyTitle?: string;
   emptyMessage?: string;
   isEmpty?: (data: T) => boolean;
   children: (data: T) => ReactNode;
 }) {
   if (query.isPending) {
-    return <LoadingState label={loadingLabel} />;
+    return skeleton ?? <LoadingState label={loadingLabel} />;
   }
   if (query.isError) {
     return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -36,7 +45,7 @@ export function StageGate<T>({
 
   const result = query.data;
   if (result.kind === "pending") {
-    return <LoadingState label={loadingLabel} />;
+    return skeleton ?? <LoadingState label={loadingLabel} />;
   }
 
   if (isEmpty?.(result.data)) {

@@ -8,11 +8,9 @@ export function MetricRow({ items }: { items: { label: string; value: ReactNode 
   return (
     <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
       {items.map((item) => (
-        <div key={item.label} className="flex items-center gap-1">
-          <dt className="text-slate-400 dark:text-slate-500">{item.label}</dt>
-          <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
-            {item.value}
-          </dd>
+        <div key={item.label} className="flex items-center gap-1.5">
+          <dt className="cp-label">{item.label}</dt>
+          <dd className="cp-stat font-medium text-ink">{item.value}</dd>
         </div>
       ))}
     </dl>

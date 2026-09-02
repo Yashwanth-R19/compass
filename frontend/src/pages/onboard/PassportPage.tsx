@@ -11,23 +11,19 @@ import { StageGate } from "../../components/StageGate";
 import { SubsystemBadge } from "../../components/SubsystemBadge";
 import { ENTRY_POINT_KIND_COPY, FIRST_PR_COPY, FIRST_PR_LINK } from "../../lib/copy";
 import { formatPercent, formatScore, healthColor } from "../../lib/format";
+import { CHROME, SUBSYSTEM_PALETTE, rechartsTheme } from "../../lib/chartTheme";
 import type { PassportFirstPrItem, RepoPassportData } from "../../api/types";
 import type { RepoOutletContext } from "../RepoLayout";
 
-// One local palette for this page's two charts (Known Hazard #7) -- Recharts
-// needs literal color props, it never inherits Tailwind/CSS custom
-// properties, so every hex value used on this page lives here and nowhere
-// else.
-const LANGUAGE_COLORS = [
-  "#6366f1",
-  "#0ea5e9",
-  "#10b981",
-  "#f59e0b",
-  "#ec4899",
-  "#8b5cf6",
-  "#64748b",
-];
-const CADENCE_BAR_COLOR = "#6366f1";
+// Session 15: both this page's charts now draw from lib/chartTheme.ts, the
+// single source every renderer in this app reads (Known Hazard #7's own
+// point -- recharts needs literal colour props, it never inherits CSS -- is
+// still true, it just means "read chartTheme once", not "invent hex here").
+// Language shares reuse the SAME 12-colour categorical palette the
+// subsystem graph/treemap/city use (an ordered slice, not hashed -- shares
+// are already sorted by size, so position IS the ranking).
+const LANGUAGE_COLORS = SUBSYSTEM_PALETTE;
+const CADENCE_BAR_COLOR = CHROME.inkMuted;
 
 const DIFFICULTY_COMPONENT_LABEL: Record<string, string> = {
   subsystem_count: "Subsystem count",
@@ -86,15 +82,13 @@ function IdentityStrip({ data, repoId }: { data: RepoPassportData; repoId: strin
       }
     >
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <span className="font-medium text-slate-900 dark:text-slate-100">
-            {identity.primary_language}
-          </span>
-          <span className="text-slate-300 dark:text-slate-600">·</span>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+          <span className="font-medium text-ink">{identity.primary_language}</span>
+          <span className="text-ink-faint">·</span>
           <span>{identity.license_spdx ?? "No detected license"}</span>
-          <span className="text-slate-300 dark:text-slate-600">·</span>
+          <span className="text-ink-faint">·</span>
           <span>{Math.round(scale.age_days)} days old</span>
-          <span className="text-slate-300 dark:text-slate-600">·</span>
+          <span className="text-ink-faint">·</span>
           <span>
             Last active{" "}
             {scale.last_commit_at ? new Date(scale.last_commit_at).toLocaleDateString() : "unknown"}
@@ -105,7 +99,7 @@ function IdentityStrip({ data, repoId }: { data: RepoPassportData; repoId: strin
             </span>
           ) : null}
           {!identity.has_readme ? (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-ink-muted dark:bg-slate-800">
               No README
             </span>
           ) : null}
@@ -125,7 +119,7 @@ function IdentityStrip({ data, repoId }: { data: RepoPassportData; repoId: strin
                 />
               ))}
             </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted">
               {languageShares.map((l, i) => (
                 <span key={l.language} className="inline-flex items-center gap-1">
                   <span
@@ -170,10 +164,10 @@ function DifficultyCard({
     <Card title="Onboarding difficulty" subtitle="Higher means harder to get productive in quickly">
       <div className="flex flex-col gap-3">
         <div className="flex items-baseline gap-2">
-          <span className={`text-3xl font-semibold tabular-nums ${colors.text}`}>
+          <span className={`cp-stat text-3xl font-semibold ${colors.text}`}>
             {Math.round(difficulty)}
           </span>
-          <span className="text-xs text-slate-400 dark:text-slate-500">/ 100</span>
+          <span className="cp-label">/ 100</span>
         </div>
         <HeuristicNote calibration={calibration} />
         <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -189,8 +183,8 @@ function DifficultyCard({
         <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2">
           {components.map((c) => (
             <div key={c.key} className="flex items-center justify-between gap-2">
-              <dt className="text-slate-500 dark:text-slate-400">{c.label}</dt>
-              <dd className="tabular-nums text-slate-700 dark:text-slate-200">
+              <dt className="text-ink-muted">{c.label}</dt>
+              <dd className="tabular-nums text-ink-muted">
                 raw {formatScore(c.raw, 2)} · weight {formatPercent(c.weight)}
               </dd>
             </div>
@@ -207,16 +201,12 @@ function ThreeThingsCard({ items, repoId }: { items: PassportFirstPrItem[]; repo
   return (
     <Card title="Three things to know" subtitle="The most actionable facts this analysis surfaced">
       {items.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
-          Nothing stood out sharply enough to flag here.
-        </p>
+        <p className="text-sm text-ink-faint">Nothing stood out sharply enough to flag here.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((item) => (
             <li key={item.code} className="flex items-start justify-between gap-3">
-              <p className="text-sm text-slate-700 dark:text-slate-200">
-                {FIRST_PR_COPY[item.code](item.params)}
-              </p>
+              <p className="text-sm text-ink-muted">{FIRST_PR_COPY[item.code](item.params)}</p>
               <Link
                 to={`/repos/${repoId}/${FIRST_PR_LINK[item.code]}`}
                 className="shrink-0 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
@@ -266,18 +256,18 @@ function ScaleAndCadenceCard({ data }: { data: RepoPassportData }) {
                 type="category"
                 dataKey="window"
                 width={64}
-                tick={{ fontSize: 11 }}
+                tick={rechartsTheme.axis.tick}
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip formatter={(value) => [`${value} commits`, ""]} />
-              <Bar dataKey="commits" fill={CADENCE_BAR_COLOR} radius={3} barSize={14} />
+              <Tooltip {...rechartsTheme.tooltip} formatter={(value) => [`${value} commits`, ""]} />
+              <Bar dataKey="commits" fill={CADENCE_BAR_COLOR} radius={0} barSize={14} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
       {cadence.longest_gap_days > 0 ? (
-        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-3 text-xs text-ink-faint">
           Longest gap between commits: {Math.round(cadence.longest_gap_days)} days · median{" "}
           {formatScore(cadence.median_commits_per_active_week, 1)} commits per active week.
         </p>
@@ -289,10 +279,8 @@ function ScaleAndCadenceCard({ data }: { data: RepoPassportData }) {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <dt className="text-slate-400 dark:text-slate-500">{label}</dt>
-      <dd className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-        {value.toLocaleString()}
-      </dd>
+      <dt className="cp-label">{label}</dt>
+      <dd className="cp-stat text-lg font-semibold text-ink">{value.toLocaleString()}</dd>
     </div>
   );
 }
@@ -322,17 +310,15 @@ function TeamShapeCard({
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-6">
           <div>
-            <p className="text-3xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-              {team.truck_factor}
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Truck factor</p>
+            <p className="cp-stat text-3xl font-semibold text-ink">{team.truck_factor}</p>
+            <p className="cp-label">Truck factor</p>
           </div>
           <dl className="grid grid-cols-3 gap-4 text-sm">
             <Stat label="Active" value={team.active_contributors} />
             <Stat label="Stale" value={team.stale_contributors} />
             <div>
-              <dt className="text-slate-400 dark:text-slate-500">Bot commits</dt>
-              <dd className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              <dt className="cp-label">Bot commits</dt>
+              <dd className="cp-stat text-lg font-semibold text-ink">
                 {formatPercent(team.bot_commit_ratio)}
               </dd>
             </div>
@@ -341,14 +327,14 @@ function TeamShapeCard({
 
         {truckFactor.data?.kind === "data" && truckFactor.data.data.removal_order.length > 0 ? (
           <div>
-            <p className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <p className="mb-1.5 text-xs font-medium text-ink-muted">
               Removal sequence — this project's own knowledge-risk measure, not an individual
               ranking
             </p>
-            <ol className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+            <ol className="flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
               {truckFactor.data.data.removal_order.slice(0, 5).map((step, i) => (
                 <li key={step.contributor_id} className="flex items-center gap-1.5">
-                  {i > 0 ? <span className="text-slate-300 dark:text-slate-600">→</span> : null}
+                  {i > 0 ? <span className="text-ink-faint">→</span> : null}
                   <span>
                     remove {step.name}{" "}
                     <span className="tabular-nums">
@@ -364,7 +350,7 @@ function TeamShapeCard({
 
         {team.top_contributors.length > 0 ? (
           <div>
-            <p className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <p className="mb-1.5 text-xs font-medium text-ink-muted">
               Top contributors by share of commits
             </p>
             <ul className="flex flex-col gap-1.5">
@@ -377,7 +363,7 @@ function TeamShapeCard({
                       style={{ width: `${Math.round(c.share * 100)}%` }}
                     />
                   </div>
-                  <span className="w-10 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                  <span className="w-10 shrink-0 text-right text-xs tabular-nums text-ink-muted">
                     {formatPercent(c.share)}
                   </span>
                 </li>
@@ -416,23 +402,19 @@ function ShapeCard({
     <Card title="Shape" subtitle={`Modularity ${formatScore(shape.modularity, 2)}`}>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div>
-          <p className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Subsystems
-          </p>
+          <p className="mb-1.5 text-xs font-medium text-ink-muted">Subsystems</p>
           <ul className="flex flex-col gap-2">
             {shape.subsystems.map((s) => (
               <li key={s.label} className="flex items-center gap-2 text-sm">
                 <SubsystemBadge label={s.label} />
-                <span className="text-xs text-slate-400 dark:text-slate-500">
-                  {s.file_count} files
-                </span>
+                <span className="text-xs text-ink-faint">{s.file_count} files</span>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                   <div
                     className="h-full rounded-full bg-emerald-500"
                     style={{ width: `${Math.round(s.cohesion * 100)}%` }}
                   />
                 </div>
-                <span className="w-10 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                <span className="w-10 shrink-0 text-right text-xs tabular-nums text-ink-muted">
                   {formatPercent(s.cohesion)}
                 </span>
               </li>
@@ -441,24 +423,18 @@ function ShapeCard({
         </div>
 
         <div>
-          <p className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Entry points
-          </p>
+          <p className="mb-1.5 text-xs font-medium text-ink-muted">Entry points</p>
           <ul className="flex flex-col gap-2 text-sm">
             {shape.entry_points.map((e) => (
               <li key={e.path} className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="truncate font-mono text-xs text-slate-700 dark:text-slate-300">
-                    {e.path}
-                  </span>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                  <span className="truncate font-mono text-xs text-ink-muted">{e.path}</span>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-muted dark:bg-slate-800">
                     {ENTRY_POINT_KIND_COPY[e.kind]()}
                   </span>
                 </div>
                 {evidenceByPath.get(e.path) ? (
-                  <p className="text-xs text-slate-400 dark:text-slate-500">
-                    {evidenceByPath.get(e.path)}
-                  </p>
+                  <p className="text-xs text-ink-faint">{evidenceByPath.get(e.path)}</p>
                 ) : null}
               </li>
             ))}
@@ -468,17 +444,15 @@ function ShapeCard({
 
       {hotspots.top_risk_files.length > 0 ? (
         <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-          <p className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+          <p className="mb-1.5 text-xs font-medium text-ink-muted">
             Top risk files · {formatPercent(hotspots.churn_concentration)} of churn is concentrated
             in the busiest 10% of files
           </p>
           <ul className="flex flex-col gap-1 text-xs">
             {hotspots.top_risk_files.map((f) => (
               <li key={f.path} className="flex items-center justify-between gap-2">
-                <span className="truncate font-mono text-slate-600 dark:text-slate-300">
-                  {f.path}
-                </span>
-                <span className="shrink-0 tabular-nums text-slate-400 dark:text-slate-500">
+                <span className="truncate font-mono text-ink-muted">{f.path}</span>
+                <span className="shrink-0 tabular-nums text-ink-faint">
                   {formatScore(f.risk_score)}
                 </span>
               </li>
@@ -503,22 +477,18 @@ function HealthCard({ data, calibration }: { data: RepoPassportData; calibration
           <HeuristicNote calibration={calibration} />
           <dl className="grid grid-cols-3 gap-4 text-center text-xs">
             <div>
-              <dt className="text-slate-400 dark:text-slate-500">High-risk files</dt>
-              <dd className="font-medium text-slate-700 dark:text-slate-200">
+              <dt className="text-ink-faint">High-risk files</dt>
+              <dd className="font-medium text-ink-muted">
                 {formatPercent(health.high_risk_ratio)}
               </dd>
             </div>
             <div>
-              <dt className="text-slate-400 dark:text-slate-500">Cycles</dt>
-              <dd className="font-medium text-slate-700 dark:text-slate-200">
-                {health.cycle_count}
-              </dd>
+              <dt className="text-ink-faint">Cycles</dt>
+              <dd className="font-medium text-ink-muted">{health.cycle_count}</dd>
             </div>
             <div>
-              <dt className="text-slate-400 dark:text-slate-500">Hidden deps</dt>
-              <dd className="font-medium text-slate-700 dark:text-slate-200">
-                {health.hidden_dependency_count}
-              </dd>
+              <dt className="text-ink-faint">Hidden deps</dt>
+              <dd className="font-medium text-ink-muted">{health.hidden_dependency_count}</dd>
             </div>
           </dl>
         </div>

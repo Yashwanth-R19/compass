@@ -20,7 +20,7 @@ export function EvidenceLink({ repoUrl, sha }: { repoUrl: string; sha: string })
       href={buildCommitUrl(repoUrl, sha)}
       target="_blank"
       rel="noreferrer"
-      className="w-fit rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-indigo-600 hover:underline dark:bg-slate-800 dark:text-indigo-400"
+      className="w-fit cp-stat border border-border bg-surface-2 px-1.5 py-0.5 text-xs text-signal hover:underline"
     >
       {sha.slice(0, 7)}
     </a>

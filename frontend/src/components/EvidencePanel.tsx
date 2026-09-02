@@ -25,16 +25,16 @@ export function EvidencePanel({
   deepLink?: FindingDeepLink | null;
 }) {
   return (
-    <div className="flex flex-col gap-2.5 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-950/40">
-      <p className="text-slate-600 dark:text-slate-300">{detail}</p>
+    <div className="flex flex-col gap-2.5 border-l-2 border-border-strong bg-surface-2 p-3 text-sm">
+      <p className="text-ink-muted">{detail}</p>
 
       {evidenceSha ? (
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex items-center gap-2 text-xs text-ink-muted">
           <span>Evidence commit:</span>
           {repoUrl ? (
             <EvidenceLink repoUrl={repoUrl} sha={evidenceSha} />
           ) : (
-            <span className="w-fit rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+            <span className="w-fit cp-stat border border-border bg-surface px-1.5 py-0.5 text-xs text-ink-muted">
               {shortSha(evidenceSha)}
             </span>
           )}
@@ -43,16 +43,12 @@ export function EvidencePanel({
 
       {affectedFiles.length > 0 ? (
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 dark:text-slate-400">
+          <span className="cp-label">
             {affectedFiles.length === 1 ? "Affected file" : "Affected files"}
           </span>
           <ul className="flex flex-col gap-0.5">
             {affectedFiles.map((f) => (
-              <li
-                key={f}
-                className="truncate font-mono text-xs text-slate-700 dark:text-slate-300"
-                title={f}
-              >
+              <li key={f} className="truncate font-mono text-xs text-ink-muted" title={f}>
                 {f}
               </li>
             ))}
@@ -61,10 +57,7 @@ export function EvidencePanel({
       ) : null}
 
       {deepLink ? (
-        <Link
-          to={deepLink.to}
-          className="w-fit text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-        >
+        <Link to={deepLink.to} className="w-fit text-xs font-medium text-signal hover:underline">
           {deepLink.label} →
         </Link>
       ) : null}

@@ -22,6 +22,7 @@ import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { formatScore, healthColor } from "../lib/format";
 import { colorForSubsystem } from "../lib/subsystemColors";
+import { rechartsTheme } from "../lib/chartTheme";
 
 const DISTRIBUTION_METRICS: { key: string; label: string }[] = [
   { key: "risk_score", label: "Risk score" },
@@ -50,7 +51,7 @@ function SubmitForm() {
         onChange={(e) => setText(e.target.value)}
         placeholder={"https://github.com/owner/repo-one\nhttps://github.com/owner/repo-two"}
         rows={4}
-        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-ink placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950"
       />
       <div className="mt-3 flex items-center gap-3">
         <button
@@ -73,7 +74,7 @@ function SubmitForm() {
             </p>
           ) : null}
           {submit.data.skipped.length > 0 ? (
-            <p className="text-slate-500 dark:text-slate-400">
+            <p className="text-ink-muted">
               Skipped {submit.data.skipped.length} (already analyzed at the current commit).
             </p>
           ) : null}
@@ -109,8 +110,8 @@ function QueueStatus() {
       <ul className="flex flex-col gap-2 text-xs">
         {queue.data.items.map((item) => (
           <li key={item.run_id} className="flex items-center justify-between gap-3">
-            <span className="truncate text-slate-700 dark:text-slate-300">{item.repo_url}</span>
-            <span className="shrink-0 text-slate-500 dark:text-slate-400">
+            <span className="truncate text-ink-muted">{item.repo_url}</span>
+            <span className="shrink-0 text-ink-muted">
               {item.status === "running"
                 ? "Analyzing…"
                 : item.position != null
@@ -153,13 +154,14 @@ function LanguageActivityChart({ activity }: { activity: Record<string, Record<s
       <div className="h-56 w-full">
         <ResponsiveContainer>
           <AreaChart data={rows}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              className="stroke-slate-200 dark:stroke-slate-800"
+            <CartesianGrid {...rechartsTheme.grid} />
+            <XAxis
+              dataKey="year"
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
             />
-            <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip />
+            <YAxis tick={rechartsTheme.axis.tick} stroke={rechartsTheme.axis.stroke} />
+            <Tooltip {...rechartsTheme.tooltip} />
             {languages.map((lang) => (
               <Area
                 key={lang}
@@ -205,8 +207,8 @@ function DistributionCard({
           return (
             <div key={key}>
               <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="text-slate-600 dark:text-slate-300">{metricLabel}</span>
-                <span className="tabular-nums text-slate-400 dark:text-slate-500">
+                <span className="text-ink-muted">{metricLabel}</span>
+                <span className="tabular-nums text-ink-faint">
                   {formatScore(min, 2)} – {formatScore(max, 2)} (median {formatScore(median, 2)})
                 </span>
               </div>
@@ -255,7 +257,7 @@ export function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Portfolio</h1>
+      <h1 className="text-lg font-semibold text-ink">Portfolio</h1>
 
       <SubmitForm />
       <QueueStatus />
@@ -276,10 +278,8 @@ export function PortfolioPage() {
               ["Contributors", data.totals.contributors],
             ].map(([label, value]) => (
               <Card key={label as string} className="text-center">
-                <p className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                  {value}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
+                <p className="text-xl font-semibold tabular-nums text-ink">{value}</p>
+                <p className="text-xs text-ink-muted">{label}</p>
               </Card>
             ))}
           </div>
@@ -310,7 +310,7 @@ export function PortfolioPage() {
                       <Link
                         to={`/repos/${repo.id}/onboard/passport`}
                         onClick={(e) => e.stopPropagation()}
-                        className="truncate font-medium text-slate-800 hover:underline dark:text-slate-100"
+                        className="truncate font-medium text-ink hover:underline"
                       >
                         {repo.owner}/{repo.name}
                       </Link>
@@ -321,7 +321,7 @@ export function PortfolioPage() {
                       ) : null}
                     </div>
                     {difficulty != null ? (
-                      <p className="mt-1 text-slate-400 dark:text-slate-500">
+                      <p className="mt-1 text-ink-faint">
                         Onboarding difficulty {formatScore(difficulty, 0)}
                       </p>
                     ) : null}
@@ -342,19 +342,17 @@ export function PortfolioPage() {
             subtitle="Dependencies used by more than one of your repositories."
           >
             {data.cross_repo_patterns.shared_dependencies.length === 0 ? (
-              <p className="text-xs text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-ink-faint">
                 No dependency appears in more than one of your repositories yet.
               </p>
             ) : (
               <ul className="flex flex-col gap-1 text-xs">
                 {data.cross_repo_patterns.shared_dependencies.map((d) => (
                   <li key={`${d.ecosystem}:${d.package_name}`} className="flex justify-between">
-                    <span className="text-slate-700 dark:text-slate-300">
+                    <span className="text-ink-muted">
                       {d.package_name} <span className="text-slate-400">({d.ecosystem})</span>
                     </span>
-                    <span className="text-slate-400 dark:text-slate-500">
-                      {d.repository_count} repositories
-                    </span>
+                    <span className="text-ink-faint">{d.repository_count} repositories</span>
                   </li>
                 ))}
               </ul>
@@ -367,7 +365,7 @@ export function PortfolioPage() {
                 <ul className="flex flex-col gap-1 text-xs">
                   {data.cross_repo_patterns.vulnerable_shared_dependencies.map((d) => (
                     <li key={`${d.ecosystem}:${d.package_name}`} className="flex justify-between">
-                      <span className="text-slate-700 dark:text-slate-300">
+                      <span className="text-ink-muted">
                         {d.package_name} <span className="text-slate-400">({d.ecosystem})</span>
                       </span>
                       <span className="text-red-500 dark:text-red-400">
@@ -383,28 +381,28 @@ export function PortfolioPage() {
           <Card title="Portfolio health">
             <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Average health</dt>
-                <dd className="font-medium text-slate-700 dark:text-slate-200">
+                <dt className="text-ink-faint">Average health</dt>
+                <dd className="font-medium text-ink-muted">
                   {data.portfolio_health.average_health_score != null
                     ? formatScore(data.portfolio_health.average_health_score, 0)
                     : "—"}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Dormant</dt>
-                <dd className="font-medium text-slate-700 dark:text-slate-200">
+                <dt className="text-ink-faint">Dormant</dt>
+                <dd className="font-medium text-ink-muted">
                   {data.portfolio_health.dormant_repository_ids.length}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Truck factor 1</dt>
-                <dd className="font-medium text-slate-700 dark:text-slate-200">
+                <dt className="text-ink-faint">Truck factor 1</dt>
+                <dd className="font-medium text-ink-muted">
                   {data.portfolio_health.truck_factor_one_repository_ids.length}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Unresolved high-severity</dt>
-                <dd className="font-medium text-slate-700 dark:text-slate-200">
+                <dt className="text-ink-faint">Unresolved high-severity</dt>
+                <dd className="font-medium text-ink-muted">
                   {data.portfolio_health.repositories_with_unresolved_high_severity_ids.length}
                 </dd>
               </div>

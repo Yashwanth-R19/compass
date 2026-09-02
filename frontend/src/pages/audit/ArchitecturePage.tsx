@@ -9,16 +9,17 @@ import { StageGate } from "../../components/StageGate";
 import { useCappedGraph, type CappableEdge, type CappableNode } from "../../hooks/useGraphCap";
 import { SEVERITY_CLASSES, SEVERITY_LABEL, fileName } from "../../lib/format";
 import { colorForSubsystem } from "../../lib/subsystemColors";
+import { CHROME, SEVERITY_COLOR } from "../../lib/chartTheme";
 import type { RepoOutletContext } from "../RepoLayout";
 
 interface ArchEdge extends CappableEdge {
   inCycle: boolean;
 }
 
-const CYCLE_COLOR = "#ef4444"; // red-500
-const SELECTED_COLOR = "#0ea5e9"; // sky-500
-const NORMAL_COLOR = "#6366f1"; // indigo-500
-const DIMMED_COLOR = "rgba(148, 163, 184, 0.25)"; // slate-400 @ low opacity
+const CYCLE_COLOR = SEVERITY_COLOR.high;
+const SELECTED_COLOR = CHROME.signal;
+const NORMAL_COLOR = CHROME.inkMuted;
+const DIMMED_COLOR = CHROME.border;
 
 /** Pure, so it's testable without rendering a canvas (Known Hazard #4 / Part
  * D: "extend the anti-drift test to cover this view"). Priority: an
@@ -158,7 +159,7 @@ export function ArchitecturePage() {
                   />
                 )}
               </GraphCanvas>
-              <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+              <p className="mt-2 text-xs text-ink-faint">
                 Node color follows subsystem — the same palette as the Onboard map and 3D city. Red
                 marks a cycle; the selected node is highlighted in blue.
               </p>
@@ -180,14 +181,11 @@ export function ArchitecturePage() {
                   }
                 >
                   {selectedEdges.length === 0 ? (
-                    <p className="text-sm text-slate-400 dark:text-slate-500">No import edges.</p>
+                    <p className="text-sm text-ink-faint">No import edges.</p>
                   ) : (
                     <ul className="space-y-1.5 text-sm">
                       {selectedEdges.map((e) => (
-                        <li
-                          key={`${e.from_path}->${e.to_path}`}
-                          className="text-slate-600 dark:text-slate-300"
-                        >
+                        <li key={`${e.from_path}->${e.to_path}`} className="text-ink-muted">
                           {e.from_path === selectedNode ? (
                             <>
                               imports <span className="font-medium">{fileName(e.to_path)}</span>
@@ -207,9 +205,7 @@ export function ArchitecturePage() {
 
               <Card title="Cycles" subtitle={`${data.cycles.length} found`}>
                 {data.cycles.length === 0 ? (
-                  <p className="text-sm text-slate-400 dark:text-slate-500">
-                    No circular dependencies. 🎉
-                  </p>
+                  <p className="text-sm text-ink-faint">No circular dependencies. 🎉</p>
                 ) : (
                   <ul className="space-y-2 text-sm">
                     {data.cycles.map((c, i) => (
@@ -219,9 +215,7 @@ export function ArchitecturePage() {
                         >
                           {SEVERITY_LABEL[c.severity]}
                         </span>
-                        <span className="text-slate-600 dark:text-slate-300">
-                          {c.files.map(fileName).join(" → ")}
-                        </span>
+                        <span className="text-ink-muted">{c.files.map(fileName).join(" → ")}</span>
                       </li>
                     ))}
                   </ul>
@@ -233,9 +227,7 @@ export function ArchitecturePage() {
                 subtitle={`${data.layering_violations.length} found`}
               >
                 {data.layering_violations.length === 0 ? (
-                  <p className="text-sm text-slate-400 dark:text-slate-500">
-                    No layering violations.
-                  </p>
+                  <p className="text-sm text-ink-faint">No layering violations.</p>
                 ) : (
                   <ul className="space-y-2 text-sm">
                     {data.layering_violations.map((v, i) => (
@@ -245,9 +237,9 @@ export function ArchitecturePage() {
                         >
                           {SEVERITY_LABEL[v.severity]}
                         </span>
-                        <span className="text-slate-600 dark:text-slate-300">
+                        <span className="text-ink-muted">
                           {fileName(v.from_path)} → {fileName(v.to_path)}{" "}
-                          <span className="text-slate-400 dark:text-slate-500">({v.kind})</span>
+                          <span className="text-ink-faint">({v.kind})</span>
                         </span>
                       </li>
                     ))}
@@ -266,24 +258,21 @@ export function ArchitecturePage() {
             title="Unreferenced files"
             subtitle={`${data.unreferenced_files.length} file${data.unreferenced_files.length === 1 ? "" : "s"} with no detected structural reference`}
           >
-            <p className="mb-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+            <p className="mb-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-ink-muted dark:bg-slate-800/60">
               {data.unreferenced_files_caveat}
             </p>
             {data.unreferenced_files.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500">
+              <p className="text-sm text-ink-faint">
                 Every file has at least one detected structural reference.
               </p>
             ) : (
               <ul className="flex max-h-64 flex-col divide-y divide-slate-100 overflow-y-auto text-sm dark:divide-slate-800">
                 {data.unreferenced_files.map((f) => (
                   <li key={f.file_path} className="flex items-center justify-between gap-2 py-1.5">
-                    <span
-                      className="truncate font-mono text-xs text-slate-600 dark:text-slate-300"
-                      title={f.file_path}
-                    >
+                    <span className="truncate font-mono text-xs text-ink-muted" title={f.file_path}>
                       {f.file_path}
                     </span>
-                    <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                    <span className="shrink-0 text-xs text-ink-faint">
                       {f.loc.toLocaleString()} LOC
                     </span>
                   </li>

@@ -19,6 +19,7 @@ import {
 } from "../lib/cityLayout";
 import { ownerColor, recencyColor, riskColor } from "../lib/metricColor";
 import { colorForSubsystem, UNASSIGNED_COLOR } from "../lib/subsystemColors";
+import { CHROME, RISK_HIGH, RISK_LOW, RECENCY_FRESH } from "../lib/chartTheme";
 import { Card } from "./Card";
 import { DirectoryTreemap } from "./DirectoryTreemap";
 import { FileDetailPanel } from "./FileDetailPanel";
@@ -41,8 +42,15 @@ const HEIGHT_MODE_LABEL: Record<CityHeightMetric, string> = {
   commits: "Commit count",
 };
 
-const TEST_COLOR = "#6366f1"; // indigo-500 -- this app's existing "structural" accent
+const TEST_COLOR = CHROME.signal;
 const SOURCE_COLOR = UNASSIGNED_COLOR;
+// Fixed, deliberately NOT theme-reactive -- the ground/outskirts materials
+// are part of this scene's own lighting setup (CityLight's shadow bias was
+// tuned against this exact ground tone, CLAUDE.md's "3D city" section), not
+// page chrome, so they don't follow prefers-color-scheme the way the rest
+// of the app's neutral tokens do.
+const GROUND_COLOR = "#141310";
+const OUTSKIRTS_PLATE_COLOR = "#5f594a";
 
 function detectWebGL(): boolean {
   try {
@@ -199,7 +207,7 @@ function OutskirtsPlates({ plates }: { plates: OutskirtsPlate[] }) {
           receiveShadow
         >
           <boxGeometry args={[Math.max(p.width, 0.05), 0.2, Math.max(p.depth, 0.05)]} />
-          <meshStandardMaterial color="#64748b" opacity={0.6} transparent />
+          <meshStandardMaterial color={OUTSKIRTS_PLATE_COLOR} opacity={0.6} transparent />
         </mesh>
       ))}
     </>
@@ -496,7 +504,7 @@ export function CodeCity({ repoId, city }: { repoId: string; city: CityResponse 
             receiveShadow
           >
             <planeGeometry args={[worldWidth + 40, worldDepth + 40]} />
-            <meshStandardMaterial color="#1e293b" />
+            <meshStandardMaterial color={GROUND_COLOR} />
           </mesh>
 
           {layout.districts.map((d) => (
@@ -557,7 +565,7 @@ function Legend({
 }) {
   return (
     <Card title="Legend">
-      <p className="text-xs text-slate-600 dark:text-slate-300">
+      <p className="text-xs text-ink-muted">
         Footprint area = lines of code. Height = {HEIGHT_MODE_LABEL[heightMetric].toLowerCase()}.
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -565,7 +573,7 @@ function Legend({
           districts.map((d) => (
             <span
               key={d.id}
-              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-ink-muted dark:bg-slate-800"
             >
               <span
                 className="h-2.5 w-2.5 rounded-full"
@@ -578,15 +586,15 @@ function Legend({
           <GradientLegend
             lowLabel="Low risk"
             highLabel="High risk"
-            lowColor="#22c55e"
-            highColor="#ef4444"
+            lowColor={RISK_LOW}
+            highColor={RISK_HIGH}
           />
         ) : colorMode === "age" ? (
           <GradientLegend
             lowLabel="Stale"
             highLabel="Recently changed"
             lowColor={UNASSIGNED_COLOR}
-            highColor="#0ea5e9"
+            highColor={RECENCY_FRESH}
           />
         ) : colorMode === "test" ? (
           <>
@@ -594,7 +602,7 @@ function Legend({
             <Swatch color={TEST_COLOR} label="Test" />
           </>
         ) : (
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          <p className="text-[11px] text-ink-muted">
             Colour = principal author. Hover a building to see who.
           </p>
         )}
@@ -615,7 +623,7 @@ function GradientLegend({
   highColor: string;
 }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+    <div className="flex items-center gap-2 text-[11px] text-ink-muted">
       <span>{lowLabel}</span>
       <span
         className="h-2.5 w-24 rounded-full"
@@ -628,7 +636,7 @@ function GradientLegend({
 
 function Swatch({ color, label }: { color: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-muted">
       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
       {label}
     </span>

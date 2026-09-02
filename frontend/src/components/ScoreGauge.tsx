@@ -19,7 +19,7 @@ export function ScoreGauge({ score, size = 140 }: { score: number; size?: number
           r={radius}
           strokeWidth={10}
           fill="none"
-          className="stroke-slate-200 dark:stroke-slate-800"
+          className="stroke-border"
         />
         <circle
           cx={size / 2}
@@ -27,17 +27,17 @@ export function ScoreGauge({ score, size = 140 }: { score: number; size?: number
           r={radius}
           strokeWidth={10}
           fill="none"
-          strokeLinecap="round"
+          strokeLinecap="butt"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className={`transition-[stroke-dashoffset] duration-700 ease-out ${colors.ring}`}
+          className={`transition-[stroke-dashoffset] duration-700 ease-out motion-reduce:transition-none ${colors.ring}`}
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className={`text-3xl font-semibold tabular-nums ${colors.text}`}>
+        <span className={`cp-stat text-3xl font-semibold ${colors.text}`}>
           {Math.round(clamped)}
         </span>
-        <span className="text-xs text-slate-400 dark:text-slate-500">/ 100</span>
+        <span className="cp-label">/ 100</span>
       </div>
     </div>
   );

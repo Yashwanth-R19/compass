@@ -38,7 +38,7 @@ export function NarrativeBlock({
 
   if (query.isError || !query.data?.available) {
     return (
-      <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-2 text-xs text-ink-faint">
         Narrative unavailable — the computed data above is unaffected.
       </p>
     );

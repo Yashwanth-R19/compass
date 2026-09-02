@@ -21,10 +21,14 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
   low: "Low",
 };
 
+/** One hairline-bordered chip per severity, no fill -- consistent with
+ * every other status chip in the app (Badge's `tone` variants share this
+ * same shape). Always paired with SEVERITY_LABEL's text, never colour
+ * alone (WCAG 1.4.1). */
 export const SEVERITY_CLASSES: Record<Severity, string> = {
-  high: "bg-red-100 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-500/30",
-  med: "bg-amber-100 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/30",
-  low: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:ring-slate-500/30",
+  high: "border-sev-high text-sev-high",
+  med: "border-sev-med text-sev-med",
+  low: "border-sev-low text-sev-low",
 };
 
 export function confidenceLabel(confidence: number): "low" | "medium" | "high" {
@@ -35,20 +39,12 @@ export function confidenceLabel(confidence: number): "low" | "medium" | "high" {
 
 export function healthColor(score: number): { text: string; ring: string; bar: string } {
   if (score >= 75) {
-    return {
-      text: "text-emerald-600 dark:text-emerald-400",
-      ring: "stroke-emerald-500",
-      bar: "bg-emerald-500",
-    };
+    return { text: "text-conf-high", ring: "stroke-conf-high", bar: "bg-conf-high" };
   }
   if (score >= 50) {
-    return {
-      text: "text-amber-600 dark:text-amber-400",
-      ring: "stroke-amber-500",
-      bar: "bg-amber-500",
-    };
+    return { text: "text-conf-low", ring: "stroke-conf-low", bar: "bg-conf-low" };
   }
-  return { text: "text-red-600 dark:text-red-400", ring: "stroke-red-500", bar: "bg-red-500" };
+  return { text: "text-sev-high", ring: "stroke-sev-high", bar: "bg-sev-high" };
 }
 
 export function fileName(path: string): string {

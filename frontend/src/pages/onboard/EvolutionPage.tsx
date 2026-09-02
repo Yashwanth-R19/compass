@@ -20,6 +20,7 @@ import { Card } from "../../components/Card";
 import { StageGate } from "../../components/StageGate";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { colorForSubsystem } from "../../lib/subsystemColors";
+import { CHROME, SUBSYSTEM_PALETTE, rechartsTheme } from "../../lib/chartTheme";
 import {
   contributorBandData,
   fixedDomain,
@@ -27,6 +28,8 @@ import {
   snapshotDelta,
 } from "../../lib/timeline";
 import type { RepoOutletContext } from "../RepoLayout";
+
+const NEUTRAL_LINE = CHROME.inkFaint;
 
 const STEP_MS = 800;
 
@@ -128,8 +131,8 @@ function NotCoveredNote({ covers, notCovered }: { covers: string[]; notCovered: 
       <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
         History-derived only
       </p>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{notCovered}</p>
-      <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-1 text-sm text-ink-muted">{notCovered}</p>
+      <p className="mt-2 text-xs text-ink-faint">
         Sampled at every point below: {covers.join(", ")}.
       </p>
     </Card>
@@ -144,19 +147,24 @@ const METRIC_LINES: {
   color: string;
   boundsKey: keyof TimelineBounds;
 }[] = [
-  { key: "file_count", label: "Files", color: "#0072B2", boundsKey: "file_count" },
-  { key: "commits_to_date", label: "Commits", color: "#009E73", boundsKey: "commits_to_date" },
+  { key: "file_count", label: "Files", color: SUBSYSTEM_PALETTE[0], boundsKey: "file_count" },
+  {
+    key: "commits_to_date",
+    label: "Commits",
+    color: SUBSYSTEM_PALETTE[2],
+    boundsKey: "commits_to_date",
+  },
   {
     key: "active_contributors",
     label: "Active contributors",
-    color: "#CC79A7",
+    color: SUBSYSTEM_PALETTE[3],
     boundsKey: "active_contributors",
   },
-  { key: "churn_to_date", label: "Churn", color: "#D55E00", boundsKey: "churn_to_date" },
+  { key: "churn_to_date", label: "Churn", color: SUBSYSTEM_PALETTE[5], boundsKey: "churn_to_date" },
   {
     key: "coupling_pairs_count",
     label: "Coupling pairs",
-    color: "#7B3294",
+    color: SUBSYSTEM_PALETTE[7],
     boundsKey: "coupling_pairs_count",
   },
 ];
@@ -178,15 +186,13 @@ function MetricLines({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {METRIC_LINES.map((m) => (
           <div key={m.key} className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              {m.label}
-            </span>
+            <span className="cp-label">{m.label}</span>
             <div className="h-24">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={snapshots} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
                   <XAxis dataKey="position" hide />
                   <YAxis domain={fixedDomain(bounds[m.boundsKey])} hide />
-                  <ReferenceLine x={position} stroke="#94a3b8" strokeDasharray="3 3" />
+                  <ReferenceLine x={position} stroke={NEUTRAL_LINE} strokeDasharray="3 3" />
                   <Line
                     type="monotone"
                     dataKey={m.key}
@@ -196,6 +202,7 @@ function MetricLines({
                     isAnimationActive={false}
                   />
                   <Tooltip
+                    {...rechartsTheme.tooltip}
                     labelFormatter={(p) => {
                       const index = typeof p === "number" ? p : Number(p);
                       const at = snapshots[index]?.at_date ?? snapshots[0].at_date;
@@ -205,7 +212,7 @@ function MetricLines({
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <span className="text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+            <span className="cp-stat text-sm font-semibold text-ink">
               {(snapshots[position][m.key] as number).toLocaleString()}
             </span>
           </div>
@@ -235,7 +242,7 @@ function HotspotBars({
       subtitle="Top files by cumulative churn at this point -- NOT the full risk formula (complexity isn't sampled historically)"
     >
       {rows.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+        <p className="py-6 text-center text-sm text-ink-faint">
           No churn recorded yet at this point in history.
         </p>
       ) : (
@@ -246,23 +253,25 @@ function HotspotBars({
               layout="vertical"
               margin={{ top: 4, right: 16, bottom: 4, left: 4 }}
             >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                horizontal={false}
-                className="stroke-slate-200 dark:stroke-slate-800"
+              <CartesianGrid {...rechartsTheme.grid} horizontal={false} />
+              <XAxis
+                type="number"
+                domain={domain}
+                tick={rechartsTheme.axis.tick}
+                stroke={rechartsTheme.axis.stroke}
               />
-              <XAxis type="number" domain={domain} tick={{ fontSize: 10 }} />
               <YAxis
                 type="category"
                 dataKey="path"
                 width={180}
-                tick={{ fontSize: 10 }}
+                tick={rechartsTheme.axis.tick}
+                stroke={rechartsTheme.axis.stroke}
                 tickFormatter={(p: string) => (p.length > 28 ? `…${p.slice(-27)}` : p)}
               />
-              <Tooltip />
+              <Tooltip {...rechartsTheme.tooltip} />
               <Bar
                 dataKey="churn_to_date"
-                fill="#D55E00"
+                fill={CHROME.inkMuted}
                 isAnimationActive={animate}
                 animationDuration={STEP_MS * 0.6}
               />
@@ -291,33 +300,40 @@ function ContributorBand({
       subtitle="Commit share among active contributors, trailing 90-day window"
     >
       {names.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+        <p className="py-6 text-center text-sm text-ink-faint">
           No contributor activity recorded yet at this point in history.
         </p>
       ) : (
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={rows} margin={{ top: 4, right: 16, bottom: 4, left: 4 }}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                className="stroke-slate-200 dark:stroke-slate-800"
+              <CartesianGrid {...rechartsTheme.grid} />
+              <XAxis
+                dataKey="position"
+                tick={rechartsTheme.axis.tick}
+                stroke={rechartsTheme.axis.stroke}
               />
-              <XAxis dataKey="position" tick={{ fontSize: 10 }} />
               <YAxis
                 domain={[0, 1]}
-                tick={{ fontSize: 10 }}
+                tick={rechartsTheme.axis.tick}
+                stroke={rechartsTheme.axis.stroke}
                 tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
               />
-              <ReferenceLine x={position} stroke="#94a3b8" strokeDasharray="3 3" />
-              <Tooltip formatter={(v) => `${Math.round(Number(v) * 100)}%`} />
+              <ReferenceLine x={position} stroke={NEUTRAL_LINE} strokeDasharray="3 3" />
+              <Tooltip
+                {...rechartsTheme.tooltip}
+                formatter={(v) => `${Math.round(Number(v) * 100)}%`}
+              />
               {names.map((name) => (
                 <Area
                   key={name}
                   type="monotone"
                   dataKey={name}
                   stackId="share"
-                  stroke={name === "Other" ? "#94a3b8" : colorForSubsystem(`contributor:${name}`)}
-                  fill={name === "Other" ? "#94a3b8" : colorForSubsystem(`contributor:${name}`)}
+                  stroke={
+                    name === "Other" ? NEUTRAL_LINE : colorForSubsystem(`contributor:${name}`)
+                  }
+                  fill={name === "Other" ? NEUTRAL_LINE : colorForSubsystem(`contributor:${name}`)}
                   fillOpacity={0.7}
                   isAnimationActive={false}
                 />
@@ -342,12 +358,12 @@ function WhatChangedPanel({
   return (
     <Card title="What changed here" subtitle={new Date(current.at_date).toLocaleDateString()}>
       {delta === null ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-ink-faint">
           This is the first sampled point -- nothing to compare against yet.
         </p>
       ) : (
         <div className="flex flex-col gap-3 text-sm">
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-600 dark:text-slate-300">
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-ink-muted">
             <DeltaStat label="Files" delta={delta.filesDelta} />
             <DeltaStat label="Commits" delta={delta.commitsDelta} />
             <DeltaStat label="Churn" delta={delta.churnDelta} />
@@ -356,14 +372,14 @@ function WhatChangedPanel({
 
           {delta.topChurnMovers.length > 0 ? (
             <div>
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
                 Biggest churn movers
               </h3>
               <ul className="flex flex-col gap-0.5">
                 {delta.topChurnMovers.map((m) => (
                   <li
                     key={m.path}
-                    className="flex justify-between gap-2 font-mono text-xs text-slate-600 dark:text-slate-300"
+                    className="flex justify-between gap-2 font-mono text-xs text-ink-muted"
                   >
                     <span className="truncate">{m.path}</span>
                     <span className="shrink-0 tabular-nums text-amber-600 dark:text-amber-400">
@@ -376,7 +392,7 @@ function WhatChangedPanel({
           ) : null}
 
           {delta.contributorsAppeared.length > 0 || delta.contributorsLeft.length > 0 ? (
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-muted">
               {delta.contributorsAppeared.length > 0 ? (
                 <span>First seen: {delta.contributorsAppeared.join(", ")}</span>
               ) : null}
@@ -386,7 +402,7 @@ function WhatChangedPanel({
             </div>
           ) : null}
 
-          <p className="text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-ink-faint">
             Movers and joins/leaves are best-effort -- only computed among each snapshot's own
             top-ranked files and contributors, not the full repository.
           </p>
@@ -403,7 +419,7 @@ function DeltaStat({ label, delta }: { label: string; delta: number }) {
       ? "text-emerald-600 dark:text-emerald-400"
       : delta < 0
         ? "text-red-600 dark:text-red-400"
-        : "text-slate-500 dark:text-slate-400";
+        : "text-ink-muted";
   return (
     <span>
       {label}:{" "}
@@ -452,11 +468,11 @@ function Scrubber({
           className="w-full accent-indigo-600"
           aria-label="Timeline position"
         />
-        <span className="w-28 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
+        <span className="w-28 shrink-0 text-right text-xs tabular-nums text-ink-muted">
           {new Date(current.at_date).toLocaleDateString()}
         </span>
       </div>
-      <div className="mt-1 flex justify-between text-[11px] text-slate-400 dark:text-slate-500">
+      <div className="mt-1 flex justify-between text-[11px] text-ink-faint">
         <span>{new Date(snapshots[0].at_date).toLocaleDateString()}</span>
         <span>
           Snapshot {position + 1} of {snapshots.length}

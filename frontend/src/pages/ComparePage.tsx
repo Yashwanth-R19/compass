@@ -103,11 +103,11 @@ function RunPicker({
     <Card title="Compare runs">
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-2">
-          <span className="text-slate-500 dark:text-slate-400">From</span>
+          <span className="text-ink-muted">From</span>
           <select
             value={runIdBefore ?? ""}
             onChange={(e) => onChangeBefore(e.target.value)}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="border border-border-interactive bg-surface px-2 py-1 text-sm text-ink"
           >
             {runs.map((r) => (
               <option key={r.id} value={r.id}>
@@ -116,13 +116,13 @@ function RunPicker({
             ))}
           </select>
         </label>
-        <span className="text-slate-400">→</span>
+        <span className="text-ink-faint">→</span>
         <label className="flex items-center gap-2">
-          <span className="text-slate-500 dark:text-slate-400">To</span>
+          <span className="text-ink-muted">To</span>
           <select
             value={runIdAfter ?? ""}
             onChange={(e) => onChangeAfter(e.target.value)}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="border border-border-interactive bg-surface px-2 py-1 text-sm text-ink"
           >
             {runs.map((r) => (
               <option key={r.id} value={r.id}>
@@ -195,13 +195,13 @@ function HeadlineStrip({ data }: { data: CompareResponse }) {
           const direction = headlineDirection(item);
           return (
             <div key={item.metric} className="flex flex-col gap-0.5">
-              <span className="text-xs text-slate-500 dark:text-slate-400">{item.label}</span>
+              <span className="text-xs text-ink-muted">{item.label}</span>
               <span
                 className={`text-lg font-semibold tabular-nums ${DIRECTION_TEXT_CLASS[direction]}`}
               >
                 {item.delta === null ? "—" : formatSignedDelta(item.delta)}
               </span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="text-[11px] text-ink-faint">
                 {item.before?.toLocaleString() ?? "—"} → {item.after?.toLocaleString() ?? "—"}
               </span>
             </div>
@@ -231,28 +231,24 @@ function FindingsColumn({
       className={tone === "worsened" ? "ring-1 ring-red-200 dark:ring-red-500/20" : ""}
     >
       {findings.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">None.</p>
+        <p className="text-sm text-ink-faint">None.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
           {findings.map((f) => (
             <li key={f.signature} className="flex flex-col gap-1 py-2">
               <div className="flex items-center gap-2">
                 <SeverityChip severity={f.severity} />
-                <span className="truncate text-sm text-slate-700 dark:text-slate-200">
-                  {f.title}
-                </span>
+                <span className="truncate text-sm text-ink-muted">{f.title}</span>
               </div>
               {f.file_path ? (
-                <span className="truncate font-mono text-xs text-slate-400 dark:text-slate-500">
-                  {f.file_path}
-                </span>
+                <span className="truncate font-mono text-xs text-ink-faint">{f.file_path}</span>
               ) : null}
             </li>
           ))}
         </ul>
       )}
       {total > findings.length ? (
-        <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-2 text-xs text-ink-faint">
           Showing {findings.length} of {total}.
         </p>
       ) : null}
@@ -280,14 +276,12 @@ function RiskMoversTable({
       subtitle="Files whose hotspot rank moved the most in either direction"
     >
       {rows.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
-          No file's rank moved meaningfully.
-        </p>
+        <p className="text-sm text-ink-faint">No file's rank moved meaningfully.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <tr className="text-xs uppercase tracking-wide text-ink-faint">
                 <th className="pb-2 pr-4 font-medium">File</th>
                 <th className="pb-2 pr-4 font-medium">Rank</th>
                 <th className="pb-2 pr-4 font-medium">Risk score</th>
@@ -297,16 +291,16 @@ function RiskMoversTable({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {rows.map((m) => (
                 <tr key={m.file_path}>
-                  <td className="max-w-[260px] truncate py-2 pr-4 font-mono text-xs text-slate-700 dark:text-slate-300">
+                  <td className="max-w-[260px] truncate py-2 pr-4 font-mono text-xs text-ink-muted">
                     {m.file_path}
                   </td>
                   <td className={`py-2 pr-4 tabular-nums ${DIRECTION_TEXT_CLASS[m.tone]}`}>
                     {m.hotspot_rank_before ?? "—"} → {m.hotspot_rank_after ?? "—"}
                   </td>
-                  <td className="py-2 pr-4 tabular-nums text-slate-600 dark:text-slate-300">
+                  <td className="py-2 pr-4 tabular-nums text-ink-muted">
                     {(m.risk_score_before ?? 0).toFixed(2)} → {(m.risk_score_after ?? 0).toFixed(2)}
                   </td>
-                  <td className="py-2 tabular-nums text-slate-600 dark:text-slate-300">
+                  <td className="py-2 tabular-nums text-ink-muted">
                     {m.max_coupling_degree_before.toFixed(2)} →{" "}
                     {m.max_coupling_degree_after.toFixed(2)}
                   </td>
@@ -326,18 +320,16 @@ function SubsystemChanges({ changes }: { changes: SubsystemChangeOut[] }) {
   return (
     <Card title="Subsystem changes" subtitle="Matched by membership overlap, not tracked identity">
       {changes.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-ink-faint">
           No subsystem appeared, disappeared, merged, or split.
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
           {changes.map((c, i) => (
             <li key={`${c.kind}-${c.label}-${i}`} className="py-2 text-sm">
-              <span className="font-medium text-slate-700 dark:text-slate-200">
-                {SUBSYSTEM_CHANGE_COPY[c.kind]()}:
-              </span>{" "}
-              <span className="text-slate-600 dark:text-slate-300">{c.label}</span>
-              <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{c.detail}</p>
+              <span className="font-medium text-ink-muted">{SUBSYSTEM_CHANGE_COPY[c.kind]()}:</span>{" "}
+              <span className="text-ink-muted">{c.label}</span>
+              <p className="mt-0.5 text-xs text-ink-faint">{c.detail}</p>
             </li>
           ))}
         </ul>
@@ -350,17 +342,12 @@ function ContributorChanges({ changes }: { changes: ContributorChangeOut[] }) {
   return (
     <Card title="Contributor changes">
       {changes.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
-          No contributor joined, left, or went quiet.
-        </p>
+        <p className="text-sm text-ink-faint">No contributor joined, left, or went quiet.</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {changes.map((c, i) => (
-            <li
-              key={`${c.kind}-${c.name}-${i}`}
-              className="text-sm text-slate-600 dark:text-slate-300"
-            >
-              <span className="font-medium text-slate-700 dark:text-slate-200">{c.name}</span>{" "}
+            <li key={`${c.kind}-${c.name}-${i}`} className="text-sm text-ink-muted">
+              <span className="font-medium text-ink-muted">{c.name}</span>{" "}
               {CONTRIBUTOR_CHANGE_COPY[c.kind]().toLowerCase()}
             </li>
           ))}
@@ -374,7 +361,7 @@ function CouplingChanges({ changes }: { changes: CouplingChangeOut[] }) {
   return (
     <Card title="Coupling changes">
       {changes.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-ink-faint">
           No coupling pair appeared, strengthened, weakened, or vanished.
         </p>
       ) : (
@@ -384,10 +371,10 @@ function CouplingChanges({ changes }: { changes: CouplingChangeOut[] }) {
               key={`${c.kind}-${c.file_a_path}-${c.file_b_path}-${i}`}
               className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
             >
-              <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
+              <span className="font-mono text-xs text-ink-muted">
                 {c.file_a_path} ↔ {c.file_b_path}
               </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
+              <span className="text-xs text-ink-muted">
                 {COUPLING_CHANGE_COPY[c.kind]()}
                 {c.coupling_degree_before !== null || c.coupling_degree_after !== null
                   ? ` (${c.coupling_degree_before?.toFixed(2) ?? "—"} → ${c.coupling_degree_after?.toFixed(2) ?? "—"})`
@@ -426,9 +413,7 @@ function SecurityDiff({ data }: { data: CompareResponse }) {
           </span>
         </span>
       </div>
-      <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-        {data.security.secrets_caveat}
-      </p>
+      <p className="mt-2 text-xs text-ink-faint">{data.security.secrets_caveat}</p>
     </Card>
   );
 }

@@ -1,10 +1,19 @@
 // Session 09, Part A: the ONE palette shared by the codebase map's subsystem
-// graph (pages/onboard/MapPage.tsx), its treemap, and the 3D code city
-// (components/CodeCity.tsx). A subsystem must render as the same colour in
-// all three views -- otherwise the three feel like three unrelated apps
-// rather than three lenses on the same computed partition. Session 15 moves
-// this into real design tokens; keeping it in one module now is what makes
-// that a one-file change instead of a three-file hunt.
+// graph (pages/onboard/MapPage.tsx), its treemap, the 3D code city
+// (components/CodeCity.tsx), and the Audit architecture graph
+// (pages/audit/ArchitecturePage.tsx). A subsystem must render as the same
+// colour in all four -- otherwise they feel like unrelated apps rather than
+// four lenses on the same computed partition.
+//
+// Session 15: the palette itself now lives in styles/tokens.css
+// (`--subsystem-1`..`--subsystem-12`, `--subsystem-unassigned`) and is read
+// once by lib/chartTheme.ts -- SEE THAT MODULE for the getComputedStyle
+// mechanics and why raw hex still ends up here rather than a CSS variable
+// reference (none of the four renderers above read CSS custom properties on
+// their own; recharts/canvas/three.js all need a plain string). This module
+// stays the ACCESSOR: every consumer keeps calling `colorForSubsystem`
+// exactly as before, so moving the palette into tokens was a one-file
+// change, not a four-file hunt.
 //
 // HEURISTIC, not locked (plan/RULES.md sec 3): hand-picked, not derived from
 // a formula. Both HUE and LIGHTNESS vary across the 12 entries, not hue
@@ -16,29 +25,13 @@
 // similar. Base 7 (minus black, which reads poorly as a small graph node or
 // treemap fill against a dark theme) come from Okabe & Ito's published
 // colour-blind-safe set; the remaining 5 extend it with additional
-// well-separated hue/lightness combinations. This is a good-faith,
-// visually-reviewed choice, not verified against an automated CVD simulator.
-export const SUBSYSTEM_PALETTE: readonly string[] = [
-  "#0072B2", // blue
-  "#E69F00", // orange
-  "#009E73", // bluish green
-  "#CC79A7", // reddish purple
-  "#56B4E9", // sky blue
-  "#D55E00", // vermillion
-  "#F0C808", // gold
-  "#7B3294", // purple
-  "#994F00", // brown
-  "#117733", // dark green (distinct lightness from bluish green above)
-  "#88419D", // violet
-  "#4D4D4D", // neutral slate
-];
+// well-separated hue/lightness combinations -- verified this session with a
+// programmatic deuteranopia/protanopia simulation, not just by eye (see
+// scripts/verify-subsystem-palette.mjs and DESIGN.md's accessibility
+// section for the actual pairwise-distance numbers).
+import { SUBSYSTEM_PALETTE, UNASSIGNED_COLOR } from "./chartTheme";
 
-/** A file/subsystem with no known subsystem yet (e.g. the "subsystems" stage
- * for this run hasn't finished computing) -- deliberately NOT drawn from
- * SUBSYSTEM_PALETTE, so "unassigned" can never be visually confused with a
- * real, hashed-to-that-slot subsystem. Matches the app's existing neutral
- * (Tailwind slate-400), not a new colour introduced for this module. */
-export const UNASSIGNED_COLOR = "#94a3b8";
+export { SUBSYSTEM_PALETTE, UNASSIGNED_COLOR };
 
 /** Deterministic 32-bit FNV-1a string hash -- same input always produces the
  * same output, in this process or any other, which is what
@@ -60,7 +53,7 @@ function hashString(input: string): number {
  * want the SAME subsystem to render identically across more than one view
  * must pass the SAME representation each time -- in practice, resolve to
  * the subsystem's label before calling this, since label is the one
- * identifier every one of the three renderers' data sources actually
+ * identifier every one of the four renderers' data sources actually
  * carries. `null`/`undefined` (a file with no subsystem) always returns
  * UNASSIGNED_COLOR, never a hashed slot. */
 export function colorForSubsystem(key: string | number | null | undefined): string {

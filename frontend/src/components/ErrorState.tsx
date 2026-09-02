@@ -1,4 +1,5 @@
 import { ApiError } from "../api/client";
+import { Button } from "./ui/Button";
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const message =
@@ -9,17 +10,13 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
         : "Something went wrong.";
 
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 py-16 text-center dark:border-red-500/30 dark:bg-red-500/10">
-      <p className="text-sm font-medium text-red-700 dark:text-red-400">Couldn't load this data</p>
-      <p className="max-w-sm text-sm text-red-600/80 dark:text-red-400/70">{message}</p>
+    <div className="flex flex-col items-center justify-center gap-2 border border-sev-high/40 bg-sev-high/5 py-16 text-center">
+      <p className="text-sm font-medium text-sev-high">Couldn't load this data</p>
+      <p className="max-w-sm text-sm text-ink-muted">{message}</p>
       {onRetry ? (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-2 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
-        >
+        <Button type="button" variant="danger" size="sm" onClick={onRetry} className="mt-2">
           Try again
-        </button>
+        </Button>
       ) : null}
     </div>
   );

@@ -22,13 +22,18 @@ import { EvidenceLink } from "../../components/EvidenceLink";
 import { StageGate } from "../../components/StageGate";
 import { HYGIENE_KIND_COPY, HYGIENE_KIND_LABEL, TEST_CLASSIFICATION_COPY } from "../../lib/copy";
 import { formatPercent, formatScore } from "../../lib/format";
+import { CHROME, SEVERITY_COLOR, rechartsTheme } from "../../lib/chartTheme";
 import type { RepoOutletContext } from "../RepoLayout";
 
 const KIND_ORDER: HygieneEventKind[] = ["risky_commit", "fixup_churn", "oversized"];
+// risky_commit is the most severe of the three (an actual finding-worthy
+// signal), fixup_churn is a softer warning, oversized is purely
+// informational -- the same three-tier vocabulary severity already uses,
+// reused rather than inventing a fourth colour family for one chart.
 const KIND_COLOR: Record<HygieneEventKind, string> = {
-  oversized: "#6366f1", // indigo-500
-  fixup_churn: "#f59e0b", // amber-500
-  risky_commit: "#ef4444", // red-500
+  oversized: CHROME.inkMuted,
+  fixup_churn: SEVERITY_COLOR.med,
+  risky_commit: SEVERITY_COLOR.high,
 };
 
 function fileRowId(path: string): string {
@@ -67,7 +72,7 @@ export function HygienePage() {
           <EventTimeline eventsByKind={data.events_by_kind} repoUrl={repo.url} />
 
           {data.insufficient_history_for_oversized ? (
-            <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+            <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-ink-muted dark:bg-slate-800/60">
               Too few commits to compute a reliable "oversized commit" percentile for this repo yet.
             </p>
           ) : null}
@@ -104,7 +109,7 @@ function EventTimeline({
   if (points.length === 0) {
     return (
       <Card title="Commit hygiene timeline">
-        <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+        <p className="py-6 text-center text-sm text-ink-faint">
           No oversized commits, fixup clusters, or risky commits were detected.
         </p>
       </Card>
@@ -119,16 +124,14 @@ function EventTimeline({
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              className="stroke-slate-200 dark:stroke-slate-800"
-            />
+            <CartesianGrid {...rechartsTheme.grid} />
             <XAxis
               type="number"
               dataKey="x"
               domain={["dataMin", "dataMax"]}
               tickFormatter={(v: number) => new Date(v).toLocaleDateString()}
-              tick={{ fontSize: 10 }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
             />
             <YAxis
               type="number"
@@ -137,7 +140,8 @@ function EventTimeline({
               ticks={KIND_ORDER.map((_, i) => i)}
               tickFormatter={(v: number) => HYGIENE_KIND_LABEL[KIND_ORDER[v]]?.() ?? ""}
               width={110}
-              tick={{ fontSize: 10 }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
             />
             <ZAxis range={[50, 50]} />
             <Tooltip
@@ -146,11 +150,9 @@ function EventTimeline({
                 if (!active || !payload?.length) return null;
                 const p = payload[0].payload as (typeof points)[number];
                 return (
-                  <div className="max-w-xs rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                    <p className="font-medium text-slate-700 dark:text-slate-200">
-                      {HYGIENE_KIND_LABEL[p.kind]()}
-                    </p>
-                    <p className="mt-0.5 text-slate-500 dark:text-slate-400">
+                  <div className="max-w-xs border border-border bg-surface px-2 py-1.5 text-xs">
+                    <p className="font-medium text-ink">{HYGIENE_KIND_LABEL[p.kind]()}</p>
+                    <p className="mt-0.5 text-ink-muted">
                       {HYGIENE_KIND_COPY[p.kind](p.event.detail)}
                     </p>
                   </div>
@@ -215,12 +217,12 @@ function InstabilityRanking({
             }`}
           >
             <span
-              className="max-w-[320px] truncate font-mono text-xs text-slate-700 dark:text-slate-300"
+              className="max-w-[320px] truncate font-mono text-xs text-ink-muted"
               title={f.file_path}
             >
               {f.file_path}
             </span>
-            <span className="flex shrink-0 items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+            <span className="flex shrink-0 items-center gap-3 text-xs text-ink-muted">
               <span className="flex items-center gap-1.5">
                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                   <div
@@ -241,7 +243,7 @@ function InstabilityRanking({
         <button
           type="button"
           onClick={() => setShowAll((v) => !v)}
-          className="mt-2 w-fit rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="mt-2 w-fit rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-ink-muted hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
         >
           {showAll ? "Show top 15 only" : `Show all ${ranked.length} files`}
         </button>
@@ -301,7 +303,7 @@ function TestGapsSection({
           >
             {/* Take the API's limitation string verbatim -- Known Hazard #7:
                 "untested code" is shorter and reads better, and it is wrong. */}
-            <p className="mb-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+            <p className="mb-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-ink-muted dark:bg-slate-800/60">
               {data.limitation}
             </p>
 
@@ -322,20 +324,20 @@ function TestGapsSection({
                 title={`${TEST_CLASSIFICATION_COPY.tracked()} (${counts.tracked})`}
               />
             </div>
-            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
               <span>No mapped test: {counts.no_test}</span>
               <span>Rarely changes with code: {counts.stale_test}</span>
               <span>Changes with code: {counts.tracked}</span>
-              <span className="text-slate-400 dark:text-slate-500">
+              <span className="text-ink-faint">
                 · mean co-change ratio {formatPercent(data.mean_test_cochange_ratio)}
               </span>
             </div>
 
-            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">
               Top-risk files with a maintenance gap
             </h3>
             {topGapsWithRisk.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500">
+              <p className="text-sm text-ink-faint">
                 No top-risk file currently has a test-maintenance gap.
               </p>
             ) : (
@@ -349,12 +351,12 @@ function TestGapsSection({
                     }`}
                   >
                     <span
-                      className="max-w-[280px] truncate font-mono text-xs text-slate-700 dark:text-slate-300"
+                      className="max-w-[280px] truncate font-mono text-xs text-ink-muted"
                       title={f.file_path}
                     >
                       {f.file_path}
                     </span>
-                    <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="shrink-0 text-xs text-ink-muted">
                       {TEST_CLASSIFICATION_COPY[f.classification]()} · risk{" "}
                       {formatScore(f.risk_score, 2)}
                     </span>

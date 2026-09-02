@@ -19,17 +19,15 @@ import { NarrativeBlock } from "../../components/NarrativeBlock";
 import { StageGate } from "../../components/StageGate";
 import { TEST_CLASSIFICATION_COPY } from "../../lib/copy";
 import { confidenceLabel, formatPercent, formatScore } from "../../lib/format";
+import { CONFIDENCE_COLOR, rechartsTheme } from "../../lib/chartTheme";
 import type { RiskFileOut, RiskResponse, TestGapClassification } from "../../api/types";
 import type { RepoOutletContext } from "../RepoLayout";
 
-// Same three confidence-tier colors ConfidenceMeter uses, reused here so the
-// scatter's dot colors and every row's meter agree on what "low/medium/high
-// confidence" looks like.
-const TIER_DOT_COLOR: Record<"low" | "medium" | "high", string> = {
-  low: "#f59e0b", // amber-500
-  medium: "#94a3b8", // slate-400
-  high: "#10b981", // emerald-500
-};
+// The SAME three confidence-tier colours ConfidenceMeter/chartTheme use, so
+// the scatter's dot colours and every row's meter agree on what
+// "low/medium/high confidence" looks like -- one token source, not a second
+// palette invented for this one chart.
+const TIER_DOT_COLOR = CONFIDENCE_COLOR;
 
 export function RiskPage() {
   const { repo, share } = useOutletContext<RepoOutletContext>();
@@ -120,10 +118,7 @@ function RiskScatter({ files }: { files: RiskFileOut[] }) {
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              className="stroke-slate-200 dark:stroke-slate-800"
-            />
+            <CartesianGrid {...rechartsTheme.grid} />
             <XAxis
               type="number"
               dataKey="x"
@@ -135,8 +130,10 @@ function RiskScatter({ files }: { files: RiskFileOut[] }) {
                 position: "insideBottom",
                 offset: -4,
                 fontSize: 11,
+                fill: rechartsTheme.axis.tick.fill,
               }}
-              tick={{ fontSize: 11 }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
             />
             <YAxis
               type="number"
@@ -144,8 +141,15 @@ function RiskScatter({ files }: { files: RiskFileOut[] }) {
               name="risk score"
               domain={[0, 1]}
               tickFormatter={(v: number) => formatScore(v, 1)}
-              label={{ value: "risk_score", angle: -90, position: "insideLeft", fontSize: 11 }}
-              tick={{ fontSize: 11 }}
+              label={{
+                value: "risk_score",
+                angle: -90,
+                position: "insideLeft",
+                fontSize: 11,
+                fill: rechartsTheme.axis.tick.fill,
+              }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
             />
             <ZAxis range={[40, 40]} />
             <Tooltip
@@ -154,11 +158,9 @@ function RiskScatter({ files }: { files: RiskFileOut[] }) {
                 if (!active || !payload?.length) return null;
                 const p = payload[0].payload as (typeof points)[number];
                 return (
-                  <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                    <p className="max-w-[220px] truncate font-mono text-slate-700 dark:text-slate-200">
-                      {p.path}
-                    </p>
-                    <p className="text-slate-500 dark:text-slate-400">
+                  <div className="border border-border bg-surface px-2 py-1.5 text-xs">
+                    <p className="max-w-[220px] truncate font-mono text-ink">{p.path}</p>
+                    <p className="text-ink-muted">
                       risk {formatScore(p.y, 2)} · confidence {formatPercent(p.x)} ({p.tier})
                     </p>
                   </div>
@@ -191,9 +193,9 @@ function RiskRow({
   return (
     <li
       id={riskRowId(file.file_path)}
-      className={`border-b border-slate-100 last:border-0 dark:border-slate-800 ${
-        isLowConfidence ? "bg-amber-50/50 dark:bg-amber-500/5" : ""
-      } ${expanded ? "bg-slate-50 dark:bg-slate-900/40" : ""}`}
+      className={`border-b border-border last:border-0 ${isLowConfidence ? "bg-conf-low/5" : ""} ${
+        expanded ? "bg-surface-2" : ""
+      }`}
     >
       <button
         type="button"
@@ -202,26 +204,22 @@ function RiskRow({
         className="flex w-full flex-col gap-2 py-3 text-left"
       >
         <div className="flex flex-wrap items-center gap-3">
-          <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
-            #{file.hotspot_rank + 1}
-          </span>
+          <span className="cp-label shrink-0">#{file.hotspot_rank + 1}</span>
           <span
-            className="max-w-[280px] truncate font-mono text-xs text-slate-700 dark:text-slate-300"
+            className="max-w-[280px] truncate font-mono text-xs text-ink-muted"
             title={file.file_path}
           >
             {file.file_path}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-4">
             <div className="flex items-center gap-2">
-              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+              <div className="h-1.5 w-16 overflow-hidden bg-surface-inset">
                 <div
-                  className="h-full rounded-full bg-indigo-500"
+                  className="h-full bg-signal"
                   style={{ width: `${Math.round(file.risk_score * 100)}%` }}
                 />
               </div>
-              <span className="tabular-nums text-xs text-slate-700 dark:text-slate-300">
-                {formatScore(file.risk_score)}
-              </span>
+              <span className="cp-stat text-xs text-ink-muted">{formatScore(file.risk_score)}</span>
             </div>
             {/* A SEPARATE visual dimension from the bar above -- never
                 opacity, never folded into the score's own color/width
@@ -244,7 +242,7 @@ function RiskEvidence({ file, repoId }: { file: RiskFileOut; repoId: string }) {
   const classification = file.test_classification as TestGapClassification | null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-950/40">
+    <div className="flex flex-col gap-3 border-l-2 border-border-strong bg-surface-2 p-3">
       <MetricRow
         items={[
           { label: "churn (recency-weighted)", value: formatScore(file.churn_weighted, 0) },
@@ -268,7 +266,7 @@ function RiskEvidence({ file, repoId }: { file: RiskFileOut; repoId: string }) {
           },
         ]}
       />
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-ink-muted">
         {classification && TEST_CLASSIFICATION_COPY[classification]
           ? TEST_CLASSIFICATION_COPY[classification]()
           : "Test maintenance not yet computed for this file."}
@@ -278,7 +276,7 @@ function RiskEvidence({ file, repoId }: { file: RiskFileOut; repoId: string }) {
       </p>
       <Link
         to={`/repos/${repoId}/onboard/impact?path=${encodeURIComponent(file.file_path)}`}
-        className="w-fit text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+        className="w-fit text-xs font-medium text-signal hover:underline"
       >
         View blast radius →
       </Link>

@@ -19,6 +19,9 @@ import { ApiError } from "../api/client";
 import { LoadingState } from "../components/LoadingState";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { useToast } from "../components/ui/Toast";
 import type { RepoOut, StageName, StageOut, StageStatus } from "../api/types";
 
 // Session 08, Part A: the product has two primary modes, switched at the top
@@ -157,11 +160,11 @@ const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
 };
 
 const STAGE_STATUS_CLASSES: Record<StageStatus, string> = {
-  pending: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
-  running: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400 animate-pulse",
-  done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
-  failed: "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400",
-  skipped: "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500",
+  pending: "border-border text-ink-faint",
+  running: "border-signal text-signal",
+  done: "border-conf-high text-conf-high",
+  failed: "border-sev-high text-sev-high",
+  skipped: "border-border text-ink-faint",
 };
 
 export type RepoOutletContext = {
@@ -194,10 +197,8 @@ export function RepoLayout() {
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
 
   const tabClass = ({ isActive }: { isActive: boolean }) =>
-    `border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${
-      isActive
-        ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
-        : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+    `cp-label -mb-px border-b-2 px-0.5 py-2.5 transition-colors ${
+      isActive ? "border-signal text-ink" : "border-transparent hover:text-ink"
     }`;
 
   const displayStatus = status.data?.repo_status ?? repo.status;
@@ -211,32 +212,33 @@ export function RepoLayout() {
   const blockingFailure = neverSucceeded && status.data?.run_status === "failed";
   const showTabs = Boolean(status.data?.run_id) && !blockingFailure;
 
+  const statusTone =
+    displayStatus === "ready"
+      ? "border-conf-high text-conf-high"
+      : displayStatus === "failed"
+        ? "border-sev-high text-sev-high"
+        : "border-signal text-signal";
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <h1 className="font-mono text-lg font-semibold text-ink">
               {repo.owner}/{repo.name}
             </h1>
             <a
               href={repo.url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-slate-500 hover:underline dark:text-slate-400"
+              className="text-xs text-ink-muted hover:underline"
             >
               {repo.url}
             </a>
           </div>
           <div className="flex items-center gap-2">
             <span
-              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
-                displayStatus === "ready"
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
-                  : displayStatus === "failed"
-                    ? "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400"
-                    : "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400"
-              }`}
+              className={`inline-flex items-center border px-2.5 py-1 text-xs font-medium ${statusTone}`}
             >
               {REPO_STATUS_LABEL[displayStatus] ?? displayStatus}
             </span>
@@ -256,7 +258,7 @@ export function RepoLayout() {
         ) : null}
 
         {!neverSucceeded && status.data?.run_status === "failed" ? (
-          <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          <p className="mt-3 border-l-2 border-sev-high py-1.5 pl-3 text-xs text-ink-muted">
             The latest re-analysis failed
             {status.data.run_error ? `: ${status.data.run_error}` : "."} Showing the most recent
             successful run below.
@@ -266,10 +268,13 @@ export function RepoLayout() {
         {showTabs ? (
           <>
             <ModeSwitcher mode={mode} />
-            {/* Audit mode's 5 tabs don't fit in 360px alongside "Architecture" --
-                scrolls horizontally INSIDE the nav rather than widening the
-                whole page body (no page may scroll horizontally itself). */}
-            <nav className="mt-3 flex gap-5 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+            {/* Audit mode's 8 tabs don't fit in 360px -- scrolls horizontally
+                INSIDE the nav rather than widening the whole page body (no
+                page may scroll horizontally itself). */}
+            <nav
+              aria-label="Repository sections"
+              className="mt-3 flex gap-5 overflow-x-auto border-b border-border"
+            >
               {(mode === "audit" ? AUDIT_TABS : ONBOARD_TABS).map((tab) => (
                 <NavLink key={tab.to} to={tab.to} className={(a) => `shrink-0 ${tabClass(a)}`}>
                   {tab.label}
@@ -300,17 +305,17 @@ export function RepoLayout() {
 /** The primary Onboard/Audit switcher (Part A) -- sits above the tab bar in
  * both modes. Always jumps to the target mode's own default tab; it does
  * not try to remember a per-mode "last sub-tab" (out of scope for this
- * session's function-and-IA-only mandate). */
+ * session's function-and-IA-only mandate). A neutral ink/paper inversion
+ * for the active segment, not the signal accent -- this is chrome
+ * (navigation), not a data value or the page's one primary action. */
 function ModeSwitcher({ mode }: { mode: RepoMode }) {
   const modeButtonClass = (active: boolean) =>
-    `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-      active
-        ? "bg-indigo-600 text-white"
-        : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+    `cp-label px-3 py-1.5 transition-colors ${
+      active ? "bg-ink text-bg" : "hover:bg-surface-2 hover:text-ink"
     }`;
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
+    <div className="inline-flex items-center border border-border">
       <NavLink to="onboard/passport" className={() => modeButtonClass(mode === "onboard")}>
         Onboard
       </NavLink>
@@ -325,13 +330,13 @@ function StagePill({ stage }: { stage: StageOut }) {
   const summaryValue = stageSummaryValue(stage);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STAGE_STATUS_CLASSES[stage.status]}`}
+      className={`inline-flex items-center gap-1.5 border px-2 py-0.5 text-xs font-medium ${STAGE_STATUS_CLASSES[stage.status]} ${
+        stage.status === "running" ? "animate-pulse motion-reduce:animate-none" : ""
+      }`}
       title={stage.error ?? undefined}
     >
       {STAGE_LABEL[stage.name]}
-      {summaryValue !== null ? (
-        <span className="tabular-nums opacity-80">{summaryValue}</span>
-      ) : null}
+      {summaryValue !== null ? <span className="cp-stat">{summaryValue}</span> : null}
     </span>
   );
 }
@@ -353,7 +358,13 @@ function CompareLink() {
   return (
     <NavLink
       to="compare"
-      className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+      className={({ isActive }) =>
+        `inline-flex items-center border px-2.5 py-1 text-xs font-medium transition-colors ${
+          isActive
+            ? "border-signal bg-signal text-signal-ink"
+            : "border-border text-ink-muted hover:bg-surface-2"
+        }`
+      }
     >
       Compare
     </NavLink>
@@ -372,7 +383,7 @@ function ShareButton({ runId }: { runId: string }) {
   const createShare = useCreateShareLink();
   const revokeShare = useRevokeShareLink();
   const [link, setLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const showToast = useToast();
 
   async function handleShare() {
     const result = await createShare.mutateAsync(runId);
@@ -380,8 +391,7 @@ function ShareButton({ runId }: { runId: string }) {
     setLink(shareUrl);
     try {
       await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      showToast("Link copied to clipboard");
     } catch {
       // Clipboard access denied/unavailable -- the link is still shown
       // inline below for the user to copy by hand.
@@ -394,36 +404,34 @@ function ShareButton({ runId }: { runId: string }) {
 
   return (
     <div className="flex items-center gap-2">
-      <button
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         onClick={() => void handleShare()}
         disabled={createShare.isPending}
-        className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
       >
         {createShare.isPending ? "Creating link…" : "Share"}
-      </button>
+      </Button>
       {link ? (
         <>
-          <input
+          <Input
             readOnly
             value={link}
             onFocus={(e) => e.currentTarget.select()}
-            className="w-56 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            className="w-56 py-1"
           />
-          {copied ? (
-            <span className="text-xs text-emerald-600 dark:text-emerald-400">Copied</span>
-          ) : null}
           <button
             type="button"
             onClick={handleRevoke}
-            className="text-xs text-red-600 hover:underline dark:text-red-400"
+            className="text-xs text-sev-high hover:underline"
           >
             Revoke
           </button>
         </>
       ) : null}
       {createShare.isError ? (
-        <span className="text-xs text-red-600 dark:text-red-400">
+        <span className="text-xs text-sev-high">
           {createShare.error instanceof ApiError
             ? createShare.error.message
             : "Couldn't create link."}

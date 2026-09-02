@@ -85,13 +85,11 @@ function WhoDoIAskCard({
                       expert
                     </span>
                   ) : null}
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                  <span className="text-xs text-ink-muted">
                     DOA {formatPercent(e.doa_normalized)}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {e.changes} changes
-                  </span>
-                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                  <span className="text-xs text-ink-muted">{e.changes} changes</span>
+                  <span className="text-xs text-ink-faint">
                     last touched {new Date(e.last_touched_at).toLocaleDateString()}
                   </span>
                 </li>
@@ -99,7 +97,7 @@ function WhoDoIAskCard({
             </ul>
           )
         ) : (
-          <p className="text-sm text-slate-400 dark:text-slate-500">
+          <p className="text-sm text-ink-faint">
             Pick a file above to see who has principal authorship over it.
           </p>
         )}
@@ -161,10 +159,10 @@ function ContributorRow({ contributor, share }: { contributor: ContributorOut; s
             style={{ width: `${Math.round(share * 100)}%` }}
           />
         </div>
-        <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+        <span className="text-xs tabular-nums text-ink-muted">
           {formatPercent(share)} of commits
         </span>
-        <span className="text-xs text-slate-400 dark:text-slate-500">
+        <span className="text-xs text-ink-faint">
           active {new Date(contributor.first_commit_at).toLocaleDateString()}–
           {new Date(contributor.last_commit_at).toLocaleDateString()}
         </span>
@@ -186,7 +184,7 @@ function ContributorRow({ contributor, share }: { contributor: ContributorOut; s
             // expandable, non-prominent detail (Known Hazard #5).
             <li
               key={a.name}
-              className="rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400"
+              className="rounded-full bg-slate-50 px-2 py-0.5 text-xs text-ink-muted dark:bg-slate-800/60"
             >
               {a.name}
             </li>
@@ -208,23 +206,21 @@ function TruckFactorCard({ repoId, share }: { repoId: string; share?: string }) 
         {(data) => (
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-                {data.value}
-              </span>
-              <span className="text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-3xl font-semibold tabular-nums text-ink">{data.value}</span>
+              <span className="text-xs text-ink-faint">
                 {data.value === 1 ? "person" : "people"}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{data.interpretation}</p>
+            <p className="text-xs text-ink-muted">{data.interpretation}</p>
             {data.note ? (
               <p className="text-xs text-amber-600 dark:text-amber-400">{data.note}</p>
             ) : null}
 
             {data.removal_order.length > 0 ? (
-              <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm text-slate-700 dark:text-slate-300">
+              <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm text-ink-muted">
                 {data.removal_order.map((step, i) => (
                   <li key={step.contributor_id} className="flex items-center gap-1.5">
-                    {i > 0 ? <span className="text-slate-300 dark:text-slate-600">;</span> : null}
+                    {i > 0 ? <span className="text-ink-faint">;</span> : null}
                     <span>
                       {i > 0 ? "also remove " : "remove "}
                       <span className="font-medium">{step.name}</span> →{" "}
@@ -238,7 +234,7 @@ function TruckFactorCard({ repoId, share }: { repoId: string; share?: string }) 
               </ol>
             ) : null}
 
-            <p className="text-xs text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-ink-faint">
               {data.orphaned_file_count} of {data.total_files_considered} files currently have no
               non-stale expert{data.total_files_considered > 0 ? "" : " (no files were considered)"}
               .

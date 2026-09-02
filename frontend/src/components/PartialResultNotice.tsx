@@ -1,5 +1,5 @@
 /** The non-graph counterpart to GraphCapNotice -- "showing N of M" for any
- * capped list (findings, blast-radius affected files, tour stops), so a cap
+ * capped LIST (findings, blast-radius affected files, tour stops), so a cap
  * is never silently applied (CLAUDE.md's anti-alert-fatigue rule: an honest
  * total must always be shown alongside a cap). Renders nothing if the cap
  * never actually engaged. */
@@ -23,7 +23,7 @@ export function PartialResultNotice({
   if (!capped && shown >= total) return null;
 
   return (
-    <p className="mb-2 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+    <p className="mb-2 border-l-2 border-conf-low py-1 pl-3 text-xs text-ink-muted">
       {capped
         ? `Showing the first ${shown} ${itemLabel} — this may not be the complete result (an internal search limit was reached).`
         : `Showing ${shown} of ${total} ${itemLabel}.`}

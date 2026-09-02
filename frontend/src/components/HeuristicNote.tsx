@@ -12,14 +12,11 @@ const CORPUS_MESSAGE =
  * CLAUDE.md's calibration-labeling convention).
  *
  * Session 14, Part C.5: `calibration` mirrors the API response's own
- * `calibration` field ("heuristic" | "corpus", derived server-side from
- * `COMPASS_BASELINE_PROVIDER` at runtime -- never guessed at client-side).
- * When it's "corpus", the corpus-calibrated message wins regardless of a
- * caller-supplied `message` -- a caller's custom `message` is for
- * elaborating on the HEURISTIC case (e.g. RiskPage's formula explainer),
- * not for overriding an honestly-corpus-calibrated score into looking
- * uncalibrated. Omitting `calibration` entirely keeps every pre-session-14
- * call site's behavior unchanged. */
+ * `calibration` field ("heuristic" | "corpus"). Session 15: a hairline
+ * left border in the matching semantic colour (amber-family for
+ * heuristic, the "positive" green-family for corpus) instead of a filled
+ * tinted box -- consistent with the rest of the token system's "border
+ * carries the signal, fill stays neutral" convention. */
 export function HeuristicNote({
   message = DEFAULT_HEURISTIC_MESSAGE,
   calibration,
@@ -32,10 +29,8 @@ export function HeuristicNote({
   const isCorpus = calibration === "corpus";
   return (
     <p
-      className={`rounded-md px-3 py-2 text-xs ${
-        isCorpus
-          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
-          : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+      className={`border-l-2 py-1.5 pl-3 text-xs text-ink-muted ${
+        isCorpus ? "border-conf-high" : "border-conf-low"
       } ${className}`}
     >
       {isCorpus ? CORPUS_MESSAGE : message}

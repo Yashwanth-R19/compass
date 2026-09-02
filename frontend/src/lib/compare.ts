@@ -21,7 +21,7 @@ export function headlineDirection(item: HeadlineDeltaOut): DeltaDirection {
 export const DIRECTION_TEXT_CLASS: Record<DeltaDirection, string> = {
   improved: "text-emerald-600 dark:text-emerald-400",
   worsened: "text-red-600 dark:text-red-400",
-  neutral: "text-slate-500 dark:text-slate-400",
+  neutral: "text-ink-muted",
 };
 
 export function formatSignedDelta(delta: number): string {

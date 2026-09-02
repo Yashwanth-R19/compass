@@ -62,7 +62,7 @@ export function TourPage() {
 function WhyThisOrderPanel() {
   return (
     <Card title="Why this order">
-      <p className="text-sm text-slate-600 dark:text-slate-300">
+      <p className="text-sm text-ink-muted">
         This isn't a guess. The README comes first, if there is one. Then detected entry points
         (where a web server, CLI, or UI actually starts), ranked by how confidently they were
         detected. Everything else follows in breadth-first order through the dependency graph,
@@ -97,34 +97,30 @@ function TourStopItem({
   }
 
   return (
-    <li
-      className={`flex gap-3 py-3 ${isLast ? "" : "border-b border-slate-100 dark:border-slate-800"}`}
-    >
+    <li className={`flex gap-3 py-3 ${isLast ? "" : "border-b border-border"}`}>
       <div className="flex flex-col items-center pt-0.5">
         <input
           type="checkbox"
           checked={done}
           onChange={toggleDone}
           aria-label={`Mark ${stop.file_path} as read`}
-          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600"
+          className="h-4 w-4 border-border-strong accent-signal"
         />
       </div>
       <div className="flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-            #{stop.position}
-          </span>
+          <span className="cp-label">#{stop.position}</span>
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className={`truncate font-mono text-sm hover:underline ${done ? "text-slate-400 line-through dark:text-slate-600" : "text-slate-800 dark:text-slate-200"}`}
+            className={`truncate font-mono text-sm hover:underline ${done ? "text-ink-faint line-through" : "text-ink"}`}
             title={stop.file_path}
           >
             {stop.file_path}
           </button>
           <SubsystemBadge label={stop.subsystem_label} />
         </div>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-0.5 text-xs text-ink-muted">
           {TOUR_REASON_COPY[stop.reason_code](detail)}
         </p>
         <div className="mt-1.5">
@@ -146,7 +142,7 @@ function TourStopItem({
         </div>
 
         {expanded ? (
-          <div className="mt-2 flex flex-col gap-1.5 rounded-md bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+          <div className="mt-2 flex flex-col gap-1.5 border-l-2 border-border-strong bg-surface-2 p-3 text-xs text-ink-muted">
             <p>
               Last touched:{" "}
               {detail.last_touched_at
@@ -167,13 +163,13 @@ function TourStopItem({
             ) : null}
             <Link
               to={`/repos/${repoId}/onboard/people?path=${encodeURIComponent(stop.file_path)}`}
-              className="w-fit font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              className="w-fit font-medium text-signal hover:underline"
             >
               See who knows this file →
             </Link>
             <Link
               to={`/repos/${repoId}/onboard/impact?path=${encodeURIComponent(stop.file_path)}`}
-              className="w-fit font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              className="w-fit font-medium text-signal hover:underline"
             >
               See its blast radius →
             </Link>

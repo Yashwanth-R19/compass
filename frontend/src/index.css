@@ -1,8 +1,8 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 
-:root {
-  color-scheme: light dark;
-}
+/* Session 15: base rules that apply the tokens above app-wide, so most
+   individual components need no per-element opt-in. */
 
 html,
 body,
@@ -11,11 +11,67 @@ body,
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-bg text-ink antialiased;
+  font-family: var(--font-sans);
+  /* Every digit in this product is a measurement -- tabular figures are the
+     default everywhere, not an opt-in per metrics table (Part A). This is
+     an INHERITED property, so a component only needs to override it back to
+     `normal` in the rare case prose numerals are wanted (none currently
+     are); see DESIGN.md's typography section and Known Hazard #6. */
+  font-variant-numeric: tabular-nums;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    @apply bg-slate-950 text-slate-100;
+/* A stable, visible focus indicator everywhere -- no component may set
+   `outline: none` without providing this same replacement (Part E). Uses
+   the one signal accent, offset so it never touches the element's own
+   border/text. `:focus-visible` (not `:focus`) so a mouse click doesn't
+   draw a ring a keyboard user never asked to see. */
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+}
+
+/* Monospace, uppercase, tracked-out micro-labels -- the small quiet caption
+   under/above a stat or section ("RISK SCORE", "COUPLING DEGREE"). One
+   place this look is defined, so it can't drift call-site to call-site.
+   Declared inside Tailwind's `components` layer (not bare/unlayered CSS)
+   specifically so a co-applied Tailwind colour utility (`text-bg`,
+   `text-signal`, ...) -- which lives in the LATER `utilities` layer --
+   correctly overrides this rule's own `color` per Tailwind v4's intended
+   cascade order. An unlayered `.cp-label` rule would instead win over ANY
+   utility class regardless of layer order (unlayered CSS always beats
+   layered CSS at equal specificity) -- this exact bug shipped once during
+   this session (RepoLayout's selected mode-switcher segment combined
+   `cp-label` with `text-bg`, and the label's own baked-in faint colour
+   silently won, rendering the selected segment's text at a failing
+   contrast ratio against its own background -- caught by axe, not by eye;
+   see DESIGN.md's accessibility section). */
+@layer components {
+  .cp-label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  /* A hero numeric readout -- mono, tabular, tight tracking so digit
+     columns read as one measurement rather than loose prose. */
+  .cp-stat {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

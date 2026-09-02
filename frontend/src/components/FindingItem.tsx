@@ -41,7 +41,7 @@ export function FindingItem({
   const deepLink = findingDeepLink(finding, repoId);
 
   return (
-    <li className="border-b border-slate-100 py-3 last:border-0 dark:border-slate-800">
+    <li className="border-b border-border py-3 last:border-0">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -50,20 +50,17 @@ export function FindingItem({
       >
         <div className="flex flex-wrap items-center gap-2">
           <SeverityChip severity={finding.severity} />
-          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <span className="cp-label border border-border px-1.5 py-0.5">
             {categoryLabel(finding.category)}
           </span>
           <ConfidenceMeter confidence={finding.confidence} size="sm" />
-          <span className="ml-auto shrink-0 text-xs text-slate-400 dark:text-slate-500">
+          <span className="ml-auto shrink-0 text-xs text-ink-faint">
             {expanded ? "Hide evidence ▲" : "Show evidence ▼"}
           </span>
         </div>
-        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{finding.title}</p>
+        <p className="text-sm font-medium text-ink">{finding.title}</p>
         {finding.file_path ? (
-          <p
-            className="truncate font-mono text-xs text-slate-400 dark:text-slate-500"
-            title={finding.file_path}
-          >
+          <p className="truncate font-mono text-xs text-ink-faint" title={finding.file_path}>
             {finding.file_path}
           </p>
         ) : null}

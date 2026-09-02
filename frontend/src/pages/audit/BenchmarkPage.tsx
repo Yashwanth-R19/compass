@@ -19,15 +19,15 @@ function MetricBar({ metric }: { metric: BenchmarkResponse["metrics"][number] })
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-        <span className="text-slate-700 dark:text-slate-300">{metric.metric}</span>
-        <span className="flex items-center gap-2 tabular-nums text-slate-400 dark:text-slate-500">
+        <span className="text-ink-muted">{metric.metric}</span>
+        <span className="flex items-center gap-2 tabular-nums text-ink-faint">
           {formatScore(metric.value, 2)} · p{pct}
           {metric.widened ? (
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
               widened
             </span>
           ) : null}
-          <span className="text-slate-300 dark:text-slate-600">
+          <span className="text-ink-faint">
             n={metric.n_repos} repos / {metric.n_files} files
           </span>
         </span>
@@ -57,13 +57,13 @@ export function BenchmarkPage() {
             title="Compared against the curated corpus"
             subtitle={`${data.dominant_language} · ${data.size_bucket} repositories`}
           >
-            <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">{data.corpus_note}</p>
+            <p className="mb-4 text-xs text-ink-muted">{data.corpus_note}</p>
             <div className="flex flex-col gap-3">
               {data.metrics.map((m) => (
                 <MetricBar key={m.metric} metric={m} />
               ))}
             </div>
-            <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-4 text-xs text-ink-faint">
               A metric with <code>n_repos=0</code> has no corpus data for this language/size cell
               yet -- its bar shows a heuristic fallback position, not a real percentile. A{" "}
               <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">

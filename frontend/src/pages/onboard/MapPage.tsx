@@ -22,6 +22,7 @@ import { toCityFile, type CityFile } from "../../lib/cityFile";
 import { fileName } from "../../lib/format";
 import { average, majority, ownerColor, recencyColor, riskColor } from "../../lib/metricColor";
 import { colorForSubsystem, UNASSIGNED_COLOR } from "../../lib/subsystemColors";
+import { CHROME, SEVERITY_COLOR } from "../../lib/chartTheme";
 import type { RepoOutletContext } from "../RepoLayout";
 
 type ColorMode = "subsystem" | "risk" | "owner" | "recency";
@@ -93,7 +94,7 @@ export function MapPage() {
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               view === "graph"
                 ? "bg-indigo-600 text-white"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                : "text-ink-muted hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
           >
             Subsystem graph
@@ -104,7 +105,7 @@ export function MapPage() {
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               view === "treemap"
                 ? "bg-indigo-600 text-white"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                : "text-ink-muted hover:bg-slate-100 dark:hover:bg-slate-800"
             }`}
           >
             Treemap
@@ -517,9 +518,8 @@ function SubsystemGraphView({
           options={EDGE_MODE_LABEL}
         />
         {expanded ? (
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Expanded:{" "}
-            <span className="font-medium text-slate-700 dark:text-slate-200">{expanded}</span>{" "}
+          <span className="text-xs text-ink-muted">
+            Expanded: <span className="font-medium text-ink-muted">{expanded}</span>{" "}
             <button
               type="button"
               onClick={() => setExpanded(null)}
@@ -529,7 +529,7 @@ function SubsystemGraphView({
             </button>
           </span>
         ) : (
-          <span className="text-xs text-slate-400 dark:text-slate-500">
+          <span className="text-xs text-ink-faint">
             Click a subsystem to expand it into its files.
           </span>
         )}
@@ -556,7 +556,9 @@ function SubsystemGraphView({
                 nodeVal={(n) => (n as MapNode).size}
                 nodeLabel={(n) => (n as MapNode).id}
                 nodeColor={(n) => colorForNode(n as MapNode)}
-                linkColor={(l) => ((l as unknown as MapEdge).hidden ? "#f97316" : "#94a3b8")}
+                linkColor={(l) =>
+                  (l as unknown as MapEdge).hidden ? SEVERITY_COLOR.med : CHROME.border
+                }
                 linkWidth={(l) => {
                   const edge = l as unknown as MapEdge;
                   return edge.hidden ? 2.5 + edge.weight * 3 : 0.6 + edge.weight * 2;
@@ -599,9 +601,7 @@ function SubsystemGraphView({
                     />
                     <span className={expanded === s.label ? "font-semibold" : ""}>{s.label}</span>
                   </button>
-                  <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
-                    {s.file_count} files
-                  </span>
+                  <span className="shrink-0 text-xs text-ink-faint">{s.file_count} files</span>
                 </li>
               ))}
             </ul>

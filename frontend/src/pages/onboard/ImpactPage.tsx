@@ -117,7 +117,7 @@ function BlastRadiusResult({
         className="border-amber-300 ring-1 ring-amber-200 dark:border-amber-500/40 dark:ring-amber-500/20"
       >
         {data.surprising_affected.length === 0 ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500">
+          <p className="text-sm text-ink-faint">
             Nothing surprising -- every historically co-changed file is also structurally connected.
           </p>
         ) : (
@@ -141,7 +141,7 @@ function BlastRadiusResult({
             capped={data.depth_capped || data.node_cap_engaged}
           />
           {data.structural_affected.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500">No structural dependents.</p>
+            <p className="text-sm text-ink-faint">No structural dependents.</p>
           ) : (
             <ul className="flex max-h-96 flex-col divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
               {data.structural_affected.map((f) => (
@@ -156,9 +156,7 @@ function BlastRadiusResult({
           subtitle={`${data.historical_affected.length} files`}
         >
           {data.historical_affected.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500">
-              No strong historical coupling.
-            </p>
+            <p className="text-sm text-ink-faint">No strong historical coupling.</p>
           ) : (
             <ul className="flex max-h-96 flex-col divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
               {data.historical_affected.map((f) => (
@@ -177,7 +175,7 @@ function BlastRadiusResult({
           <ul className="flex flex-col divide-y divide-slate-100 text-sm dark:divide-slate-800">
             {data.historical_evidence.map((e) => (
               <li key={e.affected_path} className="flex flex-col gap-1 py-2.5">
-                <p className="text-slate-700 dark:text-slate-200">
+                <p className="text-ink-muted">
                   Of the {data.commits_touching_path} commits touching this file,{" "}
                   <span className="font-medium">{e.shared_commit_count}</span> (
                   {formatPercent(e.shared_commit_percentage)}) also touched{" "}
@@ -208,13 +206,10 @@ function AffectedFileRow({
 }) {
   return (
     <li className="flex items-center justify-between gap-2 py-2 text-sm">
-      <span
-        className="truncate font-mono text-xs text-slate-700 dark:text-slate-300"
-        title={file.file_path}
-      >
+      <span className="truncate font-mono text-xs text-ink-muted" title={file.file_path}>
         {file.file_path}
       </span>
-      <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+      <span className="shrink-0 text-xs text-ink-faint">
         {showHops && file.hop_distance != null
           ? `${file.hop_distance} hop${file.hop_distance === 1 ? "" : "s"}`
           : null}
@@ -227,17 +222,15 @@ function AffectedFileRow({
 function Headline({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-        {value}
-      </p>
+      <p className="text-xs text-ink-muted">{label}</p>
+      <p className="text-xl font-semibold tabular-nums text-ink">{value}</p>
     </div>
   );
 }
 
 function DepthSlider({ depth, onChange }: { depth: number; onChange: (depth: number) => void }) {
   return (
-    <label className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+    <label className="flex items-center gap-3 text-xs text-ink-muted">
       Depth
       <input
         type="range"
@@ -248,7 +241,7 @@ function DepthSlider({ depth, onChange }: { depth: number; onChange: (depth: num
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-40 accent-indigo-600"
       />
-      <span className="tabular-nums font-medium text-slate-800 dark:text-slate-100">{depth}</span>
+      <span className="tabular-nums font-medium text-ink">{depth}</span>
     </label>
   );
 }

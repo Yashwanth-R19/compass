@@ -6,39 +6,17 @@
 // "risk" must look like the same risk gradient in both views, not two
 // independently tuned scales that happen to share a name.
 //
-// Every base colour here is already used elsewhere in this app for the same
-// meaning, not introduced fresh: emerald/red are this app's existing
-// healthy/high-severity colours (lib/format.ts::healthColor,
-// SEVERITY_CLASSES.high); sky-500 is already used for "selected"
-// (ArchitecturePage); the "stale"/"unassigned" neutral is the same
-// UNASSIGNED_COLOR subsystemColors.ts already defines.
+// Session 15: RISK_LOW/RISK_HIGH/RECENCY_FRESH/RECENCY_STALE and the lerp
+// machinery now live in lib/chartTheme.ts (the single source for all four
+// renderers -- recharts, the force graph, the treemap, and the 3D city; see
+// that module's own docstring). This module stays the map/city-specific
+// ACCESSOR layer (riskColor/recencyColor/ownerColor), re-exported from
+// there rather than redefining a second copy of the same scale.
 import { colorForSubsystem, UNASSIGNED_COLOR } from "./subsystemColors";
+import { lerpColor, RECENCY_FRESH, riskScaleColor } from "./chartTheme";
 
-export const RISK_LOW = "#22c55e"; // emerald-500
-export const RISK_HIGH = "#ef4444"; // red-500
-export const RECENCY_STALE = UNASSIGNED_COLOR; // slate-400
-export const RECENCY_FRESH = "#0ea5e9"; // sky-500
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function toHexByte(v: number): string {
-  return Math.round(Math.max(0, Math.min(255, v)))
-    .toString(16)
-    .padStart(2, "0");
-}
-
-/** Linear RGB interpolation between two `#rrggbb` colours, clamped to
- * [0, 1]. Deterministic and pure -- reused by both the map and the city so
- * a given (colour mode, value) always renders identically in each. */
-export function lerpColor(colorA: string, colorB: string, t: number): string {
-  const [ar, ag, ab] = hexToRgb(colorA);
-  const [br, bg, bb] = hexToRgb(colorB);
-  const clamped = Math.max(0, Math.min(1, t));
-  return `#${toHexByte(ar + (br - ar) * clamped)}${toHexByte(ag + (bg - ag) * clamped)}${toHexByte(ab + (bb - ab) * clamped)}`;
-}
+export { lerpColor, RECENCY_FRESH };
+export const RECENCY_STALE = UNASSIGNED_COLOR;
 
 export function average(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -67,11 +45,11 @@ export function majority<T>(values: (T | null | undefined)[]): T | null {
   return best;
 }
 
-/** 0 (RISK_LOW) .. 1 (RISK_HIGH) -- `score` is already the [0,1]-scaled
- * risk_score every risk-related response already carries, never rescaled
- * here. */
+/** 0 (lowest) .. 1 (highest), across chartTheme's 5-stop risk heat scale --
+ * `score` is already the [0,1]-scaled risk_score every risk-related
+ * response already carries, never rescaled here. */
 export function riskColor(score: number | null | undefined): string {
-  return score == null ? UNASSIGNED_COLOR : lerpColor(RISK_LOW, RISK_HIGH, score);
+  return score == null ? UNASSIGNED_COLOR : riskScaleColor(score);
 }
 
 /** `min`/`max` should always come from the server-computed CityBounds

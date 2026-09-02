@@ -87,9 +87,7 @@ function App() {
             <Route
               path="*"
               element={
-                <div className="py-16 text-center text-sm text-slate-500 dark:text-slate-400">
-                  Page not found.
-                </div>
+                <div className="py-16 text-center text-sm text-ink-muted">Page not found.</div>
               }
             />
           </Route>

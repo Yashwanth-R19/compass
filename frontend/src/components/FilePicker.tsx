@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Input } from "./ui/Input";
 
 const MAX_SUGGESTIONS = 20;
 
@@ -36,7 +37,7 @@ export function FilePicker({
 
   return (
     <div className="relative">
-      <input
+      <Input
         type="text"
         value={query}
         onChange={(e) => {
@@ -50,21 +51,21 @@ export function FilePicker({
         onBlur={() => window.setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
         disabled={paths.length === 0}
-        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+        className="font-mono"
       />
 
       {paths.length === 0 ? (
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">No files available yet.</p>
+        <p className="mt-1 text-xs text-ink-faint">No files available yet.</p>
       ) : null}
 
       {open && matches.length > 0 ? (
-        <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-slate-200 bg-white text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto border border-border bg-surface text-sm">
           {matches.map((p) => (
             <li key={p}>
               <button
                 type="button"
                 onClick={() => handleSelect(p)}
-                className="block w-full truncate px-3 py-1.5 text-left font-mono text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="block w-full truncate px-3 py-1.5 text-left font-mono text-xs text-ink-muted hover:bg-surface-2 hover:text-ink"
                 title={p}
               >
                 {p}

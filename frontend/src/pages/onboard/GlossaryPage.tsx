@@ -53,13 +53,11 @@ function GlossaryTermRow({ term, repoId }: { term: GlossaryTermOut; repoId: stri
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full flex-wrap items-center gap-3 text-left"
       >
-        <span className="font-mono text-sm font-medium text-slate-800 dark:text-slate-200">
-          {term.term}
-        </span>
-        <span className="text-xs text-slate-400 dark:text-slate-500">
+        <span className="font-mono text-sm font-medium text-ink">{term.term}</span>
+        <span className="text-xs text-ink-faint">
           {term.occurrences} occurrence{term.occurrences === 1 ? "" : "s"}
         </span>
-        <span className="text-xs text-slate-400 dark:text-slate-500">
+        <span className="text-xs text-ink-faint">
           spans {term.subsystem_spread} subsystem{term.subsystem_spread === 1 ? "" : "s"}
         </span>
         {term.defining_paths.length > 0 ? (
@@ -76,7 +74,7 @@ function GlossaryTermRow({ term, repoId }: { term: GlossaryTermOut; repoId: stri
             <li key={path}>
               <Link
                 to={`/repos/${repoId}/onboard/people?path=${encodeURIComponent(path)}`}
-                className="font-mono text-xs text-slate-500 hover:text-indigo-600 hover:underline dark:text-slate-400 dark:hover:text-indigo-400"
+                className="font-mono text-xs text-ink-muted hover:text-indigo-600 hover:underline dark:hover:text-indigo-400"
               >
                 {path}
               </Link>

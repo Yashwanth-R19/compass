@@ -29,7 +29,7 @@ export function GraphCanvas({
   return (
     <div
       ref={containerRef}
-      className="w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40"
+      className="w-full overflow-hidden border border-border bg-bg"
       style={{ height }}
     >
       {width > 0 ? children({ width, height }) : null}

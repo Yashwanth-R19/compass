@@ -39,9 +39,7 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-        Your repositories
-      </h1>
+      <h1 className="text-lg font-semibold text-ink">Your repositories</h1>
       <div className="grid gap-3 sm:grid-cols-2">
         {data.repos.map((repo) => {
           const health = repo.health_score !== null ? healthColor(repo.health_score) : null;
@@ -51,18 +49,18 @@ export function DashboardPage() {
                 <div className="min-w-0">
                   <Link
                     to={`/repos/${repo.id}/overview`}
-                    className="truncate text-sm font-medium text-slate-900 hover:underline dark:text-slate-100"
+                    className="truncate text-sm font-medium text-ink hover:underline"
                   >
                     {repo.owner}/{repo.name}
                   </Link>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-1 text-xs text-ink-muted">
                     {repo.is_private ? "Private" : "Public"} ·{" "}
                     {repo.latest_run_status
                       ? (RUN_STATUS_LABEL[repo.latest_run_status] ?? repo.latest_run_status)
                       : "No runs yet"}
                   </p>
                   {repo.analyzed_at ? (
-                    <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                    <p className="mt-0.5 text-xs text-ink-faint">
                       Last analyzed {new Date(repo.analyzed_at).toLocaleString()}
                     </p>
                   ) : null}
@@ -77,7 +75,7 @@ export function DashboardPage() {
                 type="button"
                 disabled={resubmit.isPending}
                 onClick={() => resubmit.mutate(repo.url)}
-                className="mt-3 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="mt-3 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
               >
                 Re-analyze
               </button>

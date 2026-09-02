@@ -15,6 +15,7 @@ import { GraphCapNotice } from "../../components/GraphCapNotice";
 import { colorForSubsystem } from "../../lib/subsystemColors";
 import { useCappedGraph, type CappableEdge, type CappableNode } from "../../hooks/useGraphCap";
 import { fileName, formatPercent } from "../../lib/format";
+import { CHROME, SEVERITY_COLOR } from "../../lib/chartTheme";
 import type { RepoOutletContext } from "../RepoLayout";
 
 type Granularity = ModuleCouplingGranularity | "file";
@@ -34,8 +35,12 @@ interface CouplingPair {
   hidden: boolean;
 }
 
-const HIDDEN_COLOR = "#f97316"; // amber-500
-const NORMAL_COLOR = "#6366f1"; // indigo-500
+// A hidden dependency (coupled, no import) is this app's flagship insight
+// (CLAUDE.md "OverlayEngine") -- it gets the med-severity amber-family
+// colour, never a neutral one, so it reads as "worth attention" wherever it
+// appears (this graph, the map, a finding chip).
+const HIDDEN_COLOR = SEVERITY_COLOR.med;
+const NORMAL_COLOR = CHROME.inkMuted;
 
 function pairKey(a: string, b: string): string {
   return [a, b].sort().join("|");
@@ -204,13 +209,11 @@ export function CouplingPage() {
 
       {isLoading ? (
         <Card>
-          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
-            Loading coupling data…
-          </p>
+          <p className="py-8 text-center text-sm text-ink-faint">Loading coupling data…</p>
         </Card>
       ) : pairs.length === 0 ? (
         <Card>
-          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
+          <p className="py-8 text-center text-sm text-ink-faint">
             No coupling pairs found at this granularity yet.
           </p>
         </Card>
@@ -225,7 +228,7 @@ export function CouplingPage() {
                 totalNodes={capped.totalNodes}
               />
               {granularity !== "directory" ? (
-                <label className="flex shrink-0 items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <label className="flex shrink-0 items-center gap-2 text-xs text-ink-muted">
                   <input
                     type="checkbox"
                     checked={hiddenOnly}
@@ -235,7 +238,7 @@ export function CouplingPage() {
                   Hidden dependencies only
                 </label>
               ) : (
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-ink-faint">
                   Hidden-only filtering isn't available at directory granularity.
                 </span>
               )}
@@ -252,8 +255,8 @@ export function CouplingPage() {
                   nodeColor={(n) => {
                     const id = (n as CappableNode).id;
                     if (highlightPair && (id === highlightPair[0] || id === highlightPair[1]))
-                      return "#0ea5e9";
-                    return granularity === "subsystem" ? colorForSubsystem(id) : "#475569";
+                      return CHROME.signal;
+                    return granularity === "subsystem" ? colorForSubsystem(id) : CHROME.inkMuted;
                   }}
                   linkColor={(l) =>
                     (l as unknown as CouplingEdge).isHidden ? HIDDEN_COLOR : NORMAL_COLOR
@@ -287,7 +290,7 @@ export function CouplingPage() {
                     className={`py-2 ${isTarget ? "rounded bg-sky-50 px-1.5 dark:bg-sky-500/10" : ""}`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium text-slate-700 dark:text-slate-200">
+                      <span className="truncate font-medium text-ink-muted">
                         {granularity === "file" ? fileName(p.a) : p.a} ↔{" "}
                         {granularity === "file" ? fileName(p.b) : p.b}
                       </span>
@@ -297,7 +300,7 @@ export function CouplingPage() {
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                    <p className="text-xs text-ink-faint">
                       {formatPercent(p.coupling_degree)} coupled · {p.shared_revs} shared commits ·{" "}
                       {p.confidence} confidence
                     </p>
@@ -334,7 +337,7 @@ function GranularitySwitch({
           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             value === o.key
               ? "bg-indigo-600 text-white"
-              : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"
+              : "text-ink-muted hover:bg-slate-200 dark:hover:bg-slate-700"
           }`}
         >
           {o.label}

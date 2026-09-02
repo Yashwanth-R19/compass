@@ -14,12 +14,12 @@ export function ContributorChip({
   isBot?: boolean;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+    <span className="inline-flex items-center gap-1.5 border border-border bg-surface-2 px-2.5 py-1 text-xs font-medium text-ink">
       {name}
-      {isBot ? <span className="text-slate-400 dark:text-slate-500">bot</span> : null}
+      {isBot ? <span className="text-ink-faint">bot</span> : null}
       {isStale ? (
         <span
-          className="text-amber-600 dark:text-amber-400"
+          className="text-conf-low"
           title="No recent activity relative to this repository's own history"
         >
           stale

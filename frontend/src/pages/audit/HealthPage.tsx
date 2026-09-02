@@ -20,22 +20,14 @@ import { Card } from "../../components/Card";
 import { HeuristicNote } from "../../components/HeuristicNote";
 import { ScoreGauge } from "../../components/ScoreGauge";
 import { StageGate } from "../../components/StageGate";
+import { CHROME, SEVERITY_COLOR, SUBSYSTEM_PALETTE, rechartsTheme } from "../../lib/chartTheme";
 import type { HealthResponse } from "../../api/types";
 import type { RepoOutletContext } from "../RepoLayout";
 
-// Recharts needs explicit color props -- it doesn't read CSS custom
-// properties or inherit Tailwind classes (Known Hazard #7). This constant
-// is the one place this page's chart colors live, so a future visual-
-// identity pass (session 15) has a single spot to change them.
-const LANGUAGE_COLORS = [
-  "#6366f1",
-  "#0ea5e9",
-  "#10b981",
-  "#f59e0b",
-  "#ec4899",
-  "#8b5cf6",
-  "#64748b",
-];
+// Session 15: every colour on this page now comes from lib/chartTheme.ts,
+// the single source Recharts (which needs explicit colour props -- Known
+// Hazard #7) shares with the other three renderers.
+const LANGUAGE_COLORS = SUBSYSTEM_PALETTE;
 
 // Mirrors app/engines/health.py's own module-level constants VERBATIM, for
 // DISPLAY purposes only -- this page never recomputes the score itself
@@ -88,22 +80,18 @@ export function HealthPage() {
                 />
                 <dl className="grid w-full grid-cols-3 gap-2 text-center text-xs">
                   <div>
-                    <dt className="text-slate-400 dark:text-slate-500">High-risk files</dt>
-                    <dd className="font-medium text-slate-700 dark:text-slate-200">
+                    <dt className="text-ink-faint">High-risk files</dt>
+                    <dd className="font-medium text-ink-muted">
                       {Math.round(data.high_risk_ratio * 100)}%
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-slate-400 dark:text-slate-500">Cycles</dt>
-                    <dd className="font-medium text-slate-700 dark:text-slate-200">
-                      {data.cycle_count}
-                    </dd>
+                    <dt className="text-ink-faint">Cycles</dt>
+                    <dd className="font-medium text-ink-muted">{data.cycle_count}</dd>
                   </div>
                   <div>
-                    <dt className="text-slate-400 dark:text-slate-500">Hidden deps</dt>
-                    <dd className="font-medium text-slate-700 dark:text-slate-200">
-                      {data.hidden_dependency_count}
-                    </dd>
+                    <dt className="text-ink-faint">Hidden deps</dt>
+                    <dd className="font-medium text-ink-muted">{data.hidden_dependency_count}</dd>
                   </div>
                 </dl>
               </div>
@@ -115,26 +103,20 @@ export function HealthPage() {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <dl className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Commits analyzed</dt>
-                <dd className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-                  {repo.commit_count}
-                </dd>
+                <dt className="text-ink-faint">Commits analyzed</dt>
+                <dd className="text-xl font-semibold text-ink">{repo.commit_count}</dd>
               </div>
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Files</dt>
-                <dd className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-                  {repo.file_count}
-                </dd>
+                <dt className="text-ink-faint">Files</dt>
+                <dd className="text-xl font-semibold text-ink">{repo.file_count}</dd>
               </div>
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Default branch</dt>
-                <dd className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  {repo.default_branch ?? "—"}
-                </dd>
+                <dt className="text-ink-faint">Default branch</dt>
+                <dd className="text-sm font-medium text-ink-muted">{repo.default_branch ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-slate-400 dark:text-slate-500">Last analyzed</dt>
-                <dd className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                <dt className="text-ink-faint">Last analyzed</dt>
+                <dd className="text-sm font-medium text-ink-muted">
                   {repo.analyzed_at ? new Date(repo.analyzed_at).toLocaleString() : "—"}
                 </dd>
               </div>
@@ -228,20 +210,23 @@ function HealthWaterfall({ data }: { data: HealthResponse }) {
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={bars} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              className="stroke-slate-200 dark:stroke-slate-800"
-            />
+            <CartesianGrid {...rechartsTheme.grid} />
             <XAxis
               dataKey="name"
-              tick={{ fontSize: 10 }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
               interval={0}
               angle={-10}
               textAnchor="end"
               height={50}
             />
-            <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+            <YAxis
+              domain={[0, 100]}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
+            />
             <Tooltip
+              {...rechartsTheme.tooltip}
               formatter={(value, name, item) => {
                 if (name !== "value") return [null, null];
                 const bar = item.payload as { isPenalty: boolean };
@@ -255,7 +240,7 @@ function HealthWaterfall({ data }: { data: HealthResponse }) {
             <Bar dataKey="base" stackId="waterfall" fill="transparent" />
             <Bar dataKey="value" stackId="waterfall">
               {bars.map((b, i) => (
-                <Cell key={i} fill={b.isPenalty ? "#ef4444" : "#10b981"} />
+                <Cell key={i} fill={b.isPenalty ? SEVERITY_COLOR.high : CHROME.signal} />
               ))}
             </Bar>
           </BarChart>
@@ -313,9 +298,7 @@ function HealthHistorySparkline({ repoId, share }: { repoId: string; share?: str
   if (runs.isPending || (readyRunIds.length > 0 && points.length === 0)) {
     return (
       <Card title="Health over time">
-        <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">
-          Loading run history…
-        </p>
+        <p className="py-6 text-center text-sm text-ink-faint">Loading run history…</p>
       </Card>
     );
   }
@@ -323,7 +306,7 @@ function HealthHistorySparkline({ repoId, share }: { repoId: string; share?: str
   if (points.length < 2) {
     return (
       <Card title="Health over time" subtitle="Score across past analysis runs">
-        <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+        <p className="py-6 text-center text-sm text-ink-faint">
           Not enough completed runs yet to chart a trend.
         </p>
       </Card>
@@ -338,21 +321,30 @@ function HealthHistorySparkline({ repoId, share }: { repoId: string; share?: str
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              className="stroke-slate-200 dark:stroke-slate-800"
-            />
+            <CartesianGrid {...rechartsTheme.grid} />
             <XAxis
               dataKey="started_at"
               tickFormatter={(v: string) => new Date(v).toLocaleDateString()}
-              tick={{ fontSize: 10 }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
             />
-            <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+            <YAxis
+              domain={[0, 100]}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
+            />
             <Tooltip
+              {...rechartsTheme.tooltip}
               labelFormatter={(v) => new Date(String(v)).toLocaleString()}
               formatter={(value) => [Math.round(Number(value ?? 0)), "score"]}
             />
-            <Line type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
+            <Line
+              type="monotone"
+              dataKey="score"
+              stroke={CHROME.signal}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>

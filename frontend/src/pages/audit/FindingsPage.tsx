@@ -5,6 +5,7 @@ import type { FindingCategory, FindingOut, Severity } from "../../api/types";
 import { Card } from "../../components/Card";
 import { FindingItem } from "../../components/FindingItem";
 import { StageGate } from "../../components/StageGate";
+import { Button } from "../../components/ui/Button";
 import { FINDING_CATEGORY_COPY } from "../../lib/copy";
 import { SEVERITY_LABEL } from "../../lib/format";
 import type { RepoOutletContext } from "../RepoLayout";
@@ -61,9 +62,10 @@ export function FindingsPage() {
       action={
         <div className="flex items-center gap-2">
           <select
+            aria-label="Filter findings by category"
             value={category}
             onChange={(e) => changeCategory(e.target.value as FindingCategory | "")}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            className="border border-border-interactive bg-surface px-2 py-1 text-xs text-ink-muted"
           >
             <option value="">All categories</option>
             {CATEGORIES.map((c) => (
@@ -73,9 +75,10 @@ export function FindingsPage() {
             ))}
           </select>
           <select
+            aria-label="Filter findings by severity"
             value={severity}
             onChange={(e) => changeSeverity(e.target.value as Severity | "")}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            className="border border-border-interactive bg-surface px-2 py-1 text-xs text-ink-muted"
           >
             <option value="">All severities</option>
             {SEVERITIES.map((s) => (
@@ -131,16 +134,14 @@ function FindingsList({
 
   if (filtered.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
-        No findings match this filter.
-      </p>
+      <p className="py-8 text-center text-sm text-ink-faint">No findings match this filter.</p>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
       {lowConfidenceCount > 0 ? (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+        <p className="border-l-2 border-conf-low py-1.5 pl-3 text-xs text-ink-muted">
           {lowConfidenceCount} of {filtered.length}{" "}
           {filtered.length === 1 ? "finding is" : "findings are"} low-confidence — this repository
           may not have enough analyzed history yet for a firm signal. Treat these as directional,
@@ -155,13 +156,14 @@ function FindingsList({
       </ul>
 
       {filtered.length > DEFAULT_VISIBLE ? (
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={onToggleShowAll}
-          className="w-fit self-center rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="w-fit self-center"
         >
           {showAll ? `Show top ${DEFAULT_VISIBLE} only` : `Show all ${filtered.length} findings`}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

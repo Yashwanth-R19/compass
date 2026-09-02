@@ -43,7 +43,7 @@ export function FileDetailPanel({
         </button>
       }
     >
-      <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <div className="flex flex-col gap-2 text-xs text-ink-muted">
         <SubsystemBadge label={subsystemLabel} />
         {loc != null ? <p>{loc.toLocaleString()} LOC</p> : null}
         {complexity != null ? <p>Complexity {complexity.toFixed(1)}</p> : null}
