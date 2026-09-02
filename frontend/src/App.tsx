@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { HomePage } from "./pages/HomePage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { PortfolioPage } from "./pages/PortfolioPage";
 import { SharedRedirectPage } from "./pages/SharedRedirectPage";
 import { LegacyRedirect, RepoIndexRedirect, RepoLayout } from "./pages/RepoLayout";
 import { PassportPage } from "./pages/onboard/PassportPage";
@@ -21,6 +22,7 @@ import { RiskPage } from "./pages/audit/RiskPage";
 import { SecurityPage } from "./pages/audit/SecurityPage";
 import { HygienePage } from "./pages/audit/HygienePage";
 import { HealthPage } from "./pages/audit/HealthPage";
+import { BenchmarkPage } from "./pages/audit/BenchmarkPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,6 +41,7 @@ function App() {
           <Route element={<AppShell />}>
             <Route index element={<HomePage />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="shared/:slug" element={<SharedRedirectPage />} />
             <Route path="repos/:repoId" element={<RepoLayout />}>
               <Route index element={<RepoIndexRedirect />} />
@@ -67,6 +70,7 @@ function App() {
               <Route path="audit/security" element={<SecurityPage />} />
               <Route path="audit/hygiene" element={<HygienePage />} />
               <Route path="audit/health" element={<HealthPage />} />
+              <Route path="audit/benchmark" element={<BenchmarkPage />} />
 
               {/* Session 13: run-vs-run compare -- not part of either mode's
                   tab bar, reached via the header's "Compare" button

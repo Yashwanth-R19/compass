@@ -1,4 +1,6 @@
+import statistics
 import uuid
+from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -8,6 +10,9 @@ from sqlalchemy.orm import Session
 from app.analysis import blast_radius
 from app.analysis.identities import mask_email
 from app.auth.deps import current_user_optional, require_repo_access, secret_findings_visible
+from app.baseline.corpus import CorpusBaseline
+from app.baseline.heuristic import size_bucket_for
+from app.baseline.provider import calibration_label
 from app.db.base import get_db
 from app.db.models import (
     AnalysisStage,
@@ -105,6 +110,7 @@ from app.schemas.analysis import (
     VulnerabilitiesResponse,
     VulnerabilityOut,
 )
+from app.schemas.benchmark import BenchmarkMetricOut, BenchmarkResponse
 
 KNOWLEDGE_INTERPRETATION_NOTE = (
     "Truck factor measures this project's knowledge-distribution risk -- how many "
@@ -141,12 +147,14 @@ TEST_GAP_LIMITATION_NOTE = (
     "plus import edges); this is not a claim that unmapped code has no tests."
 )
 
-# Calibration is always "heuristic" until Release C wires a CorpusBaseline in
-# behind the same BaselineProvider interface (master-context.md sec 9,
-# decision 2) -- surfaced to the client so the UI can honestly label
-# risk/health as not-yet-corpus-calibrated rather than imply a precision
-# these numbers don't have yet.
-CALIBRATION_LABEL = "heuristic"
+# Session 14: derives from the ACTIVE BaselineProvider at runtime
+# (app/baseline/provider.py::calibration_label) rather than a hardcoded
+# string, so it can never drift out of sync with COMPASS_BASELINE_PROVIDER
+# -- "heuristic" for the heuristic/seed providers, "corpus" only when
+# CorpusBaseline is actually configured. Surfaced to the client so the UI
+# (HeuristicNote) can honestly label risk/health/passport as calibrated or
+# not, never implying a precision these numbers don't have.
+CALIBRATION_LABEL = calibration_label
 
 router = APIRouter()
 
@@ -417,7 +425,7 @@ def get_risk(
         )
         for file, metrics in rows
     ]
-    return RiskResponse(repo_id=repo_id, calibration=CALIBRATION_LABEL, files=files)
+    return RiskResponse(repo_id=repo_id, calibration=CALIBRATION_LABEL(), files=files)
 
 
 @router.get("/repos/{repo_id}/health", response_model=HealthResponse)
@@ -445,7 +453,7 @@ def get_health(
 
     return HealthResponse(
         repo_id=repo_id,
-        calibration=CALIBRATION_LABEL,
+        calibration=CALIBRATION_LABEL(),
         score=health.score,
         high_risk_ratio=health.high_risk_ratio,
         cycle_count=health.cycle_count,
@@ -969,7 +977,7 @@ def get_passport(
 
     return PassportResponse(
         repo_id=repo_id,
-        calibration=CALIBRATION_LABEL,
+        calibration=CALIBRATION_LABEL(),
         onboarding_difficulty=row.onboarding_difficulty,
         difficulty_breakdown=row.difficulty_breakdown,
         data=RepoPassportData.model_validate(row.data),
@@ -1475,4 +1483,113 @@ def get_vulnerabilities(
         repo_id=repo_id,
         vulnerabilities=vulnerabilities,
         no_supported_manifest=not manifest_found,
+    )
+
+
+BENCHMARK_METRICS = (
+    "complexity",
+    "churn_weighted",
+    "max_coupling_degree",
+    "risk_score",
+    "health_score",
+    "onboarding_difficulty",
+    "test_cochange_ratio",
+)
+"""Session 14, Part D -- the seven metrics ``GET /repos/{id}/benchmark``
+compares against the corpus. Five are PER-FILE (this repo's own MEDIAN
+across its files is what's compared -- the same "typical file" framing the
+corpus itself was built from, one value per corpus file); two
+(health_score, onboarding_difficulty) are PER-REPO already, one value per
+repo on both sides."""
+
+
+@router.get("/repos/{repo_id}/benchmark", response_model=BenchmarkResponse)
+def get_benchmark(
+    repo_id: uuid.UUID,
+    run_id: uuid.UUID | None = None,
+    share: str | None = None,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+) -> BenchmarkResponse:
+    """One repository positioned against the curated corpus (session 14,
+    Part D) -- ALWAYS via ``CorpusBaseline`` directly, regardless of which
+    ``BaselineProvider`` ``COMPASS_BASELINE_PROVIDER`` currently has driving
+    LIVE risk scoring: Benchmark's whole purpose is a corpus comparison, so
+    it reads the ``baselines`` table unconditionally rather than following
+    the configured provider (which stays "heuristic" by default per session
+    14 Known Hazard #6). Gates on "onboarding" (the same stage ``/passport``
+    gates on -- this endpoint needs Risk's file_metrics, Health's row, and
+    Passport's onboarding_difficulty, all of which are done by then).
+    """
+    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
+    pending = _pending_response(resolved_run_id, "onboarding", db)
+    if pending is not None:
+        return pending
+
+    files = db.scalars(
+        select(File).where(File.repo_id == repo_id, File.is_deleted.is_(False))
+    ).all()
+    if not files:
+        dominant_language, size_bucket = "other", "small"
+    else:
+        dominant_language = Counter(f.language for f in files).most_common(1)[0][0]
+        size_bucket = size_bucket_for(len(files))
+
+    def _median(values: list[float]) -> float:
+        return statistics.median(values) if values else 0.0
+
+    max_coupling = max_coupling_by_path(repo_id, resolved_run_id, db)
+    file_metrics_rows = db.scalars(
+        select(FileMetrics).where(FileMetrics.analysis_run_id == resolved_run_id)
+    ).all()
+
+    values_by_metric: dict[str, float] = {
+        "complexity": _median([f.complexity for f in files]),
+        "churn_weighted": _median([f.churn_weighted for f in files]),
+        "max_coupling_degree": _median([max_coupling.get(f.path, 0.0) for f in files]),
+        "risk_score": _median(
+            [fm.risk_score for fm in file_metrics_rows if fm.risk_score is not None]
+        ),
+        "test_cochange_ratio": _median(
+            [
+                fm.test_cochange_ratio
+                for fm in file_metrics_rows
+                if fm.test_cochange_ratio is not None
+            ]
+        ),
+    }
+    health_row = db.scalar(select(Health).where(Health.analysis_run_id == resolved_run_id))
+    values_by_metric["health_score"] = health_row.score if health_row is not None else 0.0
+    passport_row = db.scalar(
+        select(RepoPassport).where(RepoPassport.analysis_run_id == resolved_run_id)
+    )
+    values_by_metric["onboarding_difficulty"] = (
+        passport_row.onboarding_difficulty if passport_row is not None else 0.0
+    )
+
+    corpus = CorpusBaseline(db)
+    metrics: list[BenchmarkMetricOut] = []
+    for metric in BENCHMARK_METRICS:
+        value = values_by_metric[metric]
+        pct, widened, n_repos, n_files = corpus.percentile_with_provenance(
+            metric, dominant_language, size_bucket, value
+        )
+        metrics.append(
+            BenchmarkMetricOut(
+                metric=metric,
+                value=value,
+                percentile=pct,
+                language=dominant_language,
+                size_bucket=size_bucket,
+                widened=widened,
+                n_repos=n_repos,
+                n_files=n_files,
+            )
+        )
+
+    return BenchmarkResponse(
+        repo_id=repo_id,
+        dominant_language=dominant_language,
+        size_bucket=size_bucket,
+        metrics=metrics,
     )

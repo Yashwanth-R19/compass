@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 
 from app.db.base import SessionLocal
 from app.db.models import AnalysisRun, AnalysisRunStatus, AnalysisStage, StageStatus
+from app.jobs.log_redaction import install_log_redaction
+from app.jobs.queue import dispatch_pending
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +71,28 @@ def reap_stale_runs(session: Session, *, now: datetime | None = None) -> int:
 
 
 def main() -> int:
+    # Session 14: dispatch_pending() below can now run a real ingestion job
+    # (including, for a private repo, resolving a credentialed clone URL) in
+    # THIS process -- install the same redacting log filter worker.py
+    # installs before running the pipeline, since reaper.yml is also a
+    # public repository's workflow (CLAUDE.md's public-logs constraint).
+    install_log_redaction()
+
     session = SessionLocal()
     try:
         reaped = reap_stale_runs(session)
         session.commit()
         logger.info("reaper: marked %d stale run(s) failed", reaped)
+
+        # Session 14, Part A: the portfolio run queue has no always-on
+        # process draining it -- this SAME 15-minute cron tick is what
+        # drains it, a few runs at a time, right after reaping (so a slot
+        # freed up by a just-reaped stale run is immediately eligible to be
+        # filled). See app/jobs/queue.py's module docstring for why this is
+        # attached to the reaper's existing schedule rather than a second
+        # workflow.
+        dispatched = dispatch_pending(session)
+        logger.info("reaper: dispatched %d queued run(s)", len(dispatched))
     finally:
         session.close()
     return 0

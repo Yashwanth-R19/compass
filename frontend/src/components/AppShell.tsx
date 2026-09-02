@@ -66,6 +66,12 @@ export function AppShell() {
                 >
                   Dashboard
                 </Link>
+                <Link
+                  to="/portfolio"
+                  className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Portfolio
+                </Link>
                 <div className="flex items-center gap-2 pl-1">
                   {me.data.avatar_url ? (
                     <img

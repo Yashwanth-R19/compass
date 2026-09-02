@@ -8,6 +8,7 @@ __pycache__/
 htmlcov/
 frontend/node_modules/
 frontend/dist/
+backend/app/baseline/.corpus_build_state.json
 .DS_Store
 master-context.md
 CLAUDE.md

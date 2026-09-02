@@ -29,6 +29,7 @@ from sqlalchemy import event
 from sqlalchemy.engine import Connection, Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.baseline.build_corpus as baseline_build_corpus
 import app.db.base as db_base
 import app.jobs.runner as job_runner
 from app.db.base import get_db
@@ -119,6 +120,13 @@ def db_session(_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Generator[Se
     # runner test to land its writes in this test's rolled-back transaction.
     monkeypatch.setattr(db_base, "SessionLocal", session_factory)
     monkeypatch.setattr(job_runner, "SessionLocal", session_factory)
+    # Session 14: app/baseline/build_corpus.py opens its own SessionLocal()
+    # too (same reason as job_runner -- it's a standalone script, not a
+    # request-scoped dependency), so tests/test_build_corpus.py needs this
+    # same three-way patch or its writes/deletes would silently land on the
+    # real configured DATABASE_URL instead of this test's rolled-back
+    # transaction.
+    monkeypatch.setattr(baseline_build_corpus, "SessionLocal", session_factory)
 
     session = session_factory()
     try:

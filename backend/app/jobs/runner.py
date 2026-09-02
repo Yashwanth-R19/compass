@@ -41,6 +41,7 @@ def run_ingestion_job(
     job_id: uuid.UUID,
     worker_mode: str = "inline",
     triggered_by_user_id: uuid.UUID | None = None,
+    existing_analysis_run_id: uuid.UUID | None = None,
 ) -> None:
     """Create a new ``analysis_runs`` row and drive it through the FACT
     stages (clone -> mine -> structure -> persist_facts -> secrets, skipped
@@ -79,6 +80,15 @@ def run_ingestion_job(
     ``analysis_runs.triggered_by_user_id``) -- see that column's docstring
     in app/db/models.py for why it's populated for inline/inline_fallback
     runs but always NULL for "actions"-mode runs.
+
+    ``existing_analysis_run_id`` (session 14) resumes an ``analysis_runs``
+    row created AHEAD OF TIME with ``status=queued`` by
+    ``app/jobs/queue.py::create_queued_run`` (its ``analysis_stages`` rows
+    already pre-created too), instead of creating a brand-new run row --
+    this is what lets the run queue's round-robin dispatcher hand off to
+    this same transport-agnostic function rather than duplicating any
+    pipeline logic. ``None`` (the default) is the pre-session-14 behavior,
+    unchanged: create a fresh run row here, as the first step.
     """
     session = SessionLocal()
     clone_path: str | None = None
@@ -91,23 +101,36 @@ def run_ingestion_job(
         previous_head_sha = repo_row.head_sha
         previous_run_id = repo_row.current_run_id
 
-        # head_sha is filled in once resolved below; the run/stage rows are
-        # created and committed FIRST, before the (network-dependent)
-        # `git ls-remote` call, so a slow-to-respond remote never delays the
-        # first status poll from seeing the full pending stage list -- the
-        # "land on the repo page within ~2 seconds" requirement (Part F).
-        run = AnalysisRun(
-            repo_id=repo_id,
-            status=AnalysisRunStatus.running,
-            head_sha="",
-            worker_mode=worker_mode,
-            triggered_by_user_id=triggered_by_user_id,
-        )
-        session.add(run)
-        session.flush()
+        if existing_analysis_run_id is not None:
+            run = session.get(AnalysisRun, existing_analysis_run_id)
+            if run is None:
+                raise RuntimeError(
+                    f"existing_analysis_run_id {existing_analysis_run_id} does not exist"
+                )
+            run.status = AnalysisRunStatus.running
+            run.worker_mode = worker_mode
+            if triggered_by_user_id is not None:
+                run.triggered_by_user_id = triggered_by_user_id
+            session.commit()
+        else:
+            # head_sha is filled in once resolved below; the run/stage rows
+            # are created and committed FIRST, before the (network-dependent)
+            # `git ls-remote` call, so a slow-to-respond remote never delays
+            # the first status poll from seeing the full pending stage list
+            # -- the "land on the repo page within ~2 seconds" requirement
+            # (Part F).
+            run = AnalysisRun(
+                repo_id=repo_id,
+                status=AnalysisRunStatus.running,
+                head_sha="",
+                worker_mode=worker_mode,
+                triggered_by_user_id=triggered_by_user_id,
+            )
+            session.add(run)
+            session.flush()
+            create_pending_stages(run.id, session)
+            session.commit()
         run_id = run.id
-        create_pending_stages(run_id, session)
-        session.commit()
         _update_job(session, job_id, progress=5)
         session.commit()
 

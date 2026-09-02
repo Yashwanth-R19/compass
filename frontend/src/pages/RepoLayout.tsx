@@ -52,6 +52,7 @@ const AUDIT_TABS = [
   { to: "audit/security", label: "Security" },
   { to: "audit/hygiene", label: "Hygiene" },
   { to: "audit/health", label: "Health" },
+  { to: "audit/benchmark", label: "Benchmark" },
 ];
 
 function modeFromPathname(pathname: string): RepoMode | null {

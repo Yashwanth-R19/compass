@@ -1,8 +1,12 @@
 name: Reaper
 
-# Public repository -- see mine.yml's header comment. This workflow only
-# ever prints reap_stale_runs()'s own count log line (app/jobs/reaper.py),
-# never raw environment values.
+# Public repository -- see mine.yml's header comment. reap_stale_runs()
+# prints only its own count log line; app/jobs/log_redaction.py's filter is
+# installed the same way worker.py installs it (session 14), since
+# dispatch_pending() (app/jobs/queue.py) can now call run_ingestion_job
+# synchronously from inside this same workflow run -- the exact same
+# pipeline mine.yml's dedicated worker runs, just triggered from the queue
+# instead of a repository_dispatch event.
 
 on:
   schedule:
@@ -15,10 +19,23 @@ permissions:
 jobs:
   reap:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Session 14: this tick can now dispatch up to COMPASS_MAX_CONCURRENT_RUNS
+    # queued analyses SEQUENTIALLY (app/jobs/queue.py::dispatch_pending has
+    # no always-on worker to hand off to -- see that module's docstring), so
+    # the old 5-minute budget (reap-only) is no longer enough. Kept well
+    # under STALE_AFTER_MINUTES=20 (app/jobs/reaper.py) so this job's own
+    # timeout is never what makes a run look reaper-stale to itself.
+    timeout-minutes: 18
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Session 14: dispatch_pending() may now clone a private repository's
+      # owner's queued submission via the same
+      # app/ingestion/clone_url.py::resolve_clone_url path mine.yml's worker
+      # uses -- needs this to decrypt the stored token. Never echoed by any
+      # step here; app/jobs/log_redaction.py's filter (installed below,
+      # before app.jobs.reaper is imported) scrubs it defensively regardless.
+      COMPASS_TOKEN_ENCRYPTION_KEY: ${{ secrets.COMPASS_TOKEN_ENCRYPTION_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -32,5 +49,5 @@ jobs:
       - name: Install backend
         run: pip install ./backend
 
-      - name: Reap stale runs
+      - name: Reap stale runs and drain the queue
         run: python -m app.jobs.reaper

@@ -58,7 +58,10 @@ export function RiskPage() {
     >
       {(data) => (
         <div className="flex flex-col gap-4">
-          <HeuristicNote message="risk_score is a heuristic composite (0.60·churn×complexity + 0.25·max coupling + 0.15·commit count), not yet corpus-calibrated. risk_confidence is a SEPARATE measure of how much history backs the score -- never folded into it." />
+          <HeuristicNote
+            message="risk_score is a heuristic composite (0.60·churn×complexity + 0.25·max coupling + 0.15·commit count), not yet corpus-calibrated. risk_confidence is a SEPARATE measure of how much history backs the score -- never folded into it."
+            calibration={data.calibration}
+          />
 
           <RiskScatter files={data.files} />
 

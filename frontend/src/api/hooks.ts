@@ -5,6 +5,7 @@ import { useNarrativeEnabled } from "../lib/narrativePref";
 import type {
   AnalysisRunsResponse,
   ArchitectureResponse,
+  BenchmarkResponse,
   BlastRadiusResponse,
   CityResponse,
   CompareResponse,
@@ -25,6 +26,9 @@ import type {
   NarrativeResponse,
   NarrativeSurface,
   PassportResponse,
+  PortfolioAnalyzeResponse,
+  PortfolioQueueResponse,
+  PortfolioResponse,
   RepoCreateResponse,
   RepoOut,
   RepoStatusResponse,
@@ -518,5 +522,65 @@ export function useNarrative(
     enabled: Boolean(repoId) && enabled && (surface !== "risk_file" || Boolean(subject)),
     retry: false,
     staleTime: Infinity,
+  });
+}
+
+// --- Session 14: portfolio + run queue --------------------------------------
+
+/** `GET /repos/{id}/benchmark` -- one repository against the curated corpus.
+ * Gates on "onboarding" (same as /passport), so it's a plain apiGet: the
+ * backend already resolves the run and 202s while pending -- this hook uses
+ * apiGetOrPending like every other run-scoped analysis endpoint. */
+export function useBenchmark(repoId: string | undefined, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
+
+  return useQuery({
+    queryKey: ["benchmark", repoId, share ?? null],
+    queryFn: () => apiGetOrPending<BenchmarkResponse>(`/repos/${repoId}/benchmark${qs}`),
+    enabled: Boolean(repoId),
+  });
+}
+
+/** Queues up to MAX_PORTFOLIO_BATCH repository URLs for analysis (never
+ * dispatches them directly -- see app/jobs/queue.py). Invalidates both the
+ * queue and portfolio queries, since a fresh submission changes both. */
+export function useSubmitPortfolio() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (repositoryUrls: string[]) =>
+      apiPost<PortfolioAnalyzeResponse>("/portfolio/analyze", {
+        repository_urls: repositoryUrls,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["portfolio-queue"] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+    },
+  });
+}
+
+/** Polls while the caller has anything queued/running, same 1.5s cadence
+ * every other progressive-reveal poll in this app uses. */
+export function usePortfolioQueue(enabled: boolean) {
+  return useQuery({
+    queryKey: ["portfolio-queue"],
+    queryFn: () => apiGet<PortfolioQueueResponse>("/portfolio/queue"),
+    enabled,
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      const stillPending = items.some((i) => i.status === "queued" || i.status === "running");
+      return stillPending ? POLL_INTERVAL_MS : false;
+    },
+  });
+}
+
+/** The pooled portfolio view -- server-cached for 10 minutes
+ * (app/analysis/portfolio.py::PORTFOLIO_CACHE_TTL_SECONDS), so this hook
+ * itself uses a matching staleTime rather than refetching aggressively. */
+export function usePortfolio(enabled: boolean) {
+  return useQuery({
+    queryKey: ["portfolio"],
+    queryFn: () => apiGet<PortfolioResponse>("/portfolio"),
+    enabled,
+    staleTime: 5 * 60 * 1000,
   });
 }

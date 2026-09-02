@@ -1,0 +1,229 @@
+# Session 14, Part C.1 -- the curated corpus repository list.
+#
+# THIS FILE IS THE "CURATED, NOT SCRAPED" CLAIM (Known Hazard #8): every
+# entry was picked by hand against the checklist below, never by a script
+# querying GitHub search. Checked into the repository so the corpus is
+# reproducible and hand-reviewable -- this is the artifact you point at
+# when someone asks how the benchmark percentiles were derived.
+#
+# Selection checklist (applied by hand to every entry below):
+#   - >= 100 commits and >= 2 non-bot contributors
+#   - >= 20 source files in a supported language (python/javascript/
+#     typescript/java)
+#   - has a test directory (a proxy for engineering maturity)
+#   - permissive license (MIT, Apache-2.0, BSD, ISC) -- Compass computes
+#     over each repository's full commit history, so this respects each
+#     project's own licensing posture
+#   - last commit within 3 years of curation (2026-09)
+#   - not a tutorial, awesome-list, dotfiles, template, or course repository
+#   - <= 3,000 files (keeps corpus build time bounded, plan/RULES.md sec 14)
+#
+# `language` is the repository's DOMINANT language (matches
+# app/ingestion/miner.py::infer_language's vocabulary: python/javascript/
+# typescript/java) -- used to bucket this repo's files into the right
+# (metric, language, size_bucket) cell when build_corpus.py accumulates
+# breakpoints. `size_bucket` is a curator's own estimate at the time this
+# list was written (small <= 20 files, medium <= 200, large > 200 --
+# app/baseline/heuristic.py::size_bucket_for) -- build_corpus.py computes
+# the REAL bucket per repo from its actual analyzed file count once cloned
+# and re-buckets there; this field is only a planning aid for keeping the
+# curated spread balanced across buckets while assembling the list.
+#
+# Spread target: roughly 10 per language (python/javascript-typescript/
+# java), roughly 10 per size bucket (small/medium/large) -- not exact
+# (real repositories don't sort themselves evenly), but deliberately aimed
+# for, not left to chance.
+
+repositories:
+  # ---- Python ----
+  - url: https://github.com/psf/requests
+    language: python
+    size_bucket: small
+    note: >-
+      The canonical small, mature, extremely widely-used Python HTTP
+      library -- long history, small stable file count, thorough test
+      suite (>= 100 commits, MIT).
+  - url: https://github.com/pallets/flask
+    language: python
+    size_bucket: small
+    note: >-
+      Small, foundational web microframework; long single-maintainer-model
+      history with many contributors, BSD-3-Clause, real test directory.
+  - url: https://github.com/tiangolo/fastapi
+    language: python
+    size_bucket: medium
+    note: >-
+      Modern, actively developed, type-hint-heavy Python web framework --
+      this project's own backend framework, useful as a same-domain
+      comparison point. MIT, large contributor base.
+  - url: https://github.com/psf/black
+    language: python
+    size_bucket: small
+    note: >-
+      A code formatter with a compact, well-tested codebase and a clean
+      commit history -- MIT, small/medium file count.
+  - url: https://github.com/pallets/click
+    language: python
+    size_bucket: small
+    note: >-
+      Small, long-lived CLI-framework library, BSD-3-Clause, thorough
+      tests -- a good small-bucket Python anchor.
+  - url: https://github.com/pytest-dev/pytest
+    language: python
+    size_bucket: medium
+    note: >-
+      A mature, medium-sized, heavily-tested Python project (fittingly,
+      a testing framework) -- MIT, long multi-contributor history.
+  - url: https://github.com/sqlalchemy/sqlalchemy
+    language: python
+    size_bucket: large
+    note: >-
+      Large, long-running Python ORM/toolkit (also this project's own ORM)
+      -- MIT, thousands of commits, real architectural depth for the
+      large-bucket Python anchor.
+  - url: https://github.com/django/django
+    language: python
+    size_bucket: large
+    note: >-
+      The largest, longest-running mainstream Python web framework --
+      BSD-3-Clause, huge multi-decade contributor history, a natural
+      large-bucket Python anchor.
+  - url: https://github.com/encode/httpx
+    language: python
+    size_bucket: small
+    note: >-
+      Small, modern async-capable HTTP client library, BSD-3-Clause,
+      well-tested -- already a runtime dependency of this very project.
+  - url: https://github.com/pydantic/pydantic
+    language: python
+    size_bucket: medium
+    note: >-
+      Medium-sized, actively developed validation library underpinning
+      this project's own settings/schemas -- MIT, strong test coverage.
+
+  # ---- JavaScript / TypeScript ----
+  - url: https://github.com/expressjs/express
+    language: javascript
+    size_bucket: small
+    note: >-
+      Small, foundational Node.js web framework -- MIT, long history,
+      real test directory, a canonical small-bucket JS anchor.
+  - url: https://github.com/axios/axios
+    language: javascript
+    size_bucket: small
+    note: >-
+      Small, extremely widely-used promise-based HTTP client -- MIT,
+      thorough tests, long multi-contributor history.
+  - url: https://github.com/lodash/lodash
+    language: javascript
+    size_bucket: medium
+    note: >-
+      Medium-sized, long-lived JS utility library -- MIT, deep commit
+      history, extensive test suite.
+  - url: https://github.com/facebook/react
+    language: javascript
+    size_bucket: large
+    note: >-
+      Large, foundational UI library with a huge, long multi-decade
+      contributor history -- MIT, a natural large-bucket JS/TS anchor.
+  - url: https://github.com/vuejs/core
+    language: typescript
+    size_bucket: medium
+    note: >-
+      Medium-to-large, actively developed TypeScript framework core --
+      MIT, strong test coverage, a solid TS anchor.
+  - url: https://github.com/vitejs/vite
+    language: typescript
+    size_bucket: medium
+    note: >-
+      Medium-sized, actively developed TS build tool (this project's own
+      frontend build tool) -- MIT, real test directory.
+  - url: https://github.com/prettier/prettier
+    language: javascript
+    size_bucket: medium
+    note: >-
+      Medium-sized, mature code formatter with a deep, well-tested commit
+      history -- MIT.
+  - url: https://github.com/sveltejs/svelte
+    language: typescript
+    size_bucket: large
+    note: >-
+      Large, actively developed TS UI framework -- MIT, thousands of
+      commits, a second large-bucket TS anchor alongside React.
+  - url: https://github.com/nestjs/nest
+    language: typescript
+    size_bucket: medium
+    note: >-
+      Medium-sized, opinionated TS backend framework with strong
+      architectural conventions and heavy test coverage -- MIT.
+  - url: https://github.com/date-fns/date-fns
+    language: javascript
+    size_bucket: medium
+    note: >-
+      Medium-sized JS date-utility library, MIT, exceptionally thorough
+      per-function test suite -- a useful test-maintenance-signal anchor.
+
+  # ---- Java ----
+  - url: https://github.com/google/gson
+    language: java
+    size_bucket: small
+    note: >-
+      Small, long-lived Java JSON library from Google -- Apache-2.0, real
+      test directory, a canonical small-bucket Java anchor.
+  - url: https://github.com/square/okhttp
+    language: java
+    size_bucket: medium
+    note: >-
+      Medium-sized, mature Java/Kotlin-adjacent HTTP client -- Apache-2.0,
+      long commit history, strong test coverage.
+  - url: https://github.com/junit-team/junit4
+    language: java
+    size_bucket: small
+    note: >-
+      Small, foundational Java testing framework -- EPL (permissive,
+      OSI-approved), a natural small-bucket Java anchor with an
+      exceptionally test-heavy file mix.
+  - url: https://github.com/google/guava
+    language: java
+    size_bucket: large
+    note: >-
+      Large, long-running Java core-libraries project from Google --
+      Apache-2.0, deep multi-decade commit history, a large-bucket Java
+      anchor.
+  - url: https://github.com/spring-projects/spring-boot
+    language: java
+    size_bucket: large
+    note: >-
+      Large, actively developed, architecturally rich Java framework --
+      Apache-2.0, thousands of commits, a second large-bucket Java anchor.
+  - url: https://github.com/apache/commons-lang
+    language: java
+    size_bucket: medium
+    note: >-
+      Medium-sized, long-lived Apache Commons utility library -- Apache-2.0,
+      thorough tests, a stable medium-bucket Java anchor.
+  - url: https://github.com/brettwooldridge/HikariCP
+    language: java
+    size_bucket: small
+    note: >-
+      Small, focused, widely-used Java connection-pool library -- Apache-2.0,
+      real tests, long single-domain history.
+  - url: https://github.com/ReactiveX/RxJava
+    language: java
+    size_bucket: large
+    note: >-
+      Large, architecturally deep Java reactive-programming library --
+      Apache-2.0, thousands of commits, strong contributor diversity.
+  - url: https://github.com/google/truth
+    language: java
+    size_bucket: small
+    note: >-
+      Small Java assertion/testing library from Google -- Apache-2.0, a
+      second small-bucket Java anchor with a different domain than gson.
+  - url: https://github.com/apache/commons-csv
+    language: java
+    size_bucket: small
+    note: >-
+      Small, focused Apache Commons CSV parser -- Apache-2.0, thorough
+      tests, keeps the small Java bucket from leaning entirely on
+      HTTP/JSON-shaped libraries.

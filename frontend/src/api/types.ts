@@ -971,3 +971,127 @@ export interface CompareResponse {
   coupling_changes: CouplingChangeOut[];
   security: SecurityDiffOut;
 }
+
+// Session 14: portfolio + run queue (mirrors backend/app/schemas/portfolio.py).
+
+export interface PortfolioAnalyzeRequest {
+  repository_urls: string[];
+}
+
+export interface PortfolioQueuedItemOut {
+  repo_id: string;
+  run_id: string;
+  url: string;
+}
+
+export interface PortfolioSkippedItemOut {
+  url: string;
+  reason: string;
+}
+
+export interface PortfolioAnalyzeResponse {
+  queued: PortfolioQueuedItemOut[];
+  skipped: PortfolioSkippedItemOut[];
+  errors: PortfolioSkippedItemOut[];
+}
+
+export interface QueueItemOut {
+  run_id: string;
+  repo_id: string;
+  repo_url: string;
+  status: string;
+  position: number | null;
+  estimated_wait_seconds: number | null;
+}
+
+export interface PortfolioQueueResponse {
+  items: QueueItemOut[];
+  max_concurrent_runs: number;
+}
+
+export interface PortfolioTotalsOut {
+  repositories: number;
+  files: number;
+  loc: number;
+  commits: number;
+  contributors: number;
+}
+
+/** min/p25/median/p75/max/count -- app/analysis/portfolio.py::_five_number_summary. */
+export interface PortfolioDistributionSummary {
+  count: number;
+  min: number;
+  p25: number;
+  median: number;
+  p75: number;
+  max: number;
+}
+
+export interface PooledDistributionOut {
+  summary: PortfolioDistributionSummary;
+  by_repo: Record<string, number>;
+}
+
+export interface SharedDependencyOut {
+  ecosystem: string;
+  package_name: string;
+  repository_ids: string[];
+  repository_count: number;
+}
+
+export interface VulnerableSharedDependencyOut extends SharedDependencyOut {
+  osv_ids: string[];
+  max_severity: string;
+}
+
+export interface PortfolioCrossRepoPatternsOut {
+  shared_dependencies: SharedDependencyOut[];
+  shared_dependencies_total: number;
+  vulnerable_shared_dependencies: VulnerableSharedDependencyOut[];
+  vulnerable_shared_dependencies_total: number;
+}
+
+export interface PortfolioHealthOut {
+  average_health_score: number | null;
+  dormant_repository_ids: string[];
+  truck_factor_one_repository_ids: string[];
+  repositories_with_unresolved_high_severity_ids: string[];
+}
+
+export interface PortfolioGrowthOut {
+  commits_per_month: Record<string, number>;
+  repositories_started_per_year: Record<string, number>;
+}
+
+export interface PortfolioResponse {
+  computed_at: string;
+  repository_count: number;
+  totals: PortfolioTotalsOut;
+  language_activity_by_year: Record<string, Record<string, number>>;
+  pooled_distributions: Record<string, PooledDistributionOut>;
+  cross_repo_patterns: PortfolioCrossRepoPatternsOut;
+  portfolio_health: PortfolioHealthOut;
+  growth: PortfolioGrowthOut;
+  pooled_distribution_label: string;
+}
+
+// Session 14: corpus benchmark (mirrors backend/app/schemas/benchmark.py).
+
+export interface BenchmarkMetricOut {
+  metric: string;
+  value: number;
+  percentile: number;
+  language: string;
+  size_bucket: string;
+  widened: boolean;
+  n_repos: number;
+  n_files: number;
+}
+
+export interface BenchmarkResponse {
+  repo_id: string;
+  dominant_language: string;
+  size_bucket: string;
+  metrics: BenchmarkMetricOut[];
+  corpus_note: string;
+}

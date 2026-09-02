@@ -64,6 +64,11 @@ class AnalysisRunStatus(str, enum.Enum):
     ready = "ready"
     failed = "failed"
     superseded = "superseded"
+    # Session 14: a run created but not yet dispatched -- the portfolio run
+    # queue (app/jobs/queue.py). Postgres native enum -- adding this value
+    # requires an explicit ALTER TYPE ... ADD VALUE in the migration;
+    # autogenerate will not produce it (plan/RULES.md sec 7).
+    queued = "queued"
 
 
 class StageStatus(str, enum.Enum):
@@ -227,6 +232,21 @@ class AnalysisRun(Base):
     triggered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Session 14: when this run was ADDED TO THE QUEUE (app/jobs/queue.py),
+    # distinct from `started_at` above -- `started_at` is stamped at row
+    # creation for every run (a plain server_default), which for a run
+    # created directly as "running" (the pre-session-14 path) genuinely
+    # means "when it started". A queued run's row is also created up front
+    # (so its analysis_stages exist for /status to render), but doesn't
+    # actually start doing work until app/jobs/queue.py::dispatch_pending
+    # picks it up -- `queued_at` is what the round-robin selection orders
+    # by and what GET /portfolio/queue reports a wait estimate from;
+    # `started_at` is left alone at creation and is NOT re-stamped when a
+    # queued run is dispatched (it already reflects "row created", which
+    # for the queue case is also "queued" -- only `queued_at` distinguishes
+    # a queued run from a normal one). NULL for every run that was never
+    # queued (the overwhelming majority, including all pre-session-14 runs).
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AnalysisStage(Base):
@@ -921,7 +941,21 @@ class Health(Base):
 
 
 class Baseline(Base):
-    """Corpus percentile baselines. Empty until Release C's CorpusBaseline lands."""
+    """Corpus percentile baselines. Populated (session 14) by
+    ``python -m app.baseline.seed_baselines`` from the committed
+    ``app/baseline/corpus_breakpoints.json`` -- a materialized copy of that
+    file, never edited by hand. Empty until that script has been run at
+    least once; ``CorpusBaseline``/``SeedBaseline`` both fall back to
+    ``HeuristicBaseline`` per-cell when no row matches.
+
+    ``n_repos``/``n_files`` (session 14) record how many corpus repositories
+    and files backed this cell's breakpoints -- read by ``CorpusBaseline``'s
+    cell-size gate (``MIN_CORPUS_REPOS_PER_CELL``) and surfaced by
+    ``GET /repos/{id}/benchmark`` so a percentile is never presented as if it
+    came from thirty repositories when it came from three. Nullable because
+    rows seeded before this column existed (there are none in practice, but
+    the column must still tolerate it) have no recorded count.
+    """
 
     __tablename__ = "baselines"
 
@@ -934,6 +968,35 @@ class Baseline(Base):
     p50: Mapped[float] = mapped_column(Float, nullable=False)
     p75: Mapped[float] = mapped_column(Float, nullable=False)
     p90: Mapped[float] = mapped_column(Float, nullable=False)
+    n_repos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    n_files: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class PortfolioCache(Base):
+    """Insight-adjacent but deliberately NEITHER Facts nor per-run Insight
+    (session 14, Part B) -- ``app/analysis/portfolio.py``'s computed view
+    spans every one of a user's repositories at once and has no
+    ``analysis_run_id`` to key off. Recomputed on demand with a 10-minute
+    cache (``PORTFOLIO_CACHE_TTL_SECONDS``, app/analysis/portfolio.py) rather
+    than storing history -- this is a derived view over data that already
+    exists elsewhere (repos, analysis_runs, file_metrics, contributors, ...),
+    not a new fact. Never wired into ``wipe_facts``/``prune_run``: it isn't
+    scoped to a repo or a run at all, only to a user, and a stale cache row
+    self-heals on the next request past its TTL regardless of what happens
+    to any one repo underneath it.
+
+    ``user_id`` is the primary key directly (one row per user, upserted in
+    place) rather than a synthetic id plus a unique constraint -- there is
+    never more than one cached portfolio per user to look up.
+    """
+
+    __tablename__ = "portfolio_cache"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
 
 class TourStop(Base):

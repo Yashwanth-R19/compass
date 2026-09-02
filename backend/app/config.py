@@ -130,6 +130,20 @@ class Settings(BaseSettings):
     # network-calling action, not a fingerprint salt.
     COMPASS_ADMIN_TOKEN: str = ""
 
+    # Session 14: which BaselineProvider (app/baseline/) the insight pipeline
+    # is wired to, read by app/jobs/stages.py at run time (per-job, via
+    # app/baseline/provider.py::get_baseline_provider -- NOT at import time,
+    # since SeedBaseline/CorpusBaseline both need a live DB session). One of
+    # "heuristic" (HeuristicBaseline, per-repo min-max, no corpus -- the
+    # default), "seed" (SeedBaseline, reads the `baselines` table, falls back
+    # to heuristic per empty cell), or "corpus" (CorpusBaseline, same table,
+    # PLUS the cell-size gate that widens/falls back below
+    # MIN_CORPUS_REPOS_PER_CELL). Session 14 Known Hazard #6: switching the
+    # default changes every risk score in the product -- this stays
+    # "heuristic" by default this session; a future session decides whether
+    # to flip it, deliberately, after comparing rankings by hand.
+    COMPASS_BASELINE_PROVIDER: str = "heuristic"
+
 
 @lru_cache
 def get_settings() -> Settings:

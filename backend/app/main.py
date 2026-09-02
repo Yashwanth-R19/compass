@@ -1,7 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import analysis, auth, compare, health, jobs, me, narrative, repos, share, timeline
+from app.api import (
+    analysis,
+    auth,
+    compare,
+    health,
+    jobs,
+    me,
+    narrative,
+    portfolio,
+    repos,
+    share,
+    timeline,
+)
 from app.config import settings
 
 app = FastAPI(title="Compass API")
@@ -34,3 +46,4 @@ app.include_router(share.router)
 app.include_router(narrative.router)
 app.include_router(timeline.router)
 app.include_router(compare.router)
+app.include_router(portfolio.router)

@@ -49,12 +49,13 @@ export function PassportPage() {
           <DifficultyCard
             difficulty={data.onboarding_difficulty}
             breakdown={data.difficulty_breakdown}
+            calibration={data.calibration}
           />
           <ThreeThingsCard items={data.data.first_pr} repoId={repo.id} />
           <ScaleAndCadenceCard data={data.data} />
           <TeamShapeCard data={data.data} repoId={repo.id} share={share} />
           <ShapeCard data={data.data} repoId={repo.id} share={share} />
-          <HealthCard data={data.data} />
+          <HealthCard data={data.data} calibration={data.calibration} />
           <NarrativeBlock surface="passport" />
         </div>
       )}
@@ -147,9 +148,11 @@ function IdentityStrip({ data, repoId }: { data: RepoPassportData; repoId: strin
 function DifficultyCard({
   difficulty,
   breakdown,
+  calibration,
 }: {
   difficulty: number;
   breakdown: Record<string, { raw: number; normalized: number; weight: number }>;
+  calibration: string;
 }) {
   // healthColor is a "high = good, green" scale -- difficulty is the
   // opposite ("high = hard, should read as alarming"), so it's fed the
@@ -172,7 +175,7 @@ function DifficultyCard({
           </span>
           <span className="text-xs text-slate-400 dark:text-slate-500">/ 100</span>
         </div>
-        <HeuristicNote />
+        <HeuristicNote calibration={calibration} />
         <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
           {components.map((c) => (
             <div
@@ -489,7 +492,7 @@ function ShapeCard({
 
 // --- 7. Health ---------------------------------------------------------------
 
-function HealthCard({ data }: { data: RepoPassportData }) {
+function HealthCard({ data, calibration }: { data: RepoPassportData; calibration: string }) {
   const { health } = data;
 
   return (
@@ -497,7 +500,7 @@ function HealthCard({ data }: { data: RepoPassportData }) {
       <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-around">
         <ScoreGauge score={health.score} />
         <div className="flex flex-col gap-3">
-          <HeuristicNote />
+          <HeuristicNote calibration={calibration} />
           <dl className="grid grid-cols-3 gap-4 text-center text-xs">
             <div>
               <dt className="text-slate-400 dark:text-slate-500">High-risk files</dt>

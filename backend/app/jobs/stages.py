@@ -8,6 +8,7 @@ from typing import Any, Literal
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
+from app.baseline.provider import get_baseline_provider
 from app.db.models import AnalysisRun, AnalysisRunStatus, AnalysisStage, StageStatus
 from app.engines.architecture import ArchEngine
 from app.engines.context import RunContext
@@ -28,6 +29,32 @@ from app.engines.test_gaps import TestGapEngine
 from app.engines.timeline import TimelineEngine
 from app.engines.tour import TourEngine
 from app.engines.truck_factor import TruckFactorEngine
+
+
+def _run_risk_engine(ctx: RunContext, session: Session) -> dict[str, Any]:
+    """Session 14: constructs ``RiskEngine`` PER CALL (not at module import
+    time, unlike every other engine in ``INSIGHT_STAGES`` below) so its
+    injected ``BaselineProvider`` can be ``SeedBaseline``/``CorpusBaseline``
+    -- both of which need a live DB session that doesn't exist yet at import
+    time. ``app/engines/risk.py`` itself is untouched: this only changes
+    WHEN/HOW it's constructed, via the constructor injection it has had
+    since session 07."""
+    return RiskEngine(baseline=get_baseline_provider(session)).run(ctx, session)
+
+
+def _run_hygiene_engine(ctx: RunContext, session: Session) -> dict[str, Any]:
+    """Same reasoning as ``_run_risk_engine`` -- HygieneEngine's
+    ``instability_score`` also goes through the injected BaselineProvider's
+    ``norm()`` (CLAUDE.md "Commit hygiene")."""
+    return HygieneEngine(baseline=get_baseline_provider(session)).run(ctx, session)
+
+
+def _run_passport_engine(ctx: RunContext, session: Session) -> dict[str, Any]:
+    """Same reasoning again -- PassportEngine's onboarding-difficulty score
+    wraps three of its five terms in the injected BaselineProvider's
+    ``norm()`` (CLAUDE.md "Repo passport")."""
+    return PassportEngine(baseline=get_baseline_provider(session)).run(ctx, session)
+
 
 StageKind = Literal["fact", "insight"]
 
@@ -85,7 +112,7 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
     Stage(
         "architecture", "insight", (ArchEngine().run, EntryPointEngine().run, OverlayEngine().run)
     ),
-    Stage("risk", "insight", (RiskEngine().run, HygieneEngine().run, TestGapEngine().run)),
+    Stage("risk", "insight", (_run_risk_engine, _run_hygiene_engine, TestGapEngine().run)),
     Stage("knowledge", "insight", (ExpertiseEngine().run, TruckFactorEngine().run)),
     Stage(
         "onboarding",
@@ -95,7 +122,7 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
             GlossaryEngine().run,
             TimelineEngine().run,
             HealthEngine().run,
-            PassportEngine().run,
+            _run_passport_engine,
         ),
     ),
     Stage("security", "insight", (fetch_and_persist_vulnerabilities, SecurityEngine().run)),

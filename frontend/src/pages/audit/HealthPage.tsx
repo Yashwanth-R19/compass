@@ -82,7 +82,10 @@ export function HealthPage() {
             {(data) => (
               <div className="flex flex-col items-center gap-4">
                 <ScoreGauge score={data.score} />
-                <HeuristicNote message="Heuristic score — not yet corpus-calibrated. Weights are documented, literature-informed defaults (see master-context.md §8.1), not a statistically fitted model." />
+                <HeuristicNote
+                  message="Heuristic score — not yet corpus-calibrated. Weights are documented, literature-informed defaults (see master-context.md §8.1), not a statistically fitted model."
+                  calibration={data.calibration}
+                />
                 <dl className="grid w-full grid-cols-3 gap-2 text-center text-xs">
                   <div>
                     <dt className="text-slate-400 dark:text-slate-500">High-risk files</dt>

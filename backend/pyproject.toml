@@ -29,6 +29,11 @@ dependencies = [
     # to a real runtime dependency here since production code now imports it
     # directly too.
     "httpx>=0.28,<0.29",
+    # Session 14: parses backend/app/baseline/corpus_repos.yaml (the curated
+    # corpus repository list, app/baseline/build_corpus.py) -- the smallest,
+    # most standard way to read a hand-reviewable YAML config file; no other
+    # module in this codebase needs YAML parsing.
+    "pyyaml>=6.0,<7.0",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +46,9 @@ dev = [
     "mypy>=1.13,<1.14",
     "pytest-cov>=6.0,<6.1",
     "testcontainers[postgresql]>=4.9,<4.10",
+    # Session 14: type stubs for pyyaml, needed by the scoped mypy run over
+    # app.baseline (which now includes build_corpus.py).
+    "types-PyYAML>=6.0,<7.0",
 ]
 
 [build-system]
