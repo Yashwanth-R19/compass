@@ -41,6 +41,25 @@ export interface RepoOut {
   created_at: string;
   file_count: number;
   is_private: boolean;
+  is_showcase: boolean;
+}
+
+// Session 16, Part A: one home-page showcase card.
+export interface ShowcaseRepoOut {
+  id: string;
+  owner: string;
+  name: string;
+  url: string;
+  showcase_rank: number | null;
+  hook: string;
+  commit_count: number;
+  subsystem_count: number;
+  truck_factor: number | null;
+  health_score: number | null;
+}
+
+export interface ShowcaseReposResponse {
+  repos: ShowcaseRepoOut[];
 }
 
 export interface JobOut {
@@ -202,6 +221,12 @@ export interface RepoStatusResponse {
   run_status: AnalysisRunStatus | null;
   run_error: string | null;
   stages: StageOut[];
+  // Session 16, Part B: true once app/jobs/eviction.py has wiped this
+  // repo's Facts for being unvisited past FACTS_TTL_DAYS -- Insight
+  // (health/risk/passport/...) for the current run is still intact, but
+  // Facts-dependent reads need a fresh re-analysis. RepoLayout renders an
+  // "analysis archived" banner instead of letting individual pages fail.
+  facts_archived: boolean;
 }
 
 export interface AnalysisRunOut {

@@ -2,7 +2,7 @@ import os
 import shutil
 import stat
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -34,6 +34,36 @@ from app.jobs.stages import (
 )
 from app.languages.scanner import extract_structural_edges
 from app.security.scanner import persist_secret_hits, scan_history
+
+SOFT_TIMEOUT_MINUTES = 12
+"""Session 16, Part C: an in-worker soft ceiling, comfortably under
+``mine.yml``'s own 15-minute ``timeout-minutes`` (which would otherwise
+hard-kill the whole process mid-stage, with no chance to fail gracefully)
+and under ``app/jobs/reaper.py``'s 20-minute stale-run cutoff (which would
+otherwise be the first thing to even notice, and could take up to 20 more
+minutes to fire). Checked only BETWEEN stage boundaries, never mid-stage --
+each ``with stage(...)`` block already runs to completion and commits
+normally once entered (progressive reveal's per-stage-commit design), so
+"partial results preserved" needs no extra bookkeeping here: whatever
+stages finished before the checkpoint fired stay `done`/queryable exactly as
+if the run had completed normally, and `_SoftTimeoutExceeded` is caught by
+this function's own outer `except Exception` -- the same path that already
+marks the run `failed` (with this exception's message) and, crucially,
+never touches `repos.current_run_id`/`head_sha`."""
+
+
+class _SoftTimeoutExceeded(RuntimeError):
+    pass
+
+
+def _check_soft_timeout(job_started_at: datetime) -> None:
+    elapsed = datetime.now(UTC) - job_started_at
+    if elapsed > timedelta(minutes=SOFT_TIMEOUT_MINUTES):
+        raise _SoftTimeoutExceeded(
+            f"Soft timeout: run exceeded {SOFT_TIMEOUT_MINUTES} minutes "
+            f"({elapsed.total_seconds():.0f}s elapsed) -- stopped after the last "
+            "completed stage so already-computed results stay available."
+        )
 
 
 def run_ingestion_job(
@@ -93,6 +123,12 @@ def run_ingestion_job(
     session = SessionLocal()
     clone_path: str | None = None
     run_id: uuid.UUID | None = None
+    # Session 16, Part C: measured from when THIS function actually started
+    # doing work, not from any DB timestamp -- run.started_at isn't
+    # re-stamped when a queued run is dispatched (CLAUDE.md's queue section),
+    # so using it here would unfairly count time spent sitting in the queue
+    # against the soft timeout.
+    job_started_at = datetime.now(UTC)
     try:
         _update_job(session, job_id, status=JobStatus.running, progress=0)
         session.commit()
@@ -196,6 +232,7 @@ def run_ingestion_job(
                 summary["cloned"] = True
             _update_job(session, job_id, progress=15)
             session.commit()
+            _check_soft_timeout(job_started_at)
 
             with stage(run_id, "mine", session) as summary:
                 mined = mine_repo(clone_path)
@@ -203,6 +240,7 @@ def run_ingestion_job(
                 summary["files"] = len(mined.files)
             _update_job(session, job_id, progress=40)
             session.commit()
+            _check_soft_timeout(job_started_at)
 
             with stage(run_id, "structure", session) as summary:
                 scan_result = extract_structural_edges(clone_path)
@@ -235,6 +273,7 @@ def run_ingestion_job(
                 summary["dependency_manifest_found"] = manifest_found
             _update_job(session, job_id, progress=55)
             session.commit()
+            _check_soft_timeout(job_started_at)
 
             with stage(run_id, "persist_facts", session) as summary:
                 persist_facts(
@@ -242,6 +281,7 @@ def run_ingestion_job(
                 )
                 summary["commits"] = len(mined.commits)
                 summary["files"] = len(mined.files)
+            _check_soft_timeout(job_started_at)
 
             # Session 10, Part F: "secrets" needs BOTH the clone (for
             # `git log -p`) and interned repo_paths ids (for
@@ -279,6 +319,7 @@ def run_ingestion_job(
 
             _update_job(session, job_id, progress=70)
             session.commit()
+            _check_soft_timeout(job_started_at)
 
         _update_repo(session, repo_id, status=RepoStatus.analyzing)
         session.commit()
@@ -297,6 +338,7 @@ def run_ingestion_job(
         # summary dict is merged into the stage's single JSONB summary, in
         # the SAME order app/jobs/stages.py::Stage.callables declares.
         for s in INSIGHT_STAGES:
+            _check_soft_timeout(job_started_at)
             # Session 05, Part D degenerate case: a repo with zero commits
             # has no contributor data at all -- ExpertiseEngine/
             # TruckFactorEngine would both trivially find nothing, so the
@@ -340,6 +382,14 @@ def run_ingestion_job(
             head_sha=remote_head_sha,
             commit_count=commit_count,
             analyzed_at=datetime.now(UTC),
+            # Session 16, Part B: a run that reaches here always went through
+            # the "real mine" branch whenever Facts had actually been evicted
+            # (facts_exist above is False the moment app/jobs/eviction.py's
+            # wipe_facts ran, which forces reuse_facts=False) -- clearing
+            # this unconditionally on every successful run is correct and
+            # simplest, since it's already None on the common path where
+            # Facts were never evicted in the first place.
+            facts_evicted_at=None,
         )
         _update_job(
             session, job_id, status=JobStatus.done, progress=100, finished_at=datetime.now(UTC)

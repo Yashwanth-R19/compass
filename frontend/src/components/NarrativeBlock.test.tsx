@@ -28,6 +28,7 @@ const REPO_CONTEXT: RepoOutletContext = {
     created_at: "2026-01-01T00:00:00Z",
     file_count: 5,
     is_private: false,
+    is_showcase: false,
   },
   share: undefined,
 };

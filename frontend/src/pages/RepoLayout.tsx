@@ -14,6 +14,7 @@ import {
   useRepoStatus,
   useRevokeShareLink,
   useRuns,
+  useSubmitRepo,
 } from "../api/hooks";
 import { ApiError } from "../api/client";
 import { LoadingState } from "../components/LoadingState";
@@ -265,6 +266,8 @@ export function RepoLayout() {
           </p>
         ) : null}
 
+        {status.data?.facts_archived ? <ArchivedBanner repoUrl={repo.url} /> : null}
+
         {showTabs ? (
           <>
             <ModeSwitcher mode={mode} />
@@ -322,6 +325,35 @@ function ModeSwitcher({ mode }: { mode: RepoMode }) {
       <NavLink to="audit/findings" className={() => modeButtonClass(mode === "audit")}>
         Audit
       </NavLink>
+    </div>
+  );
+}
+
+/** Session 16, Part B: a repo whose Facts app/jobs/eviction.py wiped for
+ * being unvisited past FACTS_TTL_DAYS. The current run's Insight (health/
+ * risk/passport/...) is still intact and most pages keep working -- this is
+ * a persistent notice, not a blocking error page, per the session's own
+ * "not an error, not an empty page" rule. Re-analysing (the same
+ * `useSubmitRepo` mutation the home page and dashboard both already use)
+ * re-clones and clears the archived flag. */
+function ArchivedBanner({ repoUrl }: { repoUrl: string }) {
+  const submitRepo = useSubmitRepo();
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-l-2 border-signal bg-surface-2 py-1.5 pl-3 pr-3 text-xs">
+      <span className="text-ink-muted">
+        Analysis archived — this repo hasn&apos;t been visited in a while, so its raw commit history
+        was cleared to save storage. Metrics from the last analysis still show below; re-analyse to
+        explore file-level detail again.
+      </span>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={() => submitRepo.mutate(repoUrl)}
+        disabled={submitRepo.isPending}
+      >
+        {submitRepo.isPending ? "Re-analysing…" : "Re-analyse"}
+      </Button>
     </div>
   );
 }

@@ -17,12 +17,14 @@ export const repoOut = {
   created_at: "2025-01-01T00:00:00Z",
   file_count: 120,
   is_private: false,
+  is_showcase: false,
 };
 
 export const repoStatus = {
   repo_id: REPO_ID,
   repo_status: "ready",
   current_run_id: RUN_ID,
+  facts_archived: false,
   run_id: RUN_ID,
   run_status: "ready",
   run_error: null,

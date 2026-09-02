@@ -30,6 +30,7 @@ class RepoOut(BaseModel):
     created_at: datetime
     file_count: int
     is_private: bool
+    is_showcase: bool
 
 
 class JobOut(BaseModel):
@@ -78,6 +79,15 @@ class RepoStatusResponse(BaseModel):
     run_status: AnalysisRunStatus | None
     run_error: str | None
     stages: list[StageOut]
+    # Session 16, Part B: True the moment app/jobs/eviction.py has wiped this
+    # repo's Facts for being unvisited past FACTS_TTL_DAYS -- the repo row
+    # and its current run's Insight (health/risk/passport/...) are still
+    # fully intact, but Facts-dependent reads (architecture, blast-radius,
+    # a fresh re-analysis's "reuse facts" check) need a real re-clone.
+    # RepoLayout.tsx reads this to render "analysis archived -- re-analyse
+    # to explore" instead of letting individual pages fail or go silently
+    # empty (never an error, never a blank page -- session 16's own rule).
+    facts_archived: bool
 
 
 class AnalysisRunOut(BaseModel):
@@ -92,3 +102,26 @@ class AnalysisRunOut(BaseModel):
 class AnalysisRunsResponse(BaseModel):
     repo_id: uuid.UUID
     runs: list[AnalysisRunOut]
+
+
+class ShowcaseRepoOut(BaseModel):
+    """Session 16, Part A: one card on the home page's showcase grid. ``hook``
+    is a computed one-line stat string ("8,400 commits · 6 subsystems · truck
+    factor 2") built server-side (app/api/repos.py::_showcase_hook) from real,
+    already-persisted numbers -- never a hand-written description that could
+    drift from what the pinned run actually shows."""
+
+    id: uuid.UUID
+    owner: str
+    name: str
+    url: str
+    showcase_rank: int | None
+    hook: str
+    commit_count: int
+    subsystem_count: int
+    truck_factor: int | None
+    health_score: float | None
+
+
+class ShowcaseReposResponse(BaseModel):
+    repos: list[ShowcaseRepoOut]

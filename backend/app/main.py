@@ -6,6 +6,7 @@ from app.api import (
     auth,
     compare,
     health,
+    internal,
     jobs,
     me,
     narrative,
@@ -14,7 +15,21 @@ from app.api import (
     share,
     timeline,
 )
+from app.api.logging_config import configure_logging
+from app.api.middleware import (
+    BodySizeLimitMiddleware,
+    RequestContextMiddleware,
+    RequestTimeoutMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.config import settings
+
+# Session 16, Part D: configured once, at process import time, before any
+# request can possibly be served -- the same "before anything else runs"
+# discipline app/jobs/worker.py already applies to install_log_redaction,
+# now generalized into structured JSON logging that redactor filter sits
+# underneath.
+configure_logging()
 
 app = FastAPI(title="Compass API")
 
@@ -36,7 +51,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Session 16, Parts C/D: registered AFTER CORSMiddleware above, which makes
+# each of these OUTER to it (Starlette wraps middleware in the reverse of
+# add_middleware call order -- the last one added is the outermost layer).
+# BodySizeLimit closest to CORS/the router, then RequestTimeout, then
+# SecurityHeaders (added to virtually every response), with
+# RequestContextMiddleware outermost of all so its request id and total
+# request-duration log line wrap the ENTIRE stack, including anything a
+# lower middleware rejects (a 413, a CORS-blocked response, ...).
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(RequestTimeoutMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestContextMiddleware)
+
 app.include_router(health.router)
+app.include_router(internal.router)
 app.include_router(auth.router)
 app.include_router(repos.router)
 app.include_router(jobs.router)

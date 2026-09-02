@@ -20,18 +20,17 @@ not a data-availability question.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.limits import check_narrative_rate_limit
+from app.auth.admin import require_admin_token
 from app.auth.deps import current_user_optional, require_repo_access
-from app.config import settings
 from app.db.base import get_db
 from app.db.models import AnalysisRun, File, FileMetrics, Narrative, Repo, User
 from app.db.runs import resolve_run_id
@@ -168,22 +167,6 @@ def get_narrative(
     )
 
 
-def _require_admin_token(x_admin_token: str | None = Header(default=None)) -> None:
-    """Session 12, Part D: guards ``POST /internal/runs/{id}/pregenerate-narratives``
-    -- a shared secret, not a user session, since this is a server-to-server
-    operation (session 16's showcase-repo pre-generation), never something a
-    logged-in user calls. An UNCONFIGURED token means the endpoint is
-    unreachable (503), never "open" -- this must not silently accept every
-    request the moment someone forgets to set ``COMPASS_ADMIN_TOKEN``, the
-    way an unset ``COMPASS_SECRET_SCAN_SALT`` is safe to leave at its dev
-    default (a salt isn't itself an access gate; this token is).
-    """
-    if not settings.COMPASS_ADMIN_TOKEN:
-        raise HTTPException(status_code=503, detail="Admin endpoints are not configured.")
-    if not x_admin_token or not hmac.compare_digest(x_admin_token, settings.COMPASS_ADMIN_TOKEN):
-        raise HTTPException(status_code=401, detail="Invalid or missing admin token.")
-
-
 # Session 06's passport engine already caps hotspot lists at a handful of
 # files (PassportEngine); this cap bounds how many `risk_file` narratives
 # session 16's pre-generation will pay for per repo, mirroring that same
@@ -195,7 +178,7 @@ MAX_PREGENERATE_RISK_FILES = 10
 def pregenerate_narratives(
     run_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _admin: None = Depends(_require_admin_token),
+    _admin: None = Depends(require_admin_token),
 ) -> dict[str, object]:
     """Session 16's showcase-repo hook: generates and caches every narrative
     this run can currently support (passport, security, and the top

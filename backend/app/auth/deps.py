@@ -9,7 +9,7 @@ Never re-implement this check inline in a route handler.
 
 import uuid
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,16 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db.base import get_db
 from app.db.models import Repo, ShareLink, User
 from app.db.runs import resolve_run_id
+from app.jobs.eviction import touch_last_viewed
+
+SHOWCASE_CACHE_CONTROL = "public, max-age=3600, stale-while-revalidate=86400"
+"""Session 16, Part A: "served with long HTTP cache headers" -- a showcase
+repo's analysis only ever changes when a console operator re-runs
+``python -m app.scripts.showcase add``, so a 1-hour browser/CDN cache with a
+24-hour stale-while-revalidate window is safe and is what makes a repeat
+visit to a showcase repo's passport render with zero network round-trip at
+all, not just a fast one. Never applied to a non-showcase repo, whose
+analysis can change at any time (a re-analysis, a share-link creation, ...)."""
 
 
 def has_repo_scope(user: User) -> bool:
@@ -64,9 +74,15 @@ def require_repo_access(
     share: str | None = None,
     db: Session = Depends(get_db),
     user: User | None = Depends(current_user_optional),
+    response: Response = None,  # type: ignore[assignment]
 ) -> Repo:
     """Gates every repo-scoped endpoint (plan/RULES.md sec 9):
 
+    - a pinned showcase repo (session 16, ``repos.is_showcase``) is readable
+      by anyone, unconditionally, regardless of ``is_private``, and every
+      such response carries a long-lived ``Cache-Control`` header
+      (``SHOWCASE_CACHE_CONTROL``) so a repeat visit renders with no network
+      round-trip at all;
     - a public repo is readable by anyone;
     - a private repo is readable only by ``repo.owner_user_id``, or by a
       request carrying a valid, unrevoked share-link ``?share=<slug>`` whose
@@ -88,10 +104,23 @@ def require_repo_access(
     if repo is None:
         raise HTTPException(status_code=404, detail="Repo not found.")
 
+    # Session 16, Part A: a pinned showcase repository is publicly readable
+    # regardless of authentication or its own is_private flag -- a recruiter
+    # following the home page's showcase cards must never hit a 403, even for
+    # a showcase repo that happens to be a private repository the curator
+    # analyzed with their own GitHub access.
+    if repo.is_showcase:
+        touch_last_viewed(repo.id, db)
+        if response is not None:
+            response.headers["Cache-Control"] = SHOWCASE_CACHE_CONTROL
+        return repo
+
     if not repo.is_private:
+        touch_last_viewed(repo.id, db)
         return repo
 
     if user is not None and repo.owner_user_id is not None and user.id == repo.owner_user_id:
+        touch_last_viewed(repo.id, db)
         return repo
 
     if share:
@@ -99,6 +128,7 @@ def require_repo_access(
         if link is not None and link.revoked_at is None:
             resolved_run_id = resolve_run_id(repo, run_id, db)
             if resolved_run_id is not None and link.run_id == resolved_run_id:
+                touch_last_viewed(repo.id, db)
                 return repo
 
     raise HTTPException(

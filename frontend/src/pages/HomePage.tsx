@@ -1,20 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useMe, useMyGithubRepos, useSubmitRepo } from "../api/hooks";
+import { Link, useNavigate } from "react-router-dom";
+import { useMe, useMyGithubRepos, useShowcaseRepos, useSubmitRepo } from "../api/hooks";
 import { ApiError, RateLimitedError, githubLoginUrl } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
-
-/**
- * Session 16 populates real curated example repositories here (their own
- * repo id + a one-line description of what's interesting about the
- * analysis). Until then this renders as a labelled, honestly-empty slot --
- * never fabricated data, and never silently absent either, per this
- * session's own "not computed yet" vs. "computed and empty" discipline
- * applied to a fixture set instead of a live query.
- */
-const SHOWCASE_SLOTS = 3;
+import type { ShowcaseRepoOut } from "../api/types";
 
 export function HomePage() {
   const [url, setUrl] = useState("");
@@ -22,6 +13,7 @@ export function HomePage() {
 
   const me = useMe();
   const submitRepo = useSubmitRepo();
+  const showcase = useShowcaseRepos();
   const hasRepoScope = Boolean(me.data?.has_repo_scope);
   const githubRepos = useMyGithubRepos(hasRepoScope);
 
@@ -86,19 +78,19 @@ export function HomePage() {
         ) : null}
       </div>
 
-      <section>
-        <p className="cp-label mb-3">Showcase repositories</p>
-        <div className="grid grid-cols-1 gap-px border border-border bg-border sm:grid-cols-3">
-          {Array.from({ length: SHOWCASE_SLOTS }).map((_, i) => (
-            <div key={i} className="flex min-h-28 flex-col justify-between bg-surface p-4">
-              <span className="text-xs text-ink-faint">
-                Reserved for a curated example analysis.
-              </span>
-              <span className="cp-label">Coming soon</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {showcase.data && showcase.data.repos.length > 0 ? (
+        <section>
+          <p className="cp-label mb-3">Showcase repositories</p>
+          <p className="mb-3 text-xs text-ink-muted">
+            Pre-analysed — click straight into a full passport, no waiting.
+          </p>
+          <div className="grid grid-cols-1 gap-px border border-border bg-border sm:grid-cols-3">
+            {showcase.data.repos.map((repo) => (
+              <ShowcaseCard key={repo.id} repo={repo} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {hasRepoScope ? (
         <section>
@@ -141,6 +133,23 @@ export function HomePage() {
         </section>
       ) : null}
     </div>
+  );
+}
+
+function ShowcaseCard({ repo }: { repo: ShowcaseRepoOut }) {
+  return (
+    <Link
+      to={`/repos/${repo.id}/onboard/passport`}
+      className="flex min-h-28 flex-col justify-between bg-surface p-4 transition-colors hover:bg-surface-2"
+    >
+      <div>
+        <p className="truncate font-mono text-sm font-medium text-ink">
+          {repo.owner}/{repo.name}
+        </p>
+        <p className="mt-1 text-xs text-ink-muted">{repo.hook}</p>
+      </div>
+      <span className="cp-label text-signal">View passport →</span>
+    </Link>
   );
 }
 

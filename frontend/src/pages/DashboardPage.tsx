@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useMyRepos, useSubmitRepo } from "../api/hooks";
+import { useDeleteRepo, useMyRepos, useSubmitRepo } from "../api/hooks";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -16,6 +16,7 @@ const RUN_STATUS_LABEL: Record<string, string> = {
 export function DashboardPage() {
   const { data, isPending, isError, error, refetch } = useMyRepos();
   const resubmit = useSubmitRepo();
+  const deleteRepo = useDeleteRepo();
 
   if (isPending) return <LoadingState label="Loading your repositories…" />;
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
@@ -71,14 +72,36 @@ export function DashboardPage() {
                   </span>
                 ) : null}
               </div>
-              <button
-                type="button"
-                disabled={resubmit.isPending}
-                onClick={() => resubmit.mutate(repo.url)}
-                className="mt-3 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                Re-analyze
-              </button>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={resubmit.isPending}
+                  onClick={() => resubmit.mutate(repo.url)}
+                  className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  Re-analyze
+                </button>
+                {/* Session 16, Part C: the "clear UI for choosing which"
+                    repo to evict once MAX_REPOS_PER_USER is reached -- a
+                    real, permanent removal (backend cascades through every
+                    Facts/Insight row), so this asks for confirmation first. */}
+                <button
+                  type="button"
+                  disabled={deleteRepo.isPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Remove ${repo.owner}/${repo.name}? This permanently deletes its analysis data.`,
+                      )
+                    ) {
+                      deleteRepo.mutate(repo.id);
+                    }
+                  }}
+                  className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-sev-high hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  Remove
+                </button>
+              </div>
             </Card>
           );
         })}

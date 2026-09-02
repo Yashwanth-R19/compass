@@ -204,10 +204,20 @@ def test_glossary_endpoint_resolves_defining_path_ids_to_paths(client, db_sessio
     ]
 
 
-def test_health_endpoint_still_returns_the_persisted_health_row(client, db_session):
+def test_health_endpoint_still_returns_the_persisted_health_row(client, db_session, monkeypatch):
     """Session 06: /health moved from gating on the (now-removed) standalone
     "health" stage to gating on "onboarding", but its own response shape and
-    data source (the persisted `health` row) are unchanged."""
+    data source (the persisted `health` row) are unchanged.
+
+    This test is about the stage-gating/response-shape behavior, not about
+    which ``BaselineProvider`` is the deployed default (session 16 flipped
+    that default to "corpus" -- see app/config.py) -- pinning the provider
+    explicitly here, the same way tests/test_baseline.py does, keeps this
+    assertion correct regardless of that default.
+    """
+    import app.config as config_module
+
+    monkeypatch.setattr(config_module.settings, "COMPASS_BASELINE_PROVIDER", "heuristic")
     repo_id = _make_repo(db_session, "https://github.com/fixture/onboarding-health-unchanged")
     run_id = _make_run_with_pending_stages(db_session, repo_id)
     _set_stage_status(db_session, run_id, "onboarding", StageStatus.done)

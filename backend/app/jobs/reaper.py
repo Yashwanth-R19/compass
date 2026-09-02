@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import SessionLocal
 from app.db.models import AnalysisRun, AnalysisRunStatus, AnalysisStage, StageStatus
+from app.jobs.eviction import run_eviction
 from app.jobs.log_redaction import install_log_redaction
 from app.jobs.queue import dispatch_pending
 
@@ -93,6 +94,23 @@ def main() -> int:
         # workflow.
         dispatched = dispatch_pending(session)
         logger.info("reaper: dispatched %d queued run(s)", len(dispatched))
+
+        # Session 16, Part B: no always-on process drains eviction either --
+        # this same 15-minute cron tick is what checks storage and evicts
+        # when needed, right after reaping/dispatching, same "attach to the
+        # reaper's existing schedule rather than a second workflow"
+        # precedent session 14's queue dispatch already established. A no-op
+        # (storage comfortably under the high-water mark) costs one cheap
+        # pg_database_size() query.
+        eviction_report = run_eviction(session)
+        if eviction_report.triggered:
+            logger.info(
+                "reaper: eviction pruned %d run(s), evicted facts for %d repo(s), "
+                "reclaimed %d bytes",
+                eviction_report.runs_pruned,
+                eviction_report.repos_facts_evicted,
+                eviction_report.reclaimed_bytes,
+            )
     finally:
         session.close()
     return 0

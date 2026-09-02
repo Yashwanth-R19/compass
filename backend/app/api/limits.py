@@ -26,6 +26,7 @@ not rate-limited by this module):
 
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request
@@ -33,7 +34,25 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.models import AnalysisRun, AnalysisRunStatus, User
+from app.db.models import AnalysisRun, AnalysisRunStatus, Repo, User
+
+# Session 16, Part D: process-lifetime rejection counters, surfaced by
+# GET /internal/stats. Same single-process caveat as every other piece of
+# state in this module (the docstring above already covers why) -- a counter
+# reset to zero on every deploy is an accepted, documented limitation of a
+# free-tier, single-instance deployment, not a bug.
+_rejection_counts: Counter[str] = Counter()
+_rejection_lock = threading.Lock()
+
+
+def _record_rejection(kind: str) -> None:
+    with _rejection_lock:
+        _rejection_counts[kind] += 1
+
+
+def get_rejection_counts() -> dict[str, int]:
+    with _rejection_lock:
+        return dict(_rejection_counts)
 
 
 @dataclass
@@ -155,6 +174,7 @@ def check_analysis_rate_limit(request: Request, user: User | None) -> None:
 
     allowed, retry_after = limiter.try_consume(key)
     if not allowed:
+        _record_rejection("analysis_rate_limit")
         retry_after_seconds = int(retry_after) + 1
         raise HTTPException(
             status_code=429,
@@ -177,11 +197,41 @@ def check_narrative_rate_limit(request: Request, user: User | None) -> None:
 
     allowed, retry_after = limiter.try_consume(key)
     if not allowed:
+        _record_rejection("narrative_rate_limit")
         retry_after_seconds = int(retry_after) + 1
         raise HTTPException(
             status_code=429,
             detail=f"Narrative generation rate limit exceeded. Try again in {retry_after_seconds} seconds.",
             headers={"Retry-After": str(retry_after_seconds)},
+        )
+
+
+MAX_REPOS_PER_USER = 25
+"""Session 16, Part C: a per-user ceiling on analysed repositories, separate
+from every rate limit above (those bound how FAST a user can submit; this
+bounds how MANY repos they can own at once, which is what actually drives
+this user's share of storage). Checked only when the submission would create
+a genuinely NEW ``repos`` row -- re-analysing an already-owned repo never
+counts as a new one against this cap, since it doesn't add a row."""
+
+
+def check_user_repo_cap(user: User, db: Session) -> None:
+    """Raises HTTP 409 (a real conflict the caller can resolve, not a
+    transient rate limit -- deliberately not 429) when ``user`` already owns
+    ``MAX_REPOS_PER_USER`` repositories. The error message points at
+    ``DELETE /repos/{id}`` (app/api/repos.py), which frees a slot by fully
+    removing one of the user's own repositories -- the "clear UI for
+    choosing which" the session prompt asks for lives on the frontend's
+    dashboard, backed by this same endpoint."""
+    owned = db.scalar(select(func.count()).select_from(Repo).where(Repo.owner_user_id == user.id))
+    if (owned or 0) >= MAX_REPOS_PER_USER:
+        _record_rejection("user_repo_cap")
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"You've reached the {MAX_REPOS_PER_USER}-repository limit. "
+                "Remove one from your dashboard to analyze another."
+            ),
         )
 
 
@@ -198,6 +248,7 @@ def check_concurrency_cap(db: Session) -> None:
         or 0
     )
     if running >= settings.COMPASS_MAX_CONCURRENT_RUNS:
+        _record_rejection("concurrency_cap")
         raise HTTPException(
             status_code=429,
             detail=(
@@ -209,9 +260,12 @@ def check_concurrency_cap(db: Session) -> None:
 
 
 __all__ = [
+    "MAX_REPOS_PER_USER",
     "TokenBucketLimiter",
     "check_analysis_rate_limit",
     "check_concurrency_cap",
     "check_narrative_rate_limit",
+    "check_user_repo_cap",
     "get_client_ip",
+    "get_rejection_counts",
 ]

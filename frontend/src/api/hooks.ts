@@ -35,6 +35,7 @@ import type {
   RiskResponse,
   SecretsResponse,
   ShareLinkOut,
+  ShowcaseReposResponse,
   SubsystemsResponse,
   TestGapsResponse,
   TimelineResponse,
@@ -475,6 +476,30 @@ export function useMyRepos(page = 1, perPage = 20) {
   return useQuery({
     queryKey: ["my-repos", page, perPage],
     queryFn: () => apiGet<MyReposResponse>(`/me/repos?page=${page}&per_page=${perPage}`),
+  });
+}
+
+/** Session 16, Part A: the home page's showcase cards. Public, no auth --
+ * a fixed 5-minute staleTime since the underlying data (pinned repos) only
+ * ever changes when a console operator runs `app.scripts.showcase`. */
+export function useShowcaseRepos() {
+  return useQuery({
+    queryKey: ["showcase-repos"],
+    queryFn: () => apiGet<ShowcaseReposResponse>("/repos/showcase"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Session 16, Part C: frees a slot against MAX_REPOS_PER_USER by fully
+ * removing one of the caller's own repositories -- DashboardPage's "clear
+ * UI for choosing which" repo to evict. */
+export function useDeleteRepo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (repoId: string) => apiDelete<void>(`/repos/${repoId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["my-repos"] });
+    },
   });
 }
 

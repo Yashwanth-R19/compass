@@ -134,15 +134,20 @@ class Settings(BaseSettings):
     # is wired to, read by app/jobs/stages.py at run time (per-job, via
     # app/baseline/provider.py::get_baseline_provider -- NOT at import time,
     # since SeedBaseline/CorpusBaseline both need a live DB session). One of
-    # "heuristic" (HeuristicBaseline, per-repo min-max, no corpus -- the
-    # default), "seed" (SeedBaseline, reads the `baselines` table, falls back
-    # to heuristic per empty cell), or "corpus" (CorpusBaseline, same table,
-    # PLUS the cell-size gate that widens/falls back below
-    # MIN_CORPUS_REPOS_PER_CELL). Session 14 Known Hazard #6: switching the
-    # default changes every risk score in the product -- this stays
-    # "heuristic" by default this session; a future session decides whether
-    # to flip it, deliberately, after comparing rankings by hand.
-    COMPASS_BASELINE_PROVIDER: str = "heuristic"
+    # "heuristic" (HeuristicBaseline, per-repo min-max, no corpus), "seed"
+    # (SeedBaseline, reads the `baselines` table, falls back to heuristic
+    # per empty cell), or "corpus" (CorpusBaseline, same table, PLUS the
+    # cell-size gate that widens/falls back below MIN_CORPUS_REPOS_PER_CELL
+    # -- now the default). Session 14 Known Hazard #6 deliberately left this
+    # "heuristic", deferring to a future session after comparing rankings by
+    # hand; session 16, Part E is that session -- the corpus
+    # (app/baseline/corpus_breakpoints.json, ~30 curated repositories,
+    # seeded into `baselines`) was compared against the heuristic per-repo
+    # min-max scaler and judged the better default. CALIBRATION_LABEL()
+    # (app/baseline/provider.py) derives the frontend's "heuristic"/"corpus"
+    # label from this SAME setting at request time, so flipping the default
+    # here is the whole change -- no engine code changed.
+    COMPASS_BASELINE_PROVIDER: str = "corpus"
 
 
 @lru_cache

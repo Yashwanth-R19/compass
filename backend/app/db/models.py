@@ -154,6 +154,40 @@ class Repo(Base):
     visibility_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Session 16, Part A: pinned curated examples (app/scripts/showcase.py).
+    # is_showcase repos are exempt from eviction (app/jobs/eviction.py),
+    # publicly readable regardless of is_private/authentication
+    # (app/auth/deps.py::require_repo_access), and served with long
+    # Cache-Control headers (app/main.py). showcase_rank orders the home
+    # page's cards -- nullable, only meaningful when is_showcase=True; NOT a
+    # unique constraint, since two showcase repos tying on rank is a
+    # harmless display-order ambiguity, not a data-integrity concern.
+    is_showcase: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    showcase_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Session 16, Part B: last time any repo-scoped endpoint resolved this
+    # repo via require_repo_access -- what FACTS_TTL_DAYS eviction (Facts
+    # wiped for a repo nobody has looked at in 30 days) measures staleness
+    # against, and what a re-visit after eviction resets. Updated cheaply
+    # (Known Hazard #5): a single UPDATE with no RETURNING, skipped entirely
+    # when the existing value is already within the last hour, so a burst of
+    # requests for the same repo costs at most one extra write per hour, not
+    # one per request. Nullable because a repo that has never been viewed
+    # through this path (freshly created, mid-first-analysis) has no value
+    # yet -- eviction treats NULL as "never viewed" too, the most eligible
+    # case, not as "recently viewed."
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Session 16, Part B: set the moment eviction wipes this repo's Facts
+    # (commits/files/dependencies/... -- see app/db/wipe.py::wipe_facts) for
+    # being unvisited past FACTS_TTL_DAYS; cleared the next time Facts are
+    # freshly persisted (persist_facts, on the re-analysis a revisit
+    # triggers). Insight (the current run's health/risk/passport rows) is
+    # NOT evicted at this step and stays fully readable -- this flag is what
+    # lets the frontend show "analysis archived -- re-analyse to explore"
+    # instead of letting Facts-dependent endpoints (e.g. /architecture,
+    # /blast-radius) silently return empty or error.
+    facts_evicted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 CURRENT_ENGINE_VERSION = 2

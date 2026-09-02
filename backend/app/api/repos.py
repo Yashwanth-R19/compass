@@ -6,12 +6,29 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.limits import check_analysis_rate_limit, check_concurrency_cap
+from app.api.limits import check_analysis_rate_limit, check_concurrency_cap, check_user_repo_cap
 from app.auth.crypto import decrypt_token
-from app.auth.deps import current_user_optional, has_repo_scope, require_repo_access
+from app.auth.deps import (
+    current_user_optional,
+    current_user_required,
+    has_repo_scope,
+    require_repo_access,
+)
 from app.config import settings
 from app.db.base import get_db
-from app.db.models import AnalysisRun, AnalysisStage, File, Job, JobStatus, Repo, RepoStatus, User
+from app.db.models import (
+    AnalysisRun,
+    AnalysisStage,
+    File,
+    Health,
+    Job,
+    JobStatus,
+    Repo,
+    RepoStatus,
+    Subsystem,
+    TruckFactor,
+    User,
+)
 from app.db.runs import get_latest_run
 from app.ingestion.guardrails import (
     RepoAccessRequired,
@@ -27,10 +44,21 @@ from app.schemas.repo import (
     RepoCreateResponse,
     RepoOut,
     RepoStatusResponse,
+    ShowcaseRepoOut,
+    ShowcaseReposResponse,
     StageOut,
 )
 
 router = APIRouter()
+
+
+def _showcase_hook(commit_count: int, subsystem_count: int, truck_factor: int | None) -> str:
+    parts = [f"{commit_count:,} commits"]
+    if subsystem_count:
+        parts.append(f"{subsystem_count} subsystem{'s' if subsystem_count != 1 else ''}")
+    if truck_factor is not None:
+        parts.append(f"truck factor {truck_factor}")
+    return " · ".join(parts)
 
 
 def _parse_owner_name(url: str) -> tuple[str, str]:
@@ -96,6 +124,11 @@ def create_repo(
     now = datetime.now(UTC)
     repo = db.scalar(select(Repo).where(Repo.url == payload.url))
     if repo is None:
+        # Session 16, Part C: only a genuinely NEW repo row counts against
+        # the per-user cap -- re-analysing something already owned (the
+        # `else` branch below) never does, since it doesn't add one.
+        if user is not None:
+            check_user_repo_cap(user, db)
         repo = Repo(
             url=payload.url,
             owner=owner,
@@ -142,6 +175,64 @@ def create_repo(
     return RepoCreateResponse(repo_id=repo.id, job_id=job.id)
 
 
+@router.get("/repos/showcase", response_model=ShowcaseReposResponse)
+def list_showcase_repos(db: Session = Depends(get_db)) -> ShowcaseReposResponse:
+    """Session 16, Part A: the home page's showcase cards. Deliberately
+    public with no ``require_repo_access`` -- this listing isn't scoped to
+    one repo at all (every showcase repo it lists is unconditionally
+    readable by anyone regardless, per that dependency's own showcase
+    exception), and it must render for an anonymous visitor, which is the
+    entire point of a showcase.
+
+    Registered BEFORE ``GET /repos/{repo_id}`` below so the literal path
+    ``/repos/showcase`` is matched first -- FastAPI/Starlette resolves
+    routes in registration order, and the ``{repo_id}: uuid.UUID`` route
+    would otherwise catch this path first and 422 trying to parse the
+    literal string "showcase" as a UUID.
+    """
+    rows = db.scalars(
+        select(Repo)
+        .where(Repo.is_showcase.is_(True))
+        .order_by(Repo.showcase_rank.asc().nulls_last(), Repo.created_at.asc())
+    ).all()
+
+    out: list[ShowcaseRepoOut] = []
+    for repo in rows:
+        subsystem_count = 0
+        truck_factor_value: int | None = None
+        health_score: float | None = None
+        if repo.current_run_id is not None:
+            subsystem_count = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Subsystem)
+                    .where(Subsystem.analysis_run_id == repo.current_run_id)
+                )
+                or 0
+            )
+            truck_factor_value = db.scalar(
+                select(TruckFactor.value).where(TruckFactor.analysis_run_id == repo.current_run_id)
+            )
+            health_score = db.scalar(
+                select(Health.score).where(Health.analysis_run_id == repo.current_run_id)
+            )
+        out.append(
+            ShowcaseRepoOut(
+                id=repo.id,
+                owner=repo.owner,
+                name=repo.name,
+                url=repo.url,
+                showcase_rank=repo.showcase_rank,
+                hook=_showcase_hook(repo.commit_count, subsystem_count, truck_factor_value),
+                commit_count=repo.commit_count,
+                subsystem_count=subsystem_count,
+                truck_factor=truck_factor_value,
+                health_score=health_score,
+            )
+        )
+    return ShowcaseReposResponse(repos=out)
+
+
 @router.get("/repos/{repo_id}", response_model=RepoOut)
 def get_repo(
     repo_id: uuid.UUID, db: Session = Depends(get_db), repo: Repo = Depends(require_repo_access)
@@ -162,6 +253,7 @@ def get_repo(
         created_at=repo.created_at,
         file_count=file_count,
         is_private=repo.is_private,
+        is_showcase=repo.is_showcase,
     )
 
 
@@ -206,6 +298,7 @@ def get_repo_status(
         run_status=latest_run.status if latest_run is not None else None,
         run_error=latest_run.error if latest_run is not None else None,
         stages=stages,
+        facts_archived=repo.facts_evicted_at is not None,
     )
 
 
@@ -236,3 +329,36 @@ def get_repo_runs(
             for r in rows
         ],
     )
+
+
+@router.delete("/repos/{repo_id}")
+def delete_repo(
+    repo_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+    user: User = Depends(current_user_required),
+) -> dict[str, str]:
+    """Session 16, Part C: the "clear UI for choosing which" a user already
+    at ``MAX_REPOS_PER_USER`` frees a slot with (``DashboardPage``). Owner-
+    only, checked explicitly here -- ``require_repo_access`` alone isn't
+    enough: it grants a PUBLIC repo to anyone at all, so without this extra
+    check any logged-in user could delete someone else's public repository
+    (the same "layer an extra check on top of require_repo_access" pattern
+    ``app/auth/deps.py::secret_findings_visible`` already established for a
+    different endpoint). Deleting the ``repos`` row cascades (``ON DELETE
+    CASCADE``) through every Facts and Insight table that references it --
+    which is all of them -- so this is a complete, real removal, not a soft
+    delete.
+
+    Returns a small JSON body (200), deliberately NOT a bare 204 -- the
+    frontend's ``apiDelete`` helper (``frontend/src/api/client.ts``) always
+    calls ``res.json()``, the same convention ``DELETE /runs/{id}/share``
+    (``app/api/share.py``) already established for exactly this reason.
+    """
+    if repo.owner_user_id is None or repo.owner_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the owner may remove this repository.")
+    if repo.is_showcase:
+        raise HTTPException(status_code=403, detail="Showcase repositories cannot be removed.")
+    db.delete(repo)
+    db.commit()
+    return {"status": "deleted"}
