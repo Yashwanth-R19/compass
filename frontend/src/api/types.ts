@@ -1120,3 +1120,85 @@ export interface BenchmarkResponse {
   metrics: BenchmarkMetricOut[];
   corpus_note: string;
 }
+
+// UI rebuild session 2, Part A: the explainability spine's backend seam
+// (mirrors backend/app/schemas/meta.py). None of these three endpoints is
+// repo-scoped or run-scoped -- they describe how Compass computes, not any
+// one repository's data -- so none of them go through apiGetOrPending.
+
+export type FormulaStatus = "locked" | "heuristic" | "cited";
+
+export interface FormulaConstantOut {
+  name: string;
+  value: number | string;
+  description: string;
+}
+
+export interface FormulaGroupOut {
+  key: string;
+  label: string;
+  status: FormulaStatus;
+  formula: string;
+  citation: string | null;
+  constants: FormulaConstantOut[];
+}
+
+export interface FormulasResponse {
+  groups: FormulaGroupOut[];
+  active_baseline_provider: string;
+}
+
+export type PipelineStageKind = "fact" | "insight";
+
+export interface PipelineStageOut {
+  name: string;
+  kind: PipelineStageKind;
+  order: number;
+  engines: string[];
+  optional: boolean;
+  description: string;
+}
+
+export interface PipelineResponse {
+  stages: PipelineStageOut[];
+}
+
+export interface WorkedExampleRepoOut {
+  id: string;
+  owner: string;
+  name: string;
+  url: string;
+}
+
+// Every field below `repo`/`run_id` is independently nullable -- the
+// backend leaves one `null` only when its underlying row genuinely doesn't
+// exist for this run, never a substituted plausible number (see
+// backend/app/schemas/meta.py's own docstring). HowItWorksPage must render
+// a stage's description with no example line whenever its own figure here
+// is null, and the whole page must render whenever this entire response is
+// null (no showcase repository has reached a ready run yet).
+export interface WorkedExampleResponse {
+  repo: WorkedExampleRepoOut;
+  run_id: string;
+  commit_count: number | null;
+  file_count: number | null;
+  path_count: number | null;
+  symbol_count: number | null;
+  dependency_edge_count: number | null;
+  coupling_pair_count: number | null;
+  subsystem_count: number | null;
+  subsystem_labels: string[] | null;
+  cycle_count: number | null;
+  hidden_dependency_count: number | null;
+  entry_point_count: number | null;
+  hotspot_count: number | null;
+  contributor_count: number | null;
+  truck_factor: number | null;
+  tour_stop_count: number | null;
+  glossary_term_count: number | null;
+  health_score: number | null;
+  onboarding_difficulty: number | null;
+  secret_hit_count: number | null;
+  vulnerability_count: number | null;
+  finding_count: number | null;
+}

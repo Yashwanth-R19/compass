@@ -25,6 +25,21 @@ RISK_MED_SEVERITY = 0.40
 (itself in [0, 1] since it's a weighted sum of three [0, 1] norm() outputs).
 Heuristic, documented, same style as overlay.py's HIGH_DEGREE/MED_DEGREE."""
 
+RISK_CHURN_COMPLEXITY_WEIGHT = 0.60
+RISK_COUPLING_WEIGHT = 0.25
+RISK_COMMIT_COUNT_WEIGHT = 0.15
+"""LOCKED FORMULA weights (master-context.md sec 8.1 / CLAUDE.md release-B
+spec) -- named module-level constants (session 2 of the UI rebuild, Part A)
+specifically so ``GET /meta/formulas`` can read the real, live values this
+engine actually uses instead of a re-typed copy that could silently drift
+out of sync with the source. Same three numbers as before this session --
+extracting them into named constants is not a formula change."""
+
+RISK_CONFIDENCE_COMMIT_DIVISOR = 10
+"""``risk_confidence = min(1, commit_count / RISK_CONFIDENCE_COMMIT_DIVISOR)``
+-- independent of risk_score, see below. Named for the same
+``/meta/formulas`` reason as the three weights above."""
+
 
 def max_coupling_by_path(
     repo_id: uuid.UUID, run_id: uuid.UUID, session: Session
@@ -160,7 +175,9 @@ class RiskEngine(Engine):
         )(commit_counts)
 
         risk_scores = [
-            0.60 * c + 0.25 * k + 0.15 * m
+            RISK_CHURN_COMPLEXITY_WEIGHT * c
+            + RISK_COUPLING_WEIGHT * k
+            + RISK_COMMIT_COUNT_WEIGHT * m
             for c, k, m in zip(
                 norm_churn_complexity, norm_coupling, norm_commit_count, strict=False
             )
@@ -170,7 +187,9 @@ class RiskEngine(Engine):
         # weighted sum above. An honest signal of how much history backs the
         # score: a file can be high-risk and low-confidence at once, and the
         # UI must be able to show both (master-context.md sec 8.1).
-        risk_confidences = [min(1.0, f.commit_count / 10) for f in files]
+        risk_confidences = [
+            min(1.0, f.commit_count / RISK_CONFIDENCE_COMMIT_DIVISOR) for f in files
+        ]
 
         # hotspot_rank: descending risk_score, ties broken by insertion order
         # (stable sort) -- no secondary criterion specified, so don't invent one.

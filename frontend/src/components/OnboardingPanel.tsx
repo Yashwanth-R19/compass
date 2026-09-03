@@ -1,40 +1,20 @@
 import { X } from "lucide-react";
 import { dismissOnboardingPanel } from "../lib/onboardingPanelPref";
-
-/**
- * The landing page's "how Compass works" copy (Part I) — kept as ONE
- * exported constant specifically so session 2's move into
- * `src/content/explainability.ts` is mechanical (a straight relocation,
- * not a rewrite). Written fresh for Compass's own domain; nothing here is
- * paraphrased from any reference product's copy.
- */
-export const ONBOARDING_PANEL_CONTENT = {
-  intro:
-    "Compass turns a repository's own commit history into evidence — every number below is computed from real git data, the same way every time, never inferred by a model skimming the current tree.",
-  steps: [
-    {
-      title: "Mine the history",
-      body: "Compass clones the repository and streams its full commit log — every changeset, every author, every file touched — without guessing at anything a language model would have to hallucinate from a snapshot.",
-    },
-    {
-      title: "Compute the facts",
-      body: "Commits, files, and structural imports are parsed into a plain, deterministic dataset: who touched what, when, and what depends on what.",
-    },
-    {
-      title: "Derive the insight",
-      body: "Locked formulas run over those facts — change-coupling, calibrated risk, subsystem structure, knowledge distribution — and the exact formula behind every score is one click away.",
-    },
-  ],
-  footnote:
-    "Everything on the page you're about to see — the showcase cards, and any repository you submit — is the output of exactly this pipeline, not a summary written after the fact.",
-} as const;
+import { ONBOARDING_FOOTNOTE, ONBOARDING_INTRO, ONBOARDING_STEPS } from "../content/explainability";
 
 /** Dismissible, shown on first visit only, reopenable from the header
  * (`AppShell`'s "How Compass works" button, via
  * `lib/onboardingPanelPref.ts`). Rendered by `HomePage` when
- * `useOnboardingPanelOpen()` is true. */
+ * `useOnboardingPanelOpen()` is true.
+ *
+ * Content lives in `src/content/explainability.ts` (session 2, Part C4) --
+ * this component was session 1's original home for it, kept as one
+ * exported constant specifically so this move would be mechanical; it now
+ * just renders. */
 export function OnboardingPanel() {
-  const { intro, steps, footnote } = ONBOARDING_PANEL_CONTENT;
+  const intro = ONBOARDING_INTRO;
+  const steps = ONBOARDING_STEPS;
+  const footnote = ONBOARDING_FOOTNOTE;
 
   return (
     <section

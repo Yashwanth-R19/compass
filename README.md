@@ -109,6 +109,31 @@ flowchart TB
 
 ---
 
+## Explainability
+
+Every number Compass shows is traceable to its own derivation, in the
+product itself, not just in this document. Three small, public, read-only
+API endpoints back that:
+
+- **`GET /meta/formulas`** — every formula's real weights and thresholds,
+  read live from the engine source (never re-typed), each tagged `locked`,
+  `heuristic`, or `cited`.
+- **`GET /meta/pipeline`** — the real thirteen-stage pipeline, in real
+  execution order, read directly from the code that drives it.
+- **`GET /meta/worked-example`** — one real, pinned showcase repository's
+  actual per-stage output, so every claim on the pipeline walkthrough is
+  independently checkable against a live analysis.
+
+**[`/how-it-works`](https://compass.example/how-it-works)** is a
+stage-by-stage walkthrough of the real pipeline built on the first two;
+**[`/methods`](https://compass.example/methods)** is the formulas,
+calibration, and limitations page built on the third — including the
+limitations that look bad, since a limitations list with nothing
+inconvenient in it isn't one. *(Replace with the real deployed URLs once
+hosted — same placeholder convention as the live-demo link above.)*
+
+---
+
 ## The locked formulas
 
 Two numbers in this codebase are locked — never re-weighted, never varied per module, changed in exactly zero of the sixteen build sessions:

@@ -111,6 +111,17 @@ TOP_RISK_FILES_COUNT = 5
 whose only expert is stale", the ORPHANED_HOTSPOT rule below) -- one shared
 constant rather than a magic "5" repeated in two places."""
 
+DIFFICULTY_SUBSYSTEM_COUNT_WEIGHT = 0.25
+DIFFICULTY_MEDIAN_COMPLEXITY_WEIGHT = 0.20
+DIFFICULTY_DOC_COVERAGE_WEIGHT = 0.20
+DIFFICULTY_TRUCK_FACTOR_WEIGHT = 0.20
+DIFFICULTY_MAX_DEP_DEPTH_WEIGHT = 0.15
+"""The onboarding-difficulty formula's five weights (see module docstring --
+EXPLICITLY HEURISTIC, not locked) -- named module-level constants (session 2
+of the UI rebuild, Part A) so ``GET /meta/formulas`` reads the real, live
+values instead of a re-typed copy. Same five numbers (0.25/0.20/0.20/0.20/
+0.15) as before this session -- naming them is not a formula change."""
+
 HIGH_CHURN_CONCENTRATION_THRESHOLD = 0.5
 LOW_TRUCK_FACTOR_THRESHOLD = 2
 LOW_COHESION_SUBSYSTEM_THRESHOLD = 0.4
@@ -538,38 +549,38 @@ def compute_passport(
     doc_coverage_component = 1.0 - doc_coverage
 
     difficulty = 100.0 * (
-        0.25 * norm_subsystem_count
-        + 0.20 * norm_median_complexity
-        + 0.20 * doc_coverage_component
-        + 0.20 * truck_factor_component
-        + 0.15 * norm_max_dep_depth
+        DIFFICULTY_SUBSYSTEM_COUNT_WEIGHT * norm_subsystem_count
+        + DIFFICULTY_MEDIAN_COMPLEXITY_WEIGHT * norm_median_complexity
+        + DIFFICULTY_DOC_COVERAGE_WEIGHT * doc_coverage_component
+        + DIFFICULTY_TRUCK_FACTOR_WEIGHT * truck_factor_component
+        + DIFFICULTY_MAX_DEP_DEPTH_WEIGHT * norm_max_dep_depth
     )
 
     breakdown = {
         "subsystem_count": {
             "raw": subsystem_count,
             "normalized": norm_subsystem_count,
-            "weight": 0.25,
+            "weight": DIFFICULTY_SUBSYSTEM_COUNT_WEIGHT,
         },
         "median_file_complexity": {
             "raw": median_complexity,
             "normalized": norm_median_complexity,
-            "weight": 0.20,
+            "weight": DIFFICULTY_MEDIAN_COMPLEXITY_WEIGHT,
         },
         "doc_coverage": {
             "raw": doc_coverage,
             "normalized": doc_coverage_component,
-            "weight": 0.20,
+            "weight": DIFFICULTY_DOC_COVERAGE_WEIGHT,
         },
         "truck_factor": {
             "raw": truck_factor,
             "normalized": truck_factor_component,
-            "weight": 0.20,
+            "weight": DIFFICULTY_TRUCK_FACTOR_WEIGHT,
         },
         "max_dependency_depth": {
             "raw": max_dep_depth,
             "normalized": norm_max_dep_depth,
-            "weight": 0.15,
+            "weight": DIFFICULTY_MAX_DEP_DEPTH_WEIGHT,
         },
     }
 

@@ -126,6 +126,11 @@ describe("NarrativeBlock", () => {
     expect(screen.getByText(/gemini\/gemini-2.0-flash/i)).toBeTruthy();
     // Visually distinct container, per the session's own requirement --
     // never the same neutral surface every other card on the page uses.
-    expect(container.innerHTML).toContain("violet");
+    // Re-themed onto --color-info (session 2, Part F, rule V1: no purple or
+    // violet anywhere) -- a generated sentence must never be visually
+    // confusable with a computed one, but the hue that signals that must
+    // not be violet.
+    expect(container.innerHTML).toContain("bg-info-bg");
+    expect(container.innerHTML).not.toContain("violet");
   });
 });

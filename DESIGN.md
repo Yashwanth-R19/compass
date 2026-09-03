@@ -392,3 +392,18 @@ but out of scope for a foundation session (the mobile header nav's tight
 wrapping at 360px, `EvidencePanel`/`FindingItem`/`NarrativeBlock` left on
 the old violet-accented styling pending session 2's explicit re-theme onto
 `--color-info`).
+
+## UI rebuild session 2 update — `NarrativeBlock` re-themed onto `--color-info`
+
+`NarrativeBlock.tsx`'s generated-content box now uses `border-info`/
+`bg-info-bg`/`text-info` (already-measured tokens — see the contrast table
+above, "info on bg-elevated": 7.08:1 dark / 6.72:1 light; `--color-info-bg`
+is a low-opacity tint composited over that same surface, so its effective
+contrast is bounded by the same measurement, not a new pairing needing its
+own row) in place of the outgoing hardcoded `violet-*` Tailwind utilities
+with manual `dark:` variants. No new token was added — this session
+consumed an existing one. `NarrativeBlock.test.tsx` now asserts the
+rendered markup contains `bg-info-bg` and never the string `"violet"`.
+Nothing else about the component changed (still exactly three surfaces,
+still renders `null` with the toggle off or while loading, per rule
+V1/CLAUDE.md's own narrative-layer rules).

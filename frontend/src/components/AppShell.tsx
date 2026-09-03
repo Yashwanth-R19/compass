@@ -7,6 +7,7 @@ import { reopenOnboardingPanel } from "../lib/onboardingPanelPref";
 import { TooltipProvider } from "./ui/Tooltip";
 import { ToastProvider } from "./ui/Toast";
 import { ThemeToggle } from "./ThemeToggle";
+import { GlossaryDialog } from "./GlossaryDialog";
 
 const PRIMARY_NAV = [
   { to: "/dashboard", label: "Dashboard" },
@@ -65,23 +66,6 @@ function ReopenOnboardingButton() {
   );
 }
 
-/** Stub for session 2's real glossary dialog -- the trigger exists from
- * this session so the header's right cluster is complete, but it has no
- * content to open yet (out of scope, Part I of this session's "do not do
- * these" list). */
-function GlossaryTriggerStub() {
-  return (
-    <button
-      type="button"
-      disabled
-      title="Glossary — coming in a future session"
-      className="cp-label cursor-not-allowed text-text-muted/60"
-    >
-      Glossary
-    </button>
-  );
-}
-
 export function AppShell() {
   const me = useMe();
   const logout = useLogout();
@@ -120,7 +104,7 @@ export function AppShell() {
 
               <div className="flex items-center gap-4 text-xs">
                 <ReopenOnboardingButton />
-                <GlossaryTriggerStub />
+                <GlossaryDialog />
                 <NarrativeToggle />
                 <ThemeToggle />
 

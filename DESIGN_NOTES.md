@@ -299,3 +299,159 @@ spec's own process rules require.
    rule V2 — inherited from before this session (that file is untouched,
    session 4's job), not introduced by it, and not fixed here since fixing
    it would mean editing a repo surface's internals.
+
+---
+
+# 2026-09-03 — UI rebuild session 2 (explainability spine)
+
+`plan/UI_REBUILD_SESSIONS.md`'s own Session 2 prompt, sections 1-6 plus
+CLAUDE.md's engine/formula documentation, is the normative spec this
+session implemented: three new backend `/meta/*` endpoints,
+`src/content/explainability.ts` + `src/content/methods.ts`,
+`ScoreExplainer`, `HonestyNote`, `GlossaryDialog`, `/how-it-works`,
+`/methods`, and the `NarrativeBlock` retheme onto `--color-info` flagged
+open by session 1's own entry above.
+
+## Judgement calls made, and why
+
+1. **`app/engines/risk.py`'s three risk weights and `app/engines/
+   passport.py`'s five difficulty weights were extracted into named
+   module-level constants** (`RISK_CHURN_COMPLEXITY_WEIGHT` etc.,
+   `DIFFICULTY_SUBSYSTEM_COUNT_WEIGHT` etc.) — the one backend change this
+   session made beyond the three new files, and squarely inside decision
+   #4's "backend changes are permitted where the UI genuinely cannot
+   explain something without them." Before this change those eight
+   numbers were inline literals in the formula expressions themselves;
+   `GET /meta/formulas`'s entire reason for existing — "if a weight
+   changes, this endpoint changes with it" — is structurally impossible
+   without a named constant to import. Same values, same order of
+   operations, verified by `black`/`ruff`/`mypy` all passing clean and by
+   `tests/test_meta.py` asserting the API response equals the constant
+   read directly off the module.
+2. **The five FACT stages' `engines` list in `GET /meta/pipeline` is a
+   small hand-written table** (`_FACT_STAGE_ENGINES` in `app/api/meta.py`),
+   not introspected off `app/jobs/stages.py::FACT_STAGES` — that tuple's
+   own `Stage.callables` field is deliberately empty for fact stages (its
+   own docstring: each one's local state doesn't fit the uniform Engine
+   signature, so `run_ingestion_job` runs their bodies inline instead).
+   There is nothing to introspect. Transcribed from CLAUDE.md's own
+   pipeline diagram (`clone_repo`, `mine_repo`,
+   `extract_structural_edges`/`extract_manifests`/
+   `extract_declared_dependencies`, `persist_facts`, `scan_history`) —
+   the same "hand-written, cited from the authoritative doc" discipline
+   the session prompt itself prescribes for stage `description`s.
+3. **The `expertise` FormulaGroup's "also measured (not scored)" list
+   includes "Changes to this file" even though `DL` (the same
+   underlying count) is literally one of the three weighted terms in the
+   DOA formula itself.** Section 5.2's own text names exactly this triple
+   ("people/DOA — `changes` (DL), `last_touched_at`, `is_stale`") for that
+   block. Implemented literally rather than re-interpreted, on the
+   reading that the `/expertise` API's `changes` field is displayed as
+   supporting evidence alongside an expert assignment, separate from the
+   FA/DL/AC contribution rows a live embedding would render — but this is
+   a genuine tension in the source spec worth a second look once session
+   3/4 actually places `ScoreExplainer` on `PeoplePage`.
+4. **`health` and `onboarding_difficulty`'s "also measured" blocks render
+   a note only, with no item list** — section 5.2 states plainly that
+   `cycle_count`/`hidden_dependency_count` (health) and every
+   `difficulty_breakdown` component (onboarding difficulty) ARE scored,
+   so listing them under "also measured (NOT scored)" would misrepresent
+   them. `FormulaCopyEntry.alsoMeasured` is `undefined` for both; only
+   `alsoMeasuredNote` (the clarifying sentence about the two different
+   0.60/0.70 thresholds, and about which three of five terms go through
+   `norm()`) renders.
+5. **`src/lib/copy.ts` and `src/lib/copy.test.ts` were left completely
+   untouched**, per decision #11 ("`src/lib/*.test.ts` must keep passing
+   untouched"). `src/content/copy.ts` is a one-line `export *` re-export
+   instead of a physical move, so "one content module owns every
+   user-facing string" (section 5, point 2) is true of the *import
+   surface* (`from "../content"` or `from "../content/copy"` both work)
+   without touching a protected file for zero functional gain.
+6. **`NOT_AI_WRAPPER_POINTS` and `WHAT_COMPASS_DOES_NOT_DO` live in
+   `content/explainability.ts`, not `content/methods.ts`**, even though
+   they were first drafted there — both belong to `/how-it-works` (Part
+   D), and `content/methods.ts`'s own docstring scopes it to `/methods`
+   (Part E) content only. Moved before either page was wired up, so
+   there's no churn to note beyond this line.
+7. **`GlossaryDialog` is a new, self-contained Radix `Dialog` (centered
+   modal), not a reuse of the existing `Drawer` (right-edge slide-in).**
+   `Drawer`'s own shape is a deliberate design choice for a detail panel
+   that shouldn't navigate away from what triggered it; a searchable,
+   scannable term list reads better centered, the same shape Aporia-style
+   glossary dialogs generally use. Both share Radix's focus-trap/Escape/
+   focus-return machinery underneath, so there's no accessibility
+   regression from not reusing `Drawer` specifically.
+8. **`MethodsPage`'s locked/heuristic/cited status pill does NOT reuse
+   `Badge`'s `high`/`med`/`low` severity tones**, even though they were
+   the closest three-tone option already in the primitive. Severity tones
+   read as an implicit ranking (high worse than low); locked/heuristic/
+   cited is a classification, not a ranking, and borrowing severity's
+   visual language would wrongly suggest "cited" is somehow better or
+   worse than "locked." A small local three-tone treatment
+   (`STATUS_CLASS` in `MethodsPage.tsx`) reuses existing semantic tokens
+   (`text-heading`/`warning`/`info`) instead.
+9. **`CORPUS_REPO_LIST_URL` links to this project's own real GitHub
+   remote** (`https://github.com/Yashwanth-R19/compass/blob/main/...`),
+   confirmed via `git remote -v` before writing it rather than guessed —
+   the one live external link this session added.
+10. **`useFormulas`/`usePipeline`/`useWorkedExample` all use plain
+    `apiGet`, never `apiGetOrPending`** — none of the three
+    `/meta/*` endpoints is scoped to a repo or a run, so the whole
+    202-while-pending contract (`_pending_response`, CLAUDE.md's Analysis
+    API section) simply doesn't apply to them; `GET /meta/worked-example`
+    answers its own "nothing to show yet" case with a 200 `null` body
+    instead, which the frontend type (`WorkedExampleResponse | null`)
+    already models directly.
+
+## Structural observations noticed, not fixed this session
+
+1. **`HeuristicNote.tsx` (built session 1, listed in that session's own
+   "rebuild these" set) still holds its calibration wording as two
+   component-local string constants**, not sourced from
+   `content/explainability.ts`'s new `CALIBRATION_COPY`. Part C of this
+   session names exactly four components to build (`ScoreExplainer`,
+   `HonestyNote`, `GlossaryDialog`, `OnboardingPanel`) — `HeuristicNote`
+   isn't one of them, and retrofitting a component nobody asked this
+   session to touch, purely to satisfy the "no inline copy" rule's
+   *spirit*, risked exactly the kind of scope creep `plan/RULES.md`
+   warns against. `CALIBRATION_COPY`'s wording was written to be
+   reusable here directly (not copied from `HeuristicNote`, but
+   compatible with it) — folding the two together is a natural, cheap
+   pickup for whichever of session 3/4 next touches `RiskPage`/
+   `HealthPage`/`PassportPage` (the only three current call sites).
+2. **`ScoreExplainer` and `HonestyNote` have no live embedding on any
+   page yet** — by design (Part C: "ready for sessions 3 and 4 to
+   place"), their only current consumers are their own test suites. The
+   props contract (`ScoreExplainerContribution`/
+   `ScoreExplainerAlsoMeasuredValue`) is deliberately generic rather than
+   inferred from one specific page's data shape, since there was no real
+   caller yet to shape it against — worth a second look once `RiskPage`
+   is actually rebuilt, in case the real data shape wants a small
+   adjustment.
+3. **`ArchitecturePage.tsx`'s 🎉 emoji** (rule V2, flagged by session 1's
+   entry above) is still there — still untouched, still session 4's job.
+4. **`/meta/formulas` spot-check against the live engine source** (Part
+   G's own required step): `RISK_CHURN_COMPLEXITY_WEIGHT = 0.60`
+   (`backend/app/engines/risk.py:28`), `MIN_SHARED_REVS = 5`
+   (`backend/app/engines/coupling.py:28`), and
+   `CYCLE_PENALTY_PER_CYCLE = 6.0` (`backend/app/engines/health.py:19`)
+   were each grepped directly and confirmed to match
+   `app/api/meta.py::get_formulas`'s corresponding
+   `risk_engine_module.RISK_CHURN_COMPLEXITY_WEIGHT`/
+   `coupling_engine_module.MIN_SHARED_REVS`/`health.CYCLE_PENALTY_PER_CYCLE`
+   reads verbatim (module-attribute reads, never re-typed literals).
+5. **`/how-it-works` and `/methods` were verified against a real,
+   running dev server with NO backend behind it** (a genuine
+   `ERR_CONNECTION_REFUSED` for every `/meta/*` call, via a throwaway
+   headless-Chromium Playwright script — not a mock), in both colour
+   schemes and at 360px: both pages render fully and coherently with
+   every degrade path engaged at once (`pipeline.data` absent →
+   `EMPTY_MESSAGES.pipelineUnavailable`; `workedExample.data` absent →
+   `EMPTY_MESSAGES.workedExampleUnavailable`, every stage section still
+   renders its description with its example line simply omitted) — no
+   blank sections, no literal `"undefined"`/`"null"` anywhere in the
+   rendered text (checked programmatically, not just by eye), no
+   horizontal overflow at 360px. `GlossaryDialog` was separately
+   exercised end-to-end (open, type a search term, confirm the list
+   filters, confirm `Escape` closes it and focus returns to the trigger
+   button) against the same live dev server.

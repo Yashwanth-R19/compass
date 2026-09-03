@@ -23,9 +23,11 @@ import type {
   ModuleCouplingResponse,
   MyGithubReposResponse,
   MyReposResponse,
+  FormulasResponse,
   NarrativeResponse,
   NarrativeSurface,
   PassportResponse,
+  PipelineResponse,
   PortfolioAnalyzeResponse,
   PortfolioQueueResponse,
   PortfolioResponse,
@@ -43,6 +45,7 @@ import type {
   TruckFactorResponse,
   UserOut,
   VulnerabilitiesResponse,
+  WorkedExampleResponse,
 } from "./types";
 
 const POLL_INTERVAL_MS = 1500;
@@ -606,6 +609,48 @@ export function usePortfolio(enabled: boolean) {
     queryKey: ["portfolio"],
     queryFn: () => apiGet<PortfolioResponse>("/portfolio"),
     enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// --- UI rebuild session 2, Part A: the explainability spine ---------------
+// None of these three is repo-scoped or run-scoped -- they describe how
+// Compass computes, never one repository's own data -- so all three are
+// plain apiGet, never apiGetOrPending, and never take a `share` param. Each
+// has a long staleTime: the underlying engine constants/pipeline shape only
+// change when a session edits the backend, never within one browser visit.
+
+/** `GET /meta/formulas` -- the real, live weights/thresholds every
+ * ScoreExplainer renders arithmetic from (section 5.4's single-source-of-
+ * truth rule: no formula constant is ever written in TypeScript). */
+export function useFormulas() {
+  return useQuery({
+    queryKey: ["meta-formulas"],
+    queryFn: () => apiGet<FormulasResponse>("/meta/formulas"),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/** `GET /meta/pipeline` -- the thirteen real stages, in real execution
+ * order, HowItWorksPage's scroll-spy stepper is built from. */
+export function usePipeline() {
+  return useQuery({
+    queryKey: ["meta-pipeline"],
+    queryFn: () => apiGet<PipelineResponse>("/meta/pipeline"),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/** `GET /meta/worked-example` -- one real, pinned showcase repository's
+ * real per-stage figures. The endpoint itself returns `null` (not a 404)
+ * when no showcase repository has reached a ready run yet -- `data` is
+ * `null` in exactly that case, which HowItWorksPage renders by omitting
+ * every stage's example line rather than erroring (per that page's own
+ * "must render fully with the worked example unavailable" requirement). */
+export function useWorkedExample() {
+  return useQuery({
+    queryKey: ["meta-worked-example"],
+    queryFn: () => apiGet<WorkedExampleResponse | null>("/meta/worked-example"),
     staleTime: 5 * 60 * 1000,
   });
 }

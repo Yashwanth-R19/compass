@@ -38,7 +38,7 @@ export function NarrativeBlock({
 
   if (query.isError || !query.data?.available) {
     return (
-      <p className="mt-2 text-xs text-ink-faint">
+      <p className="mt-2 text-xs text-text-muted">
         Narrative unavailable — the computed data above is unaffected.
       </p>
     );
@@ -47,12 +47,12 @@ export function NarrativeBlock({
   const { content, provider, model } = query.data;
 
   return (
-    <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-2.5 dark:border-violet-500/20 dark:bg-violet-500/10">
-      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-violet-500 dark:text-violet-400">
+    <div className="mt-2 rounded-lg border border-info bg-info-bg px-3 py-2.5">
+      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-info">
         Generated phrasing of the metrics above — the numbers are computed
         {provider && model ? ` · ${provider}/${model}` : ""}
       </p>
-      <p className="text-sm text-violet-950 dark:text-violet-100">{content}</p>
+      <p className="text-sm text-text">{content}</p>
     </div>
   );
 }

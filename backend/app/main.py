@@ -9,6 +9,7 @@ from app.api import (
     internal,
     jobs,
     me,
+    meta,
     narrative,
     portfolio,
     repos,
@@ -66,6 +67,7 @@ app.add_middleware(RequestContextMiddleware)
 
 app.include_router(health.router)
 app.include_router(internal.router)
+app.include_router(meta.router)
 app.include_router(auth.router)
 app.include_router(repos.router)
 app.include_router(jobs.router)
