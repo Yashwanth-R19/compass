@@ -113,6 +113,19 @@ export function ScoreExplainer({
           <p className="text-text-muted">{copy?.summary}</p>
         )}
 
+        {/* A cited formula (e.g. degree of authorship) is marked and sourced
+            explicitly here -- this is not Compass's own invention, and the
+            distinction between "we decided this" and "the literature
+            established this" is exactly the credibility this component
+            exists to carry (section 5.1/5.2 -- three visually/verbally
+            distinct statuses). */}
+        {group?.status === "cited" && group.citation ? (
+          <p className="flex items-start gap-1.5 text-xs text-text-muted">
+            <span className="cp-label shrink-0 text-accent">Cited</span>
+            <span>{group.citation}</span>
+          </p>
+        ) : null}
+
         {/* 2. Range note */}
         {copy ? <p className="text-xs text-text-muted">{copy.rangeNote}</p> : null}
 

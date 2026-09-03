@@ -20,7 +20,7 @@ import {
 import { ownerColor, recencyColor, riskColor } from "../lib/metricColor";
 import { colorForSubsystem, UNASSIGNED_COLOR } from "../lib/subsystemColors";
 import { CHROME, RISK_HIGH, RISK_LOW, RECENCY_FRESH } from "../lib/chartTheme";
-import { Card } from "./Card";
+import { Card } from "./ui/Card";
 import { DirectoryTreemap } from "./DirectoryTreemap";
 import { FileDetailPanel } from "./FileDetailPanel";
 import { ModeSelect } from "./ModeSelect";
@@ -221,6 +221,11 @@ const LABEL_HIDE_DISTANCE = 260;
  * distance itself via useFrame with an internal ref-guarded setState (only
  * fires a re-render on the boolean actually flipping), so this doesn't
  * force the whole scene to re-render every frame. */
+// DistrictLabels' and HoverTooltip's own colours below are, like
+// GROUND_COLOR/OUTSKIRTS_PLATE_COLOR above, deliberately NOT theme-reactive
+// -- these are in-3D-space HTML overlays (drei's <Html>) rendered against
+// the scene's own fixed dark ground/lighting, not page chrome, so a light
+// theme toggle must not wash them out against that dark backdrop.
 function DistrictLabels({ districts, center }: { districts: District[]; center: THREE.Vector3 }) {
   const [visible, setVisible] = useState(true);
   const lastVisible = useRef(true);
@@ -487,7 +492,7 @@ export function CodeCity({ repoId, city }: { repoId: string; city: CityResponse 
 
       <div
         ref={containerRef}
-        className="relative h-[640px] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-950 dark:border-slate-800"
+        className="relative h-[640px] w-full overflow-hidden rounded-lg border border-border bg-bg-subtle"
       >
         <Canvas
           key={focusPath ?? "default"}
@@ -564,8 +569,8 @@ function Legend({
   districts: District[];
 }) {
   return (
-    <Card title="Legend">
-      <p className="text-xs text-ink-muted">
+    <Card eyebrow="Legend">
+      <p className="text-xs text-text-muted">
         Footprint area = lines of code. Height = {HEIGHT_MODE_LABEL[heightMetric].toLowerCase()}.
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -573,7 +578,7 @@ function Legend({
           districts.map((d) => (
             <span
               key={d.id}
-              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-ink-muted dark:bg-slate-800"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"
             >
               <span
                 className="h-2.5 w-2.5 rounded-full"
@@ -602,7 +607,7 @@ function Legend({
             <Swatch color={TEST_COLOR} label="Test" />
           </>
         ) : (
-          <p className="text-[11px] text-ink-muted">
+          <p className="text-[11px] text-text-muted">
             Colour = principal author. Hover a building to see who.
           </p>
         )}
@@ -623,7 +628,7 @@ function GradientLegend({
   highColor: string;
 }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-ink-muted">
+    <div className="flex items-center gap-2 text-[11px] text-text-muted">
       <span>{lowLabel}</span>
       <span
         className="h-2.5 w-24 rounded-full"
@@ -636,7 +641,7 @@ function GradientLegend({
 
 function Swatch({ color, label }: { color: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-muted">
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
       {label}
     </span>

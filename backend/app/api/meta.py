@@ -50,7 +50,7 @@ from app.db.models import (
 )
 from app.db.models import Repo as RepoModel
 from app.engines import coupling as coupling_engine_module
-from app.engines import expertise, health, hygiene, module_coupling, passport
+from app.engines import expertise, glossary, health, hygiene, module_coupling, passport
 from app.engines import risk as risk_engine_module
 from app.engines import subsystems as subsystems_module
 from app.engines import test_gaps as test_gaps_module
@@ -499,6 +499,32 @@ def get_formulas() -> FormulasResponse:
                     "Edge weight multiplier applied to this run's own coupling_degree -- "
                     "weighted higher than a single import, since a persistent co-change "
                     "relationship is stronger evidence.",
+                ),
+            ],
+        ),
+        FormulaGroup(
+            key="glossary",
+            label="Domain glossary",
+            status="heuristic",
+            formula=("score = log(1 + occurrences) x " "(1 + subsystem_spread / total_subsystems)"),
+            constants=[
+                _c(
+                    "min_token_length",
+                    glossary.MIN_TOKEN_LENGTH,
+                    "A tokenized identifier or file-stem fragment shorter than this many "
+                    "characters is dropped as noise before scoring.",
+                ),
+                _c(
+                    "max_glossary_terms",
+                    glossary.MAX_GLOSSARY_TERMS,
+                    "Only the top-N ranked terms by score are kept.",
+                ),
+                _c(
+                    "max_defining_paths_per_term",
+                    glossary.MAX_DEFINING_PATHS_PER_TERM,
+                    "Up to this many defining files are linked per term, preferring "
+                    "exported class/interface/type symbols over a term that only "
+                    "appears inside a function body.",
                 ),
             ],
         ),

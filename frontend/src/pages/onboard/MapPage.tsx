@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link, useOutletContext, useSearchParams } from "react-router-dom";
+import { lazy, Suspense, useMemo, useState } from "react";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import ForceGraph2D from "react-force-graph-2d";
 import {
   useArchitecture,
@@ -10,24 +10,40 @@ import {
   useSubsystems,
 } from "../../api/hooks";
 import type { CityResponse, ModuleCouplingPairOut, SubsystemsResponse } from "../../api/types";
-import { Card } from "../../components/Card";
+import { Card } from "../../components/ui/Card";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { InfoTooltip } from "../../components/ui/InfoTooltip";
+import { ColorModeLegend, type ColorLegendMode } from "../../components/ColorModeLegend";
 import { DirectoryTreemap } from "../../components/DirectoryTreemap";
 import { FileDetailPanel } from "../../components/FileDetailPanel";
 import { GraphCanvas } from "../../components/GraphCanvas";
 import { GraphCapNotice } from "../../components/GraphCapNotice";
+import { HonestyNote } from "../../components/HonestyNote";
+import { LoadingState } from "../../components/LoadingState";
 import { ModeSelect } from "../../components/ModeSelect";
 import { StageGate } from "../../components/StageGate";
 import { useCappedGraph, type CappableEdge, type CappableNode } from "../../hooks/useGraphCap";
-import { toCityFile, type CityFile } from "../../lib/cityFile";
-import { fileName } from "../../lib/format";
+import { cityContributorNameById, toCityFile, type CityFile } from "../../lib/cityFile";
+import { fileName, formatPercent, formatScore } from "../../lib/format";
 import { average, majority, ownerColor, recencyColor, riskColor } from "../../lib/metricColor";
 import { colorForSubsystem, UNASSIGNED_COLOR } from "../../lib/subsystemColors";
 import { CHROME, SEVERITY_COLOR } from "../../lib/chartTheme";
+import { HONESTY, TOOLTIPS } from "../../content/explainability";
 import type { RepoOutletContext } from "../RepoLayout";
 
-type ColorMode = "subsystem" | "risk" | "owner" | "recency";
+// Lazy-loaded so a user who never opens the 3D city view never downloads
+// three.js/@react-three/fiber/@react-three/drei (session 09, Part F -- "a
+// user who never opens the city page never downloads them"). This dynamic
+// import is what makes Vite emit a SEPARATE chunk for CodeCity.tsx and
+// everything it pulls in; verify with `npm run build` and check the output
+// for a distinct chunk file, don't assume this line alone is sufficient.
+const CodeCity = lazy(() =>
+  import("../../components/CodeCity").then((m) => ({ default: m.CodeCity })),
+);
+
+type ColorMode = ColorLegendMode;
 type EdgeMode = "structural" | "coupling" | "both";
-type MapView = "graph" | "treemap";
+type MapView = "graph" | "treemap" | "city";
 
 const COLOR_MODE_LABEL: Record<ColorMode, string> = {
   subsystem: "Subsystem",
@@ -36,11 +52,24 @@ const COLOR_MODE_LABEL: Record<ColorMode, string> = {
   recency: "Recency",
 };
 
+const COLOR_MODE_TOOLTIP: Record<ColorMode, string> = {
+  subsystem: TOOLTIPS.subsystem,
+  risk: TOOLTIPS.riskScore,
+  owner: TOOLTIPS.principalAuthor,
+  recency: TOOLTIPS.recency,
+};
+
 const EDGE_MODE_LABEL: Record<EdgeMode, string> = {
   structural: "Structural imports only",
   coupling: "Coupling only",
   both: "Both",
 };
+
+const EDGE_MODE_TOOLTIP =
+  "Structural = an import/require detected directly in source code. Coupling = files that " +
+  "change together across commit history, whether or not either imports the other. A hidden " +
+  "dependency -- coupled with no structural edge -- is drawn amber, thicker, and dashed, never " +
+  "by colour alone.";
 
 // --- Shared city-derived lookups --------------------------------------------
 // The map page's flagship interaction (expand a subsystem into its files,
@@ -69,13 +98,27 @@ function useCityLookups(city: CityResponse | undefined): CityLookups | null {
   }, [city]);
 }
 
-/** Never opens at file level (CLAUDE.md's semantic-zoom rule): the default
- * view is the subsystem graph, collapsed. Switching to the treemap or
- * expanding a subsystem are both explicit user actions. */
+/** Merges the former Map/Treemap/City pages behind `?view=` (UI rebuild
+ * session 3, Part B). Never opens at file level (CLAUDE.md's semantic-zoom
+ * rule): the default view is the subsystem graph, collapsed. Switching to
+ * the treemap/city or expanding a subsystem are both explicit user
+ * actions. */
 export function MapPage() {
   const { repo, share } = useOutletContext<RepoOutletContext>();
-  const [searchParams] = useSearchParams();
-  const [view, setView] = useState<MapView>((searchParams.get("view") as MapView) ?? "graph");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get("view");
+  const view: MapView = rawView === "treemap" || rawView === "city" ? rawView : "graph";
+
+  function setView(next: string) {
+    setSearchParams(
+      (prev) => {
+        const merged = new URLSearchParams(prev);
+        merged.set("view", next);
+        return merged;
+      },
+      { replace: true },
+    );
+  }
 
   const subsystems = useSubsystems(repo.id, true, share);
   const moduleCoupling = useModuleCoupling(repo.id, "subsystem", share);
@@ -86,38 +129,16 @@ export function MapPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
-          <button
-            type="button"
-            onClick={() => setView("graph")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              view === "graph"
-                ? "bg-indigo-600 text-white"
-                : "text-ink-muted hover:bg-slate-100 dark:hover:bg-slate-800"
-            }`}
-          >
-            Subsystem graph
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("treemap")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              view === "treemap"
-                ? "bg-indigo-600 text-white"
-                : "text-ink-muted hover:bg-slate-100 dark:hover:bg-slate-800"
-            }`}
-          >
-            Treemap
-          </button>
-        </div>
-        <Link
-          to={`/repos/${repo.id}/onboard/city`}
-          className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-        >
-          View as 3D city →
-        </Link>
-      </div>
+      <SegmentedControl
+        aria-label="Map view"
+        value={view}
+        onValueChange={setView}
+        options={[
+          { value: "graph", label: "Subsystem graph" },
+          { value: "treemap", label: "Treemap" },
+          { value: "city", label: "3D City" },
+        ]}
+      />
 
       {view === "graph" ? (
         <StageGate
@@ -141,7 +162,7 @@ export function MapPage() {
             />
           )}
         </StageGate>
-      ) : (
+      ) : view === "treemap" ? (
         <StageGate
           query={city}
           loadingLabel="Loading file metrics for the treemap…"
@@ -149,6 +170,19 @@ export function MapPage() {
           isEmpty={(data) => data.files.rows.length === 0}
         >
           {(cityData) => <DirectoryTreemap city={cityData} />}
+        </StageGate>
+      ) : (
+        <StageGate
+          query={city}
+          loadingLabel="Loading the city payload…"
+          emptyTitle="No files yet"
+          isEmpty={(data) => data.files.rows.length === 0}
+        >
+          {(cityData) => (
+            <Suspense fallback={<LoadingState label="Loading the 3D city renderer…" />}>
+              <CodeCity repoId={repo.id} city={cityData} />
+            </Suspense>
+          )}
         </StageGate>
       )}
     </div>
@@ -264,6 +298,18 @@ function SubsystemGraphView({
     const map = new Map<string, string>();
     for (const s of subsystemsData.subsystems) {
       for (const m of s.members ?? []) map.set(m.file_path, s.label);
+    }
+    return map;
+  }, [subsystemsData]);
+
+  // path -> PageRank centrality, from /subsystems' own member rows -- the
+  // ONE place this graph's own centrality values live; never recomputed
+  // client-side (CLAUDE.md: PageRank is computed once, server-side, over
+  // the whole combined graph).
+  const centralityByPath = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of subsystemsData.subsystems) {
+      for (const m of s.members ?? []) map.set(m.file_path, m.centrality);
     }
     return map;
   }, [subsystemsData]);
@@ -499,13 +545,27 @@ function SubsystemGraphView({
     return bounds ? recencyColor(value, bounds.min, bounds.max) : UNASSIGNED_COLOR;
   }
 
+  const contributorNameById = useMemo(
+    () => (city ? cityContributorNameById(city) : new Map<number, string>()),
+    [city],
+  );
   const selectedCityFile = selectedFile ? cityLookups?.byPath.get(selectedFile) : undefined;
+  const selectedExpertName =
+    selectedCityFile?.principalExpertId != null
+      ? (contributorNameById.get(selectedCityFile.principalExpertId) ?? null)
+      : null;
+
+  const noStructuralOrCouplingEdges = archEdges.length === 0 && couplingPairs.length === 0;
+  const visibleSubsystemLabels = expanded
+    ? subsystemsData.subsystems.filter((s) => s.label !== expanded).map((s) => s.label)
+    : subsystemsData.subsystems.map((s) => s.label);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-4">
         <ModeSelect
           label="Colour by"
+          tooltip={COLOR_MODE_TOOLTIP[colorMode]}
           value={colorMode}
           onChange={setColorMode}
           options={COLOR_MODE_LABEL}
@@ -513,23 +573,24 @@ function SubsystemGraphView({
         />
         <ModeSelect
           label="Edges"
+          tooltip={EDGE_MODE_TOOLTIP}
           value={edgeMode}
           onChange={setEdgeMode}
           options={EDGE_MODE_LABEL}
         />
         {expanded ? (
-          <span className="text-xs text-ink-muted">
-            Expanded: <span className="font-medium text-ink-muted">{expanded}</span>{" "}
+          <span className="text-xs text-text-muted">
+            Expanded: <span className="font-medium text-text">{expanded}</span>{" "}
             <button
               type="button"
               onClick={() => setExpanded(null)}
-              className="ml-1 text-indigo-600 hover:underline dark:text-indigo-400"
+              className="ml-1 text-accent hover:underline"
             >
               collapse
             </button>
           </span>
         ) : (
-          <span className="text-xs text-ink-faint">
+          <span className="text-xs text-text-muted">
             Click a subsystem to expand it into its files.
           </span>
         )}
@@ -580,32 +641,62 @@ function SubsystemGraphView({
               />
             )}
           </GraphCanvas>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <ColorModeLegend mode={colorMode} subsystemLabels={visibleSubsystemLabels} />
+          </div>
         </Card>
 
         <div className="flex flex-col gap-4">
-          <Card title="Subsystems" subtitle={`${subsystemsData.subsystems.length} detected`}>
-            <ul className="flex flex-col divide-y divide-slate-100 text-sm dark:divide-slate-800">
+          <Card
+            eyebrow="Subsystems"
+            action={<InfoTooltip label="What is a subsystem?" text={TOOLTIPS.subsystem} />}
+          >
+            <p className="mb-2 flex items-center gap-1.5 text-xs text-text-muted">
+              <span>{subsystemsData.subsystems.length} detected</span>
+              <span className="text-text-muted/50">·</span>
+              <span>Modularity {formatScore(subsystemsData.modularity, 2)}</span>
+              <InfoTooltip label="What is modularity?" text={TOOLTIPS.modularity} />
+            </p>
+            <ul className="flex flex-col divide-y divide-border text-sm">
               {subsystemsData.subsystems.map((s) => (
-                <li key={s.label} className="flex items-center justify-between gap-2 py-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExpanded((current) => (current === s.label ? null : s.label));
-                      setSelectedFile(null);
-                    }}
-                    className="flex items-center gap-2 truncate text-left hover:underline"
-                  >
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: colorForSubsystem(s.label) }}
-                    />
-                    <span className={expanded === s.label ? "font-semibold" : ""}>{s.label}</span>
-                  </button>
-                  <span className="shrink-0 text-xs text-ink-faint">{s.file_count} files</span>
+                <li key={s.label} className="flex flex-col gap-1 py-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpanded((current) => (current === s.label ? null : s.label));
+                        setSelectedFile(null);
+                      }}
+                      className="flex items-center gap-2 truncate text-left hover:underline"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: colorForSubsystem(s.label) }}
+                      />
+                      <span className={expanded === s.label ? "font-semibold" : ""}>{s.label}</span>
+                    </button>
+                    <span className="shrink-0 text-xs text-text-muted">{s.file_count} files</span>
+                  </div>
+                  <div className="flex items-center gap-2 pl-5">
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-bg-inset">
+                      <div
+                        className="h-full rounded-full bg-accent"
+                        style={{ width: `${Math.round(s.cohesion * 100)}%` }}
+                      />
+                    </div>
+                    <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-text-muted">
+                      {formatPercent(s.cohesion)} cohesion
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
           </Card>
+
+          {noStructuralOrCouplingEdges ? (
+            <HonestyNote variant="scope-limitation" text={HONESTY.pageRankUniformOnEdgelessGraph} />
+          ) : null}
 
           {selectedFile ? (
             <FileDetailPanel
@@ -614,7 +705,9 @@ function SubsystemGraphView({
               loc={selectedCityFile?.loc}
               complexity={selectedCityFile?.complexity}
               riskScore={selectedCityFile?.riskScore}
+              centrality={centralityByPath.get(selectedFile) ?? null}
               subsystemLabel={fileSubsystemLabel.get(selectedFile) ?? null}
+              expertName={selectedExpertName}
               onClose={() => setSelectedFile(null)}
             />
           ) : null}

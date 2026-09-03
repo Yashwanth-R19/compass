@@ -60,6 +60,15 @@ export const ONBOARDING_FOOTNOTE =
 export type TooltipKey =
   | "riskScore"
   | "riskConfidence"
+  // UI rebuild session 3 additions -- Overview's difficulty breakdown rows
+  // and team/cadence cards, and People's "who do I ask" flagship search.
+  | "subsystemCount"
+  | "medianComplexity"
+  | "maxDependencyDepth"
+  | "botCommitRatio"
+  | "commitCadence"
+  | "principalAuthor"
+  | "recency"
   | "churnTotal"
   | "churnWeighted"
   | "complexity"
@@ -195,6 +204,20 @@ export const TOOLTIPS: Record<TooltipKey, string> = {
     "The top files by cumulative churn AS OF one historical snapshot — deliberately never called 'risk' at that point in time, since complexity was never measured historically and the locked risk formula needs it.",
   engineVersion:
     "Which version of the analysis formulas produced a given run. Bumped only when a measurement genuinely changes (for example, session 07's switch from raw churn to recency-weighted churn) — comparing two runs across a version boundary is legitimate, but some of the movement may reflect the measurement change rather than the code.",
+  subsystemCount:
+    "How many subsystems the repository was partitioned into — one of the five terms in the onboarding difficulty score. More subsystems generally means more structure a newcomer has to hold in their head at once.",
+  medianComplexity:
+    "The median cyclomatic complexity across the repository's files — one of the five terms in the onboarding difficulty score. The median, not the mean, so a handful of extreme outliers don't dominate a repository-wide reading the way they deliberately do for a single file's own risk score.",
+  maxDependencyDepth:
+    "The longest shortest-path from any detected entry point through the dependency graph — one of the five terms in the onboarding difficulty score. A deep chain means tracing execution from where a program starts to a specific piece of behavior takes many hops.",
+  botCommitRatio:
+    "The proportion of commits authored by an identity flagged as a bot (a name ending in the literal `[bot]` suffix, e.g. dependabot) — bots are counted here but excluded entirely from expertise/truck-factor modelling.",
+  commitCadence:
+    "Commit counts over the three most recent windows relative to this run's own start time (last 30, 90, and 365 days) — the closest thing to an activity trend Compass computes; no endpoint returns a full commit-by-day time series, so this is three real numbers, not an interpolated curve.",
+  principalAuthor:
+    "The contributor with the highest Degree of Authorship for a file — its most likely single point of contact, not necessarily its most recent editor or most frequent committer.",
+  recency:
+    "How recently a file was last modified, on a scale between the oldest and most recently touched file in this view. Not a measure of quality or risk on its own — a stale file may simply be finished and stable.",
 };
 
 // ---------------------------------------------------------------------------
@@ -448,6 +471,12 @@ export const FORMULA_COPY: Record<string, FormulaCopyEntry> = {
     rangeNote:
       "A (metric, language, size bucket) cell needs enough contributing corpus repositories before a percentile at that exact grain is trusted.",
   },
+  glossary_term_score: {
+    summary:
+      "How often a term occurs across the codebase, boosted by how many different subsystems it appears in.",
+    rangeNote:
+      "No fixed upper bound — a term used constantly across every subsystem scores highest; a term confined to one subsystem's internal jargon scores lower even at the same occurrence count.",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -505,4 +534,13 @@ export const HONESTY = {
     "This comparison broadened past the exact language-and-size-bucket cell because too few corpus repositories matched it exactly — treat it as a coarser comparison.",
   compareEngineVersionDiffers:
     "These two runs used different engine versions. A prior change altered how an input is measured (for example, churn) — some movement shown here may reflect that measurement change rather than a real change in the code.",
+  // UI rebuild session 3 additions -- the Map and People surfaces.
+  pageRankUniformOnEdgelessGraph:
+    "PageRank returns a uniform distribution on a graph with no detected import or coupling edges — every file gets the same centrality score. This correctly reflects the absence of structural data, not a computation error; centrality is not discriminating on a repository like this.",
+  staleMeasuredAgainstRepoActivity:
+    "Staleness is measured against this repository's own most recent commit, never against today's date. An archived repository whose whole team was active right up until its last commit has nobody stale, even though every timestamp looks old by the wall clock.",
+  botsExcludedFromAuthorship:
+    "Bot commits are excluded from authorship modelling entirely, not merely down-weighted. A file only ever touched by a bot — a lockfile only a dependency-update bot edits, for example — has no expert at all, rather than a weak one.",
+  identityMergingIsRuleBasedNotFuzzy:
+    "Contributor identities are merged by deterministic, rule-based matching only — an exact email, a GitHub noreply address, an exact name, or a shared email local part — never fuzzy string similarity. A missed merge only slightly undercounts one person's activity; a false merge would put someone else's history under the wrong name, which is the worse mistake to risk.",
 } as const;

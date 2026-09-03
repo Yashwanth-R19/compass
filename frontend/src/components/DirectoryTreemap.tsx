@@ -4,10 +4,13 @@ import { toCityFiles, type CityFile } from "../lib/cityFile";
 import { average, majority, ownerColor, recencyColor, riskColor } from "../lib/metricColor";
 import { colorForSubsystem, UNASSIGNED_COLOR } from "../lib/subsystemColors";
 import { layoutTreemap, type TreemapNode } from "../lib/treemapLayout";
-import { Card } from "./Card";
+import { Card } from "./ui/Card";
+import { Alert } from "./ui/Alert";
+import { ColorModeLegend } from "./ColorModeLegend";
 import { EmptyState } from "./EmptyState";
 import { GraphCanvas } from "./GraphCanvas";
 import { ModeSelect } from "./ModeSelect";
+import { TOOLTIPS } from "../content/explainability";
 
 export type TreemapColorMode = "subsystem" | "risk" | "owner" | "recency";
 
@@ -16,6 +19,13 @@ export const TREEMAP_COLOR_MODE_LABEL: Record<TreemapColorMode, string> = {
   risk: "Risk",
   owner: "Principal author",
   recency: "Recency",
+};
+
+const TREEMAP_COLOR_MODE_TOOLTIP: Record<TreemapColorMode, string> = {
+  subsystem: TOOLTIPS.subsystem,
+  risk: TOOLTIPS.riskScore,
+  owner: TOOLTIPS.principalAuthor,
+  recency: TOOLTIPS.recency,
 };
 
 interface TreemapChild {
@@ -94,7 +104,7 @@ function Breadcrumb({
 }) {
   const segments = currentDir === "" ? [] : currentDir.split("/");
   return (
-    <nav className="mb-2 flex flex-wrap items-center gap-1 text-xs text-ink-muted">
+    <nav className="mb-2 flex flex-wrap items-center gap-1 font-mono text-xs text-text-muted">
       <button type="button" onClick={() => onNavigate("")} className="hover:underline">
         root
       </button>
@@ -102,7 +112,7 @@ function Breadcrumb({
         const path = segments.slice(0, i + 1).join("/");
         return (
           <span key={path} className="flex items-center gap-1">
-            <span className="text-ink-faint">/</span>
+            <span className="text-text-muted/60">/</span>
             <button type="button" onClick={() => onNavigate(path)} className="hover:underline">
               {seg}
             </button>
@@ -136,14 +146,15 @@ export function DirectoryTreemap({
   return (
     <Card>
       {fallbackNotice ? (
-        <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+        <Alert variant="info" className="mb-3">
           {fallbackNotice}
-        </p>
+        </Alert>
       ) : null}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <Breadcrumb currentDir={currentDir} onNavigate={setCurrentDir} />
         <ModeSelect
           label="Colour by"
+          tooltip={TREEMAP_COLOR_MODE_TOOLTIP[colorMode]}
           value={colorMode}
           onChange={setColorMode}
           options={TREEMAP_COLOR_MODE_LABEL}
@@ -204,6 +215,9 @@ export function DirectoryTreemap({
           }}
         </GraphCanvas>
       )}
+      <div className="mt-3 border-t border-border pt-3">
+        <ColorModeLegend mode={colorMode} subsystemLabels={city.subsystems.map((s) => s.label)} />
+      </div>
     </Card>
   );
 }

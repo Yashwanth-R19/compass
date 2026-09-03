@@ -20,6 +20,7 @@ from app.db.models import (
     Subsystem,
     TruckFactor,
 )
+from app.engines import glossary as glossary_engine_module
 from app.engines import health as health_engine_module
 from app.engines import risk as risk_engine_module
 from app.engines.coupling import MIN_SHARED_REVS
@@ -74,6 +75,25 @@ def test_formulas_expertise_is_cited_with_a_citation_string(client):
     assert expertise["status"] == "cited"
     assert expertise["citation"]
     assert "ICPC 2016" in expertise["citation"]
+
+
+def test_formulas_glossary_constants_match_the_engine_source(client):
+    # UI rebuild session 3: the glossary term-score formula (CLAUDE.md
+    # "Domain glossary", section 5.1's table) had no /meta/formulas group at
+    # all until this session -- added so TourPage's glossary panel can show
+    # a real ScoreExplainer instead of degrading forever.
+    resp = client.get("/meta/formulas")
+    body = resp.json()
+    groups = {g["key"]: g for g in body["groups"]}
+    glossary = groups["glossary"]
+    assert glossary["status"] == "heuristic"
+    constants = {c["name"]: c["value"] for c in glossary["constants"]}
+    assert constants["min_token_length"] == glossary_engine_module.MIN_TOKEN_LENGTH
+    assert constants["max_glossary_terms"] == glossary_engine_module.MAX_GLOSSARY_TERMS
+    assert (
+        constants["max_defining_paths_per_term"]
+        == glossary_engine_module.MAX_DEFINING_PATHS_PER_TERM
+    )
 
 
 def test_formulas_reports_the_active_baseline_provider(client):

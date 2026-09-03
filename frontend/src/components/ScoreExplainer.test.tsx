@@ -124,6 +124,33 @@ describe("ScoreExplainer", () => {
     expect(screen.queryByText("0.60 x 0.800 = 0.480")).toBeNull();
   });
 
+  it("renders a cited group's citation, and never for an uncited (locked) group", () => {
+    const CITED_GROUP = {
+      key: "expertise",
+      label: "Degree of authorship",
+      status: "cited" as const,
+      formula: "DOA(d, f) = 3.293 x 1.098 x FA + 0.164 x DL - 0.321 x ln(1 + AC)",
+      citation: "Fernández-Ramil, Izquierdo-Cortázar & Mens; ICPC 2016",
+      constants: [],
+    };
+    useFormulasMock.mockReturnValue({ data: { groups: [CITED_GROUP] } });
+    const { rerender } = render(
+      <TooltipProvider>
+        <ScoreExplainer formulaKey="expertise" contributions={[]} />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("Cited")).toBeTruthy();
+    expect(screen.getByText("Fernández-Ramil, Izquierdo-Cortázar & Mens; ICPC 2016")).toBeTruthy();
+
+    useFormulasMock.mockReturnValue({ data: { groups: [RISK_GROUP] } });
+    rerender(
+      <TooltipProvider>
+        <ScoreExplainer formulaKey="risk" contributions={CONTRIBUTIONS} />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByText("Cited")).toBeNull();
+  });
+
   it("renders the also-measured block with the caller-supplied values", () => {
     useFormulasMock.mockReturnValue({ data: { groups: [RISK_GROUP] } });
     renderExplainer({

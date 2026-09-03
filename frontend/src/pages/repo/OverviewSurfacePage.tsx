@@ -1,22 +1,10 @@
-import { PassportPage } from "../onboard/PassportPage";
-import { HealthPage } from "../audit/HealthPage";
+import { OverviewPage } from "../onboard/OverviewPage";
 
-/**
- * SCAFFOLDING (Part J): the interim "overview" surface -- mounts the
- * existing PassportPage verbatim, then the existing HealthPage under an
- * `#health` anchor so the legacy `/repos/:id/audit/health` redirect has
- * somewhere concrete to land. Session 3 rebuilds this as one real,
- * unified surface (passport + health + waterfall + difficulty) rather
- * than two stacked pre-existing pages.
- */
+/** UI rebuild session 3: OverviewPage.tsx is now the real, complete
+ * "overview" surface -- passport + health + waterfall + difficulty as one
+ * unified page (replacing the former separately-stacked PassportPage and
+ * HealthPage). The `#health` anchor the legacy `/repos/:id/audit/health`
+ * redirect targets lives on OverviewPage's own health section now. */
 export function OverviewSurfacePage() {
-  return (
-    <div className="flex flex-col gap-10">
-      <PassportPage />
-      <div id="health" className="scroll-mt-6 border-t border-border pt-8">
-        <p className="cp-label mb-3">Health</p>
-        <HealthPage />
-      </div>
-    </div>
-  );
+  return <OverviewPage />;
 }

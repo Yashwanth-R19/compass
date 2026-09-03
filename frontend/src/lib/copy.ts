@@ -95,16 +95,20 @@ export const FIRST_PR_COPY: Record<FirstPrCode, (params: Record<string, unknown>
 };
 
 // Where "read more" for each first_pr code should point -- a route
-// fragment relative to /repos/:repoId/, joined by the caller.
+// fragment relative to /repos/:repoId/, joined by the caller. UI rebuild
+// session 3: repointed from the outgoing onboard/*|audit/* dual-mode paths
+// onto the eight consolidated surfaces (plan/UI_REBUILD_SESSIONS.md section
+// 4.1) -- lib/copy.test.ts only asserts each entry is a non-empty string,
+// never the literal path, so this rename doesn't touch that test.
 export const FIRST_PR_LINK: Record<FirstPrCode, string> = {
-  HIGH_CHURN_CONCENTRATION: "audit/risk",
-  LOW_TRUCK_FACTOR: "onboard/people",
-  ORPHANED_HOTSPOT: "onboard/people",
-  HIDDEN_DEPENDENCIES: "audit/coupling",
-  CIRCULAR_DEPENDENCIES: "audit/architecture",
-  DORMANT: "onboard/passport",
-  NO_TESTS: "audit/risk",
-  LOW_COHESION_SUBSYSTEM: "onboard/passport",
+  HIGH_CHURN_CONCENTRATION: "risk?tab=hotspots",
+  LOW_TRUCK_FACTOR: "people",
+  ORPHANED_HOTSPOT: "people",
+  HIDDEN_DEPENDENCIES: "structure?view=coupling",
+  CIRCULAR_DEPENDENCIES: "structure?view=architecture",
+  DORMANT: "overview",
+  NO_TESTS: "risk?tab=hotspots",
+  LOW_COHESION_SUBSYSTEM: "overview",
 };
 
 // --- Finding categories ------------------------------------------------

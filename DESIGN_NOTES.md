@@ -455,3 +455,209 @@ open by session 1's own entry above.
    exercised end-to-end (open, type a search term, confirm the list
    filters, confirm `Escape` closes it and focus returns to the trigger
    button) against the same live dev server.
+
+---
+
+# 2026-09-03 — UI rebuild session 3 (surfaces: Overview, Map, Tour, People)
+
+`plan/UI_REBUILD_SESSIONS.md`'s own Session 3 prompt, sections 1-6 plus
+CLAUDE.md's engine/formula documentation, is the normative spec this
+session implemented: four repo surfaces (`overview`/`map`/`tour`/`people`)
+rebuilt against the new design system, replacing session 1's interim
+scaffolding mounting for those four, each gaining the explainability
+treatment (`InfoTooltip` on every metric name, `ScoreExplainer` on every
+score, every applicable honesty statement from section 5.3 placed and
+visible).
+
+## Judgement calls made, and why
+
+1. **`GET /meta/formulas` gained a `glossary` group — the one backend
+   change this session made, confirmed with the user first.** Session 2's
+   own build never added a formula group for the glossary term score
+   (`log(1 + occurrences) × (1 + subsystem_spread / total_subsystems)`)
+   despite CLAUDE.md section 5.1's table always having listed it, and
+   Part C's own instruction to build a `ScoreExplainer` for it presumes a
+   live group to read from. Rather than silently deciding this either way
+   (touch the backend, or leave the term-score explainer permanently
+   degraded to prose), this was surfaced as an explicit question — the
+   user chose "add the backend group." Implemented as a small,
+   precedented addition (`app/api/meta.py`, `app/engines/glossary.py`'s
+   three existing constants, a matching `tests/test_meta.py` case) —
+   verified directly (`python -c "import app.api.meta as m; ..."`, since
+   this environment has no Docker/`TEST_DATABASE_URL` for a real pytest
+   run) that the new group's constants match the engine source exactly,
+   and confirmed `ruff`/`black`/`mypy`/`pytest --collect-only` all stay
+   clean (528 tests collected, was 527).
+2. **DOA's `ScoreExplainer` renders with `contributions: []`, never a
+   forced weighted-sum breakdown.** DOA's real formula
+   (`3.293 + 1.098×FA + 0.164×DL − 0.321×ln(1+AC)`) has a base offset and
+   a SUBTRACTED log term — it does not fit `ScoreExplainer`'s
+   `weight × normalizedValue`-summed-to-a-total contribution-bar model at
+   all (a "share of total" bar for a term that's actually being
+   subtracted would visually claim the opposite of what the arithmetic
+   does). Session 2's own DESIGN_NOTES entry flagged exactly this tension
+   as open for this session to resolve. Resolved by leaning on items 1-3
+   and 6 of the contract (real formula sentence, range note, the NEW
+   citation line, and "also measured") rather than forcing a misleading
+   numeric breakdown — the alternative (inventing a weight of 1 for two
+   "positive-looking" terms and silently dropping the AC term) would have
+   shown arithmetic that doesn't reproduce the real formula, which is
+   exactly the kind of dishonest degradation this product's whole design
+   argues against. The glossary term score (`log(1+occurrences) ×
+   (1+spread/total)`, a PRODUCT of two factors, not a sum) has the
+   identical problem and got the identical treatment.
+3. **`ScoreExplainer` itself gained citation rendering** (a small,
+   additive change to a session-2-built, previously-unembedded shared
+   component) — session 2's own build read `FormulaGroupOut.citation`
+   into nowhere; Part D's "the explainer must say so and carry the
+   citation" requirement for DOA has nowhere else to render through,
+   since `ScoreExplainer` is "the one generic explainer, never a
+   page-local reimplementation" (section 5.2). A new test case
+   (`ScoreExplainer.test.tsx`) asserts the citation line appears for a
+   `status: "cited"` group and never for a locked one.
+4. **Health's own `ScoreExplainer` omits the `calibration` prop
+   entirely**, even though `HealthResponse`/`PassportHealth` both carry a
+   `calibration` field and the page-level `HonestyNote` still shows it.
+   `HealthEngine` has no `BaselineProvider` seam anywhere in its own
+   source (no `norm()` call) — showing `ScoreExplainer`'s built-in
+   calibration line ("normalized against this repository's own
+   values...") for a formula that never normalizes anything through that
+   seam would misrepresent it as baseline-aware. `ScoreExplainer`'s own
+   docstring already anticipates this ("omit for a formula with no
+   baseline-provider seam, e.g. coupling, subsystems") — health joins
+   that list.
+5. **Overview's language-mix chart now reads
+   `data.identity.language_breakdown`** (already inside the single
+   `usePassport` payload) instead of the old `HealthPage`'s
+   `useRisk()`-derived file-language tally — a genuine simplification
+   this merge made possible, not just a token-styling pass: it removes
+   an entire extra network request from the page and keeps every section
+   gated on the one "onboarding" stage the merged surface's own row in
+   table 4.4 specifies, rather than mixing in "risk" stage data that
+   happens to already be available by the time "onboarding" finishes.
+6. **The run-history sparkline stays outside the passport `StageGate`**,
+   unchanged from session 08's placement — it describes PAST runs via its
+   own `useRuns`/`useHealthHistory` calls, which have no stage gate of
+   their own, so nesting it inside the current run's passport gate would
+   make a repo mid-re-analysis lose its OWN visible history for no
+   reason.
+7. **`ModeSelect.tsx` and `DirectoryTreemap.tsx` were rebuilt onto the
+   new design system even though session 1's own Part F component list
+   didn't name either one.** Both are Map-surface-exclusive (confirmed by
+   grep — nothing outside `pages/onboard/MapPage.tsx`/
+   `components/CodeCity.tsx` imports them), so rebuilding them is squarely
+   inside "rebuild this surface fully," not scope creep into another
+   session's territory; leaving them on session-15-era `slate-*`/`ink-*`
+   classes (working only via session 1's transitional remap) would have
+   made an otherwise fully-rebuilt Map surface visually inconsistent with
+   itself.
+8. **A new shared `components/ColorModeLegend.tsx`**, rather than
+   generalizing `CodeCity.tsx`'s own local `Legend` component across all
+   three map-family renderers. The 2D graph and the treemap share an
+   IDENTICAL four-mode set (subsystem/risk/owner/recency); the 3D city has
+   a fifth mode ("test vs source") and a height dimension neither of the
+   other two has. Forcing one component to cover all three would need a
+   prop surface wide enough to cover the union of both shapes, which is
+   more complexity than reuse actually buys here — matching the same
+   "reuse where the shapes genuinely match, don't force it" judgement this
+   codebase already applies elsewhere (e.g. `DirectoryTreemap` IS shared
+   verbatim between the map's treemap view and the city's WebGL fallback,
+   because those two really do want the identical thing).
+9. **`FileDetailPanel` gained an optional `centrality` prop instead of a
+   second panel.** Part B requires an `InfoTooltip` on centrality; the
+   only place on the Map surface where a single file's own centrality
+   value is both available (from `/subsystems`' member rows) and
+   contextually relevant is the moment a file node is selected in the
+   graph view. `/city` carries no centrality column at all, so `CodeCity`'s
+   own calls to this same component simply don't pass the prop —
+   confirmed this doesn't regress the "do not add a second file-detail
+   panel" rule, since it's the same component, same file, just one more
+   optional field one of its two callers can supply.
+10. **`PeoplePage.test.tsx`'s privacy fixtures deliberately embed a real
+    `@` in every masked-email field**, rather than leaving those fields
+    empty or omitting them. A test asserting "no `@` in the DOM" against
+    fixtures that never contained one anywhere would pass whether or not
+    the component actually avoids rendering the field — it would prove
+    nothing. Building the fixture to make a leak visible IF one were ever
+    introduced is what makes this test load-bearing rather than
+    decorative.
+
+## Structural observations noticed, not fixed this session
+
+1. **`HeuristicNote.tsx`'s own inline calibration-wording constants**
+   (flagged as an open pickup by session 2's own DESIGN_NOTES entry) are
+   now fully bypassed on the Overview surface — `OverviewPage.tsx` uses
+   `HonestyNote`/`CALIBRATION_COPY` exclusively for both the difficulty
+   and health calibration statements, and no longer imports
+   `HeuristicNote` at all. `HeuristicNote.tsx` itself was not touched or
+   deleted — `RiskPage`/`BenchmarkPage` (session 4's scope) still import
+   it, so removing it now would break surfaces this session doesn't own.
+   Whether it should be deleted entirely once session 4 also migrates off
+   it, or kept as a distinct, simpler primitive, is worth a decision next
+   session, not this one.
+2. **`ArchitecturePage.tsx`'s 🎉 emoji** (rule V2, flagged by sessions
+   1 and 2's own entries) is still there — still untouched, still session
+   4's job; this session had no reason to open that file at all.
+3. **The Overview difficulty bar's per-segment width still uses the raw
+   `weight × normalized` fraction of the bar, unscaled against the
+   segments' own sum** (inherited unchanged from the pre-rebuild
+   `PassportPage.tsx` — this session only renamed tokens/classes on that
+   specific bar, never touched its width formula). A repo whose five
+   contribution products sum well under 1.0 (as the fixture used for this
+   session's own manual verification does — see below) renders a bar
+   that reads as more full than the ScoreExplainer's own arithmetic
+   directly under it would suggest at a glance. Not a correctness bug
+   (the ScoreExplainer's real numbers are right there, one scroll below),
+   but a minor visual-precision gap worth a follow-up if a future session
+   is already touching this card.
+4. **`pages/repo/{Overview,Map,Tour,People}SurfacePage.tsx` are now
+   trivial one-line pass-throughs** to the real components under
+   `pages/onboard/`, matching the precedent `PeopleSurfacePage.tsx`
+   already set in session 1 (the one surface with no merge to switch
+   between). The other four (`Findings`/`Risk`/`Structure`/
+   `EvolutionSurfacePage.tsx`) still contain session 1's `?view=`/`?tab=`/
+   `?category=` scaffolding logic — session 4's job to replace, following
+   this same pattern.
+
+## Verification
+
+- `npm run typecheck` / `npm run lint` / `npm run test:run` / `npm run
+  build` / `npm run format:check`: all clean throughout — checked after
+  each of the four surfaces individually, not just once at the end, to
+  keep failures attributable to the change that caused them. Final state:
+  **162 tests, 24 files, all passing** (was 159/23 after session 2; +3
+  new `PeoplePage.test.tsx` cases, +1 new `ScoreExplainer.test.tsx`
+  case), `CodeCity-*.js` still a separate ~916KB chunk from `index-*.js`.
+- Backend: `ruff check app tests` / `black --check app tests` / `mypy
+  app/engines app/baseline app/languages` all clean; `pytest
+  --collect-only` — **528 tests collected, 0 errors** (was 527 after
+  session 2; +1 new `test_meta.py` case, skipped at run time in this
+  environment for the same documented Docker/`TEST_DATABASE_URL` reason
+  every prior session's backend tests were).
+- Manual: a real dev server driven by a throwaway headless-Chromium
+  Playwright script (mocked backend, fixture shapes lifted from the
+  project's own proven `e2e/fixtures.ts` plus this session's own
+  additions for `/glossary`, `/runs`, `/health`, and `/meta/formulas`),
+  covering all four rebuilt surfaces, in both colour schemes and at
+  360px, plus one `prefers-reduced-motion: reduce` pass: zero uncaught
+  page errors (the only console errors observed were the expected
+  `/auth/me` 401s `useMe()` treats as "logged out", not a real failure);
+  `InfoTooltip` buttons confirmed present and a `ScoreExplainer` confirmed
+  expandable on Overview; the Map graph's hidden-dependency edge
+  (amber/thicker/dashed) confirmed rendering for a synthetic
+  coupled-but-not-imported subsystem pair; the 3D city confirmed
+  rendering real extruded building geometry with shadows (screenshotted
+  against an enlarged, 45-file synthetic fixture, not just the tiny
+  shared fixture, specifically to make the skyline visually legible);
+  Tour's glossary panel confirmed opening as a genuine SIDE panel with
+  the stepper still visible alongside it, not a full-page swap; People's
+  rendered DOM confirmed to contain zero `@` characters despite every
+  fixture's masked-email fields containing one, in both colour schemes;
+  every one of the four surfaces confirmed at `document.documentElement.
+  scrollWidth === 360` with no horizontal overflow, in both colour
+  schemes. Not verified against a real, running backend (no live Compass
+  API was available while building this session, matching sessions 1 and
+  2's own documented limitation) — the populated-data visuals (real
+  showcase-style numbers, not synthetic fixture values) are worth a
+  second, backend-connected look before shipping, same caveat session 1's
+  own entry already logged for the landing page's showcase cards.
