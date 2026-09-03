@@ -18,10 +18,14 @@ export function headlineDirection(item: HeadlineDeltaOut): DeltaDirection {
   return improved ? "improved" : "worsened";
 }
 
+// Reads the dedicated diverging pair (tokens.css's --color-diverging-*,
+// section 3.1: verdigris is the positive hue, R1 -- there is no separate
+// green in this system) rather than a raw emerald/red pair, so a compare
+// delta's colouring agrees with every other accent/warning use in the app.
 export const DIRECTION_TEXT_CLASS: Record<DeltaDirection, string> = {
-  improved: "text-emerald-600 dark:text-emerald-400",
-  worsened: "text-red-600 dark:text-red-400",
-  neutral: "text-ink-muted",
+  improved: "text-diverging-improve",
+  worsened: "text-diverging-worsen",
+  neutral: "text-diverging-neutral",
 };
 
 export function formatSignedDelta(delta: number): string {

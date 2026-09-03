@@ -59,6 +59,17 @@ export function Expander({
       <div
         id={panelId}
         aria-hidden={!open}
+        // `inert` (not just `aria-hidden`) when collapsed -- content here
+        // never unmounts (the 0fr/1fr grid technique keeps it in the DOM so
+        // the height transition has something to animate), so a collapsed
+        // panel can still contain a real focusable element (an InfoTooltip
+        // button inside a collapsed ScoreExplainer, in practice). Found via
+        // this session's own accessibility sweep (`aria-hidden-focus`,
+        // axe-core): `aria-hidden="true"` alone marks a subtree hidden from
+        // assistive tech WITHOUT removing it from the tab order, which is
+        // exactly the violation. `inert` does both atomically and is the
+        // correct primitive for "not just hidden, genuinely inactive."
+        inert={!open}
         className="grid transition-[grid-template-rows] duration-[var(--dur-base)] ease-[var(--ease-out)]"
         style={{ gridTemplateRows: open ? "1fr" : "0fr" }}
       >

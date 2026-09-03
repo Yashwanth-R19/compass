@@ -633,7 +633,9 @@ function ThreeThingsCard({ items, repoId }: { items: PassportFirstPrItem[]; repo
         <ul className="flex flex-col gap-3">
           {items.map((item) => (
             <li key={item.code} className="flex items-start justify-between gap-3">
-              <p className="text-sm text-text-muted">{FIRST_PR_COPY[item.code](item.params)}</p>
+              <p className="min-w-0 break-words text-sm text-text-muted">
+                {FIRST_PR_COPY[item.code](item.params)}
+              </p>
               <Link
                 to={`/repos/${repoId}/${FIRST_PR_LINK[item.code]}`}
                 className="shrink-0 text-xs font-medium text-accent hover:underline"
@@ -870,9 +872,11 @@ function ShapeCard({
           <ul className="flex flex-col gap-2 text-sm">
             {shape.entry_points.map((e) => (
               <li key={e.path} className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-mono text-xs text-text-muted">{e.path}</span>
-                  <span className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 truncate font-mono text-xs text-text-muted">
+                    {e.path}
+                  </span>
+                  <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
                     {ENTRY_POINT_KIND_COPY[e.kind]()}
                   </span>
                 </div>

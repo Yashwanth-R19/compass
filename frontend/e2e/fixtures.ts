@@ -459,6 +459,184 @@ export const vulnerabilitiesResponseEmpty = {
   no_supported_manifest: false,
 };
 
+// --- UI rebuild session 4: showcase landing, /meta/* explainability spine,
+// and the Risk surface's hotspot list -------------------------------------
+
+export const showcaseReposResponse = {
+  repos: [
+    {
+      id: REPO_ID,
+      owner: "acme",
+      name: "widgets",
+      url: "https://github.com/acme/widgets",
+      showcase_rank: 1,
+      hook: "500 commits · 5 subsystems · truck factor 2",
+      commit_count: 500,
+      subsystem_count: 5,
+      truck_factor: 2,
+      health_score: 72,
+    },
+  ],
+};
+
+export const runsResponse = {
+  repo_id: REPO_ID,
+  runs: [
+    { id: RUN_ID, status: "ready", head_sha: "abcdef1234567890", engine_version: 2, started_at: "2026-02-01T00:00:00Z", finished_at: "2026-02-01T00:05:00Z" },
+  ],
+};
+
+export const healthResponse = {
+  repo_id: REPO_ID,
+  calibration: "heuristic",
+  score: 72,
+  high_risk_ratio: 0.12,
+  cycle_count: 1,
+  hidden_dependency_count: 3,
+  computed_at: "2026-02-01T00:05:00Z",
+};
+
+export const secretsResponseEmpty = {
+  repo_id: REPO_ID,
+  hits: [],
+  still_in_head_count: 0,
+  total: 0,
+  truncated: false,
+  truncation_reason: null,
+};
+
+export const vulnerabilitiesResponseEmptyPrimary = {
+  repo_id: REPO_ID,
+  vulnerabilities: [],
+  no_supported_manifest: false,
+};
+
+export const hygieneResponseEmpty = {
+  repo_id: REPO_ID,
+  events_by_kind: {},
+  files: [],
+  insufficient_history_for_oversized: false,
+};
+
+export const testGapsResponseEmpty = {
+  repo_id: REPO_ID,
+  files: [],
+  test_file_ratio: 0,
+  mean_test_cochange_ratio: 0,
+  limitation: "This measures test maintenance -- whether a mapped test keeps changing alongside its source file -- never test coverage or quality.",
+};
+
+export const riskResponse = {
+  repo_id: REPO_ID,
+  calibration: "heuristic",
+  files: [
+    {
+      file_path: "src/billing/invoice.py",
+      language: "python",
+      risk_score: 0.82,
+      risk_confidence: 0.9,
+      hotspot_rank: 0,
+      churn_total: 900,
+      complexity: 12,
+      commit_count: 40,
+      max_coupling_degree: 0.6,
+      churn_weighted: 640,
+      instability_score: 0.3,
+      revert_cycle_count: 1,
+      test_classification: "stale_test",
+      test_cochange_ratio: 0.15,
+      expert_count: 1,
+      is_orphaned_knowledge: false,
+    },
+    {
+      file_path: "src/auth/login.py",
+      language: "python",
+      risk_score: 0.45,
+      risk_confidence: 0.4,
+      hotspot_rank: 1,
+      churn_total: 300,
+      complexity: 6,
+      commit_count: 8,
+      max_coupling_degree: 0.6,
+      churn_weighted: 210,
+      instability_score: 0.1,
+      revert_cycle_count: 0,
+      test_classification: "tracked",
+      test_cochange_ratio: 0.7,
+      expert_count: 2,
+      is_orphaned_knowledge: false,
+    },
+  ],
+};
+
+export const formulasResponse = {
+  active_baseline_provider: "heuristic",
+  groups: [
+    {
+      key: "risk",
+      label: "Risk score",
+      status: "locked",
+      formula: "risk_score = 0.60 x norm(churn_weighted x complexity) + 0.25 x norm(max coupling_degree) + 0.15 x norm(commit_count)",
+      citation: null,
+      constants: [
+        { name: "churn_complexity_weight", value: 0.6, description: "Weight on the normalized churn x complexity term." },
+        { name: "coupling_weight", value: 0.25, description: "Weight on the normalized max coupling_degree term." },
+        { name: "commit_count_weight", value: 0.15, description: "Weight on the normalized commit_count term." },
+        { name: "risk_confidence_commit_divisor", value: 10, description: "risk_confidence = min(1, commit_count / this)." },
+      ],
+    },
+    {
+      key: "coupling",
+      label: "Change coupling",
+      status: "locked",
+      formula: "coupling_degree(A, B) = shared_revs / min(revs(A), revs(B))",
+      citation: null,
+      constants: [
+        { name: "min_shared_revs", value: 5, description: "A file pair needs at least this many shared revisions to be kept." },
+        { name: "min_coupling_degree", value: 0.3, description: "A file pair needs coupling_degree at or above this value to be kept." },
+      ],
+    },
+    {
+      key: "hygiene",
+      label: "Commit hygiene",
+      status: "heuristic",
+      formula: "instability_score = norm(oversized_count + fixup_count + 2 x revert_count)",
+      citation: null,
+      constants: [
+        { name: "instability_revert_weight", value: 2, description: "A revert cycle counts double." },
+      ],
+    },
+    {
+      key: "test_gaps",
+      label: "Test maintenance",
+      status: "heuristic",
+      formula: "stale_test iff a mapped test exists, test_cochange_ratio <= threshold, and enough commit history to classify",
+      citation: null,
+      constants: [
+        { name: "stale_test_ratio_threshold", value: 0.2, description: "test_cochange_ratio at or below this value classifies as stale_test." },
+      ],
+    },
+    {
+      key: "baseline",
+      label: "Corpus calibration",
+      status: "heuristic",
+      formula: "A cell backed by fewer than this many contributing repositories widens before falling back to the heuristic normalizer.",
+      citation: null,
+      constants: [{ name: "min_corpus_repos_per_cell", value: 5, description: "The corpus cell-size gate." }],
+    },
+  ],
+};
+
+export const pipelineResponse = {
+  stages: [
+    { name: "clone", kind: "fact", order: 1, engines: ["clone_repo"], optional: false, description: "Clones the repository to a temporary directory." },
+    { name: "mine", kind: "fact", order: 2, engines: ["mine_repo"], optional: false, description: "Streams the full commit log into structured records." },
+    { name: "onboarding", kind: "insight", order: 11, engines: ["TourEngine", "GlossaryEngine", "TimelineEngine", "HealthEngine", "PassportEngine"], optional: false, description: "Builds the guided reading order, glossary, timeline, health, and passport." },
+    { name: "security", kind: "insight", order: 12, engines: ["SecurityEngine"], optional: true, description: "Looks up dependencies against OSV.dev and emits secret/vulnerability findings." },
+    { name: "rank", kind: "insight", order: 13, engines: ["FindingsRankEngine"], optional: false, description: "Applies one global, cross-category ranking to every finding." },
+  ],
+};
+
 export const blastRadiusResponse = {
   repo_id: REPO_ID,
   file_path: "src/app.py",

@@ -8,7 +8,7 @@
 
 *That screenshot is real, unedited output — `requests`, one of the most widely used libraries in the Python ecosystem, has 223 pairs of files that reliably change together with no import connecting them, and 50 detected dependency cycles. Every ranked pair links to the actual shared commits.*
 
-**[Live demo →](https://compass.example/repos/REPLACE_WITH_REAL_DEPLOYED_REPO_ID/onboard/passport)** — a pre-analysed, pinned repository. No waiting, no submission form. *(Placeholder — fill in once deployed; see [Deployment](#deployment) below. Four real showcase repositories are already analysed and pinned in the database — see [`SHOWCASE.md`](SHOWCASE.md).)*
+**[Live demo →](https://compass.example/repos/REPLACE_WITH_REAL_DEPLOYED_REPO_ID/overview)** — a pre-analysed, pinned repository. No waiting, no submission form. *(Placeholder — fill in once deployed; see [Deployment](#deployment) below. Four real showcase repositories are already analysed and pinned in the database — see [`SHOWCASE.md`](SHOWCASE.md).)*
 
 ---
 
@@ -35,9 +35,9 @@ A second one: Compass's secret scanner diffs the *entire* commit history, not th
 
 ## What it actually does
 
-Two modes over one shared engine layer — the same mined facts, aimed at two different moments.
+One shared engine layer, the same mined facts, aimed at two different moments — getting oriented in a codebase, and hardening one you already own. The UI presents these as eight flat repository surfaces (Overview, Map, Tour, People, Findings, Risk, Structure, Evolution) rather than two separate application modes, but the underlying capability split is still real:
 
-### Onboard — get a stranger productive in hours, not weeks
+### Getting oriented — productive in hours, not weeks
 
 | Feature | What it answers |
 |---|---|
@@ -51,7 +51,7 @@ Two modes over one shared engine layer — the same mined facts, aimed at two di
 | **Evolution scrubber** | Watch the repository's shape, hotspots, and contributor mix change over 24 points in its history. |
 | **Repo passport** | A one-page computed summary: identity, cadence, team shape, health, and a heuristic onboarding-difficulty score. |
 
-### Audit — measure and harden the repo you already own
+### Hardening — measure and harden the repo you already own
 
 | Feature | What it answers |
 |---|---|

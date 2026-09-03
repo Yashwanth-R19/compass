@@ -243,6 +243,12 @@ before it ships, not after.
 | **SeverityChip med** (scheme-conditional ink on scale-3 fill) | 5.53:1 | 4.88:1 |
 | **SeverityChip high** (scale-ink-light on scale-5 fill) | 6.19:1 | 9.09:1 |
 | border-interactive on bg-elevated (non-text, 3:1 bar) | 5.53:1 | 5.62:1 |
+| **scene-overlay-text on scene-overlay-bg** (3D city HTML labels, session 4) | 15.95:1 | n/a — scheme-invariant |
+| **scene-overlay-text-muted on scene-overlay-bg** (session 4) | 5.53:1 | n/a — scheme-invariant |
+| diverging-worsen as text (compare deltas, session 4 new usage of the existing `--scale-3` value) | 5.61:1 | 5.01:1 |
+| diverging-improve as text (existing `--cp-accent` value — identical to "accent on bg-elevated" above) | 7.78:1 | 6.42:1 |
+| **RiskRow low-confidence indicator, border-only** (`border-l-2 border-l-warning`, non-text, 3:1 bar; session 4 — see Known Hazard #5) | 7.78:1 | 5.59:1 |
+| **ErrorState message, text on danger-bg** (session 4 fix — was `text-muted`, see Known Hazard #5) | 9.84:1 | 9.09:1 |
 
 Every row clears its bar (4.5:1 for normal text, 3:1 for non-text UI
 component boundaries) with real margin. `--color-border`/
@@ -407,3 +413,160 @@ rendered markup contains `bg-info-bg` and never the string `"violet"`.
 Nothing else about the component changed (still exactly three surfaces,
 still renders `null` with the toggle off or while loading, per rule
 V1/CLAUDE.md's own narrative-layer rules).
+
+## UI rebuild session 4 update — the final accessibility/contrast/motion/viewport sweep
+
+Session 4's Part H is the first time this rebuild ran `@axe-core/playwright`
+across the WHOLE app (every route, both colour schemes) against real,
+un-mocked data (a live pinned showcase repository, `spring-projects/
+spring-petclinic`, through the project's own configured Neon
+`DATABASE_URL`, read-only). Installed with `--no-save` per the session's
+own instruction — it is not a `package.json` dependency and is not wired
+into CI. Two full passes: **22 violations found** on the first sweep
+(26 route×scheme combinations), **0 remaining** on the final sweep after
+fixes below. Every fix here changed component/page code, never a section
+3.1 locked hex value.
+
+### New tokens this session
+
+`--color-scene-overlay-bg`/`-border`/`-text`/`-text-muted` (Part F) —
+the 3D city's floating HTML labels (`components/CodeCity.tsx`, drei's
+`<Html>` overlays projected over the WebGL canvas) needed a fixed, always-
+dark chip treatment regardless of the app's light/dark toggle, matching how
+the city's own lighting/ground already don't reskin with the toggle (rule
+V3's own carve-out) — the same convention on-canvas map labels use
+everywhere. Declared once, scheme-INVARIANT (no light override, same
+treatment as `--color-subsystem-*`), replacing what used to be raw
+`slate-900`/`slate-700`/`slate-300` Tailwind utility classes (the one
+remaining `slate-`/`indigo-` usage this session's Part F grep found outside
+the pages it was already deleting).
+
+### Known Hazards, as they actually happened this session
+
+1. **A tab nav that measures as correctly self-contained by every DOM
+   property (`clientWidth`, `scrollWidth`, `getBoundingClientRect()`) can
+   still inflate `document.documentElement.scrollWidth` on a sufficiently
+   TALL page.** Found on `/repos/:id/findings` specifically — the only one
+   of the eight repo surfaces tall enough, against real data, to trigger a
+   document-level vertical scroll. `RepoLayout`'s tab `<nav>`
+   (`overflow-x-auto`, `flex`) measured `clientWidth=328`/`scrollWidth=559`
+   (correctly self-clipped) and its own `getBoundingClientRect().right`
+   never exceeded the viewport, yet `document.documentElement.scrollWidth`
+   still read 578 against a 360px viewport — repeatable, not a timing
+   fluke, confirmed across three fresh browser contexts with a 3.5s settle
+   time. A page-level `overflow-x: hidden` on `html, body` (`index.css`) is
+   the fix: an absolute backstop against this class of nested-scroll-
+   container edge case, independent of whatever Chromium's exact
+   `scrollWidth` computation is doing internally. Verified after the fix:
+   all 13 routes (8 repo surfaces + 5 global pages) read exactly `360` at a
+   360px viewport, in a fresh context, every time.
+2. **Two separate, genuine 360px overflow bugs were hiding UNDER the nav
+   issue above and only became visible once it was fixed** — both real
+   layout defects, not nav-related: (a) `RepoLayout`'s repository URL link
+   (`{repo.url}`, e.g. `https://github.com/spring-projects/spring-
+   petclinic`) had no `break-all`/`truncate` class, so one long unbroken
+   string forced its containing flex row wider than the viewport; (b)
+   `OverviewPage`'s "Three things to know" row and its entry-points list
+   had the same shape of bug twice — a flex item with no `min-w-0` next to
+   a `shrink-0` sibling, so a long unbroken token inside it (a Java package
+   path in an `ORPHANED_HOTSPOT` message; the `graph_inferred` entry-point
+   kind's full-sentence label wrapped in a `shrink-0` badge pill meant for
+   short text) pushed the row wider instead of wrapping. Fixed with
+   `break-all`/`break-words`/`min-w-0` at each site and `flex-wrap` on the
+   entry-point badge row — never by touching the palette or the type scale.
+3. **`Expander`'s pure-CSS collapse (the `grid-template-rows: 0fr → 1fr`
+   technique, rule M4) keeps its children permanently in the DOM — a
+   collapsed panel is visually and (via `aria-hidden`) semantically hidden,
+   but was never actually removed from the tab order.** `aria-hidden-focus`
+   (axe-core, serious): a collapsed `ScoreExplainer`'s `InfoTooltip` buttons
+   were still real, focusable elements a keyboard user could tab into while
+   invisible. `aria-hidden="true"` alone only ever hides content from
+   assistive tech; it says nothing about focusability, which is exactly the
+   gap this rule exists to catch. Fixed with React 19's `inert` prop on the
+   same collapsed panel, applied alongside (not instead of) `aria-hidden` —
+   `inert` is the one primitive that makes a subtree simultaneously
+   non-focusable AND assistive-tech-hidden, atomically, which is what
+   "collapsed" was always supposed to mean here.
+4. **`SegmentedControl` (session 1, used by every merged surface's
+   `?view=`/`?tab=` switch) never rendered a Radix `Tabs.Content` panel at
+   all — but Radix's `Tabs.Trigger` sets `aria-controls` unconditionally,
+   pointing at an id that consequently never existed anywhere in the DOM.**
+   `aria-valid-attr-value` (axe-core, critical) on every one of its four
+   real call sites (Map, Risk, Structure, Evolution). This is a broken
+   IDREF, not a missing-attribute problem — the fix is a real (if empty)
+   `Tabs.Content` per option, which Radix only mounts for the currently
+   active one, giving that trigger's `aria-controls` a genuine target at
+   all times.
+5. **A background TINT used to mark a "distinct row treatment" can fail
+   contrast for text sitting on top of it, even when the same text passes
+   comfortably against the page's normal background.** `RiskRow`'s
+   low-confidence highlight (`bg-warning-bg` across the whole row) measured
+   `text-muted` at 4.4:1 against the composited tint in the dark scheme —
+   under the 4.5:1 body-text bar — across ~126 real elements on a
+   real-sized risk list (`color-contrast`, axe-core, serious). Separately,
+   `ErrorState`'s message paragraph (`text-muted` on `bg-danger-bg`)
+   measured 4.36:1 in the light scheme. Both fixed the same way: stop using
+   a translucent colour FILL as the signal for muted text sitting on top of
+   it, and use either a plain left BORDER (RiskRow — matching the "border
+   carries the signal, fill stays neutral" convention `HeuristicNote`/
+   `PartialResultNotice` already established, at 7.78:1/5.59:1 as a 3:1
+   non-text boundary) or the full-strength `text` token instead of
+   `text-muted` (ErrorState, now 9.84:1/9.09:1). Neither fix touched a
+   locked palette value — both changed which existing token a component
+   reads, and in RiskRow's case, which VISUAL LANGUAGE (fill vs. border) it
+   uses at all.
+6. **A scrollable list of plain (non-interactive) rows is invisible to
+   keyboard navigation unless the scroll container itself is
+   focusable.** `scrollable-region-focusable` (axe-core, serious) on the
+   Structure surface's four `overflow-y-auto` lists (unreferenced files,
+   ranked coupling pairs, structural/historical blast-radius results) —
+   each row is plain text with nothing else to tab to, so without
+   `tabIndex={0}` (+ an `aria-label` naming what's scrolling) on the `<ul>`
+   itself, a keyboard-only user had no way to reach or scroll these lists
+   at all. Three OTHER `overflow-y-auto` regions in the app
+   (`FilePicker`'s suggestion dropdown, `HomePage`'s GitHub-repo picker,
+   `GlossaryDialog`'s term list) were reviewed and left alone — each
+   contains real `<button>`/interactive children per row already in the
+   tab order, which is what keeps axe's rule from firing on them; this is
+   a property of the rule (an empty-of-focusable-descendants scroll
+   container specifically), not a coincidence.
+7. **A heading level can be skipped even on a page an earlier session
+   built and manually reviewed, if the reviewer only inspected geometry
+   and colour, not the accessibility tree.** `heading-order` (axe-core,
+   moderate) on `/how-it-works`: the page's own `h1` was followed directly
+   by each pipeline stage's own `h3` (`OverviewPage`'s only h2-level
+   section titles come AFTER the stage list, not before), skipping h2
+   entirely. Fixed by promoting the per-stage heading to `h2` — a one-line
+   change, worth recording because it shows the sweep catching something
+   genuinely outside this session's own new code, exactly as Part H's
+   "final quality pass across the whole app" instruction intends.
+8. **`page-has-heading-one` (axe-core, moderate) fired on `/dashboard` and
+   `/portfolio` for an anonymous visitor specifically** — both pages'
+   `<h1>` only ever rendered on the SUCCESS path; the loading/logged-out/
+   error early returns bypassed it entirely, which is a real, common state
+   for these two pages (an anonymous visitor hits both routinely). Fixed by
+   keeping the `<h1>` present in every branch of both components' return
+   value, rather than only the happy path.
+
+### Contrast, reduced motion, 360px, CSP — final state
+
+- **Contrast**: table above updated with every new/changed pairing this
+  session introduced; every row clears its bar. See the fixes in Known
+  Hazard #5 above for the two that initially failed.
+- **Reduced motion**: `prefers-reduced-motion: reduce` context across all
+  13 routes — zero console/page errors, consistent with sessions 1-3's own
+  verification of the CSS-level and JS-level (`usePrefersReducedMotion`)
+  halves of rule M5, neither of which this session touched.
+- **360px**: all 13 routes (8 repo surfaces + landing, how-it-works,
+  methods, dashboard, portfolio) measured `document.documentElement.
+  scrollWidth === 360` in a fresh browser context, both colour schemes,
+  after the fixes above. `/shared/:slug` was not included in the live
+  sweep (creating a real share link needs an authenticated owner, which
+  this read-only verification pass didn't have) — its own component was
+  read and reviewed directly instead: it renders only `LoadingState`/
+  `ErrorState` (both already covered elsewhere in this same sweep) before
+  redirecting, so there is no route-specific layout of its own to miss.
+- **CSP**: see the README/CLAUDE.md Observability and Deployment sections
+  for the production-build verification method this session re-ran
+  unchanged from session 16's own pass (`frontend/vercel.json` was not
+  modified this session).

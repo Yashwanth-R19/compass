@@ -661,3 +661,340 @@ visible).
   showcase-style numbers, not synthetic fixture values) are worth a
   second, backend-connected look before shipping, same caveat session 1's
   own entry already logged for the landing page's showcase cards.
+
+# 2026-09-03 — UI rebuild session 4 (final session: Findings, Risk, Structure, Evolution, global pages, whole-app QA)
+
+The last of the four rebuild sessions. Built the four remaining merged
+repo surfaces (`FindingsSurfacePage`, `RiskSurfacePage`,
+`StructureSurfacePage`, `EvolutionSurfacePage`), rebuilt the three global
+pages (`DashboardPage`, `PortfolioPage`, `SharedRedirectPage` — the last
+of which needed no real changes, having already targeted `overview`),
+deleted every remaining scaffolding file and the transitional slate/
+indigo/session-15-semantic-name remap in `tokens.css`, rewrote the one
+Playwright e2e spec for the new route map, and ran the whole-app
+accessibility/contrast/reduced-motion/360px/CSP/bundle final pass Part H
+calls for — this time against a REAL, live backend (the project's own
+configured Neon `DATABASE_URL`, read-only) and a real pinned showcase
+repository (`spring-projects/spring-petclinic`), closing the "not verified
+against a real backend" gap every one of sessions 1-3's own entries above
+logged.
+
+## Judgement calls made, and why
+
+1. **`risk_score`'s `ScoreExplainer` omits per-term contribution bars.**
+   Part B's own wording ("the three locked weights... each with its real
+   arithmetic") reads as asking for the same full weighted-contribution
+   breakdown Overview's difficulty/health explainers already show. But
+   `RiskFileOut` carries no per-term NORMALIZED breakdown (no
+   `risk_breakdown` field mirroring `PassportResponse.
+   difficulty_breakdown`, which is what actually makes Overview's version
+   possible) — only the final `risk_score` plus raw evidence. Reconstructing
+   the three normalized terms client-side would mean re-implementing
+   `norm()` outside the `BaselineProvider` seam, which section 5.4
+   forbids outright ("no formula constant is ever written in TypeScript")
+   for a stronger reason than style: under this deployment's actual
+   configured provider (`COMPASS_BASELINE_PROVIDER=corpus`, confirmed in
+   `backend/.env`), a client-side per-repo min-max reconstruction would be
+   SILENTLY WRONG, not just redundant — corpus normalization uses
+   percentile breakpoints this frontend has no access to. Followed the
+   session's own "stop and follow reality... do not invent data to satisfy
+   the spec" rule: `risk`'s `ScoreExplainer` renders the real formula
+   sentence and calibration line (both live, from `/meta/formulas` and the
+   response's own `calibration` field — the actual, verifiable "real
+   arithmetic" the weights represent) with `contributions: []`, same
+   treatment session 3 already established for DOA and the glossary term
+   score. The genuinely real, per-file evidence instead populates the
+   "also measured (not scored)" block with THIS file's own real numbers
+   (churn_total, instability_score, revert_cycle_count, test
+   classification/ratio, expert_count, orphaned knowledge) — placed
+   per-row (inside each expanded `RiskRow`), not once globally, specifically
+   so those values are grounded in a real file's real evidence rather than
+   generic prose. `coupling_degree` and `module_coupling` got the identical
+   `contributions: []` treatment for a different, simpler reason: neither
+   is a weighted sum at all (a ratio and a re-derivation-forbidden formula,
+   respectively), so there was never a contribution bar to show honestly.
+   A future session could close this gap for risk specifically by adding a
+   `risk_breakdown` field to `RiskFileOut` the same way session 06 already
+   added `difficulty_breakdown` to `PassportResponse` — a genuine, scoped
+   backend addition this session was barred from making (Part H's own
+   "do not change any backend engine or formula").
+2. **Deep links for `hygiene`/`test_gap`/`secret`/`vulnerability` findings
+   now point back into the SAME `findings` surface** (`?category=X&file=`/
+   `&sha=`/`&osv=`) rather than a different surface, unlike `risk`/
+   `architecture`/`hidden_dependency`/`knowledge`. This isn't a stylistic
+   choice — Part A's merge literally folded Security and Hygiene's former
+   standalone pages INTO Findings, so there is no longer a separate
+   destination surface for those four categories to link to. `lib/
+   findingLinks.ts`'s own docstring documents this explicitly so a future
+   session extending it doesn't read the same-surface links as an
+   inconsistency to "fix."
+3. **`FindingsSurfacePage`'s four evidence sections (secrets,
+   vulnerabilities, hygiene, test maintenance) render unconditionally,
+   independent of the `?category=` filter**, which only filters the
+   RANKED list above them. Considered making the dropdown also show/hide
+   the matching section, but the four sections are each backed by a
+   DIFFERENT stage gate (`secrets`/`security`/`risk`/`risk`) and carry
+   strictly MORE detail than a capped, ranked finding entry ever could
+   (e.g. every raw secret hit, not just the top-10 that became findings) —
+   collapsing them behind the same filter as the findings list would hide
+   real evidence a category filter shouldn't be able to hide. This matches
+   how the pre-merge Security/Hygiene pages always showed their full
+   evidence regardless of what a hypothetical findings filter elsewhere
+   was set to.
+4. **`ImpactView`'s URL-state management was rewritten, not carried
+   forward as scaffolding-compatible.** The pre-rebuild `ImpactPage.tsx`
+   called `setSearchParams({ path, depth })` with a plain object, which
+   silently wiped any OTHER query param (including a merged surface's own
+   `?view=`) as a side effect — `pages/repo/mergedView.ts`'s own docstring
+   documented this as the exact reason its `useMergedViewParam` hook had
+   to be written asymmetrically. Since `StructureSurfacePage` is a genuine
+   rewrite, not scaffolding, `ImpactView`'s own `patch()` helper merges
+   into the existing `URLSearchParams` instead — the workaround `merged
+   View.ts` existed for no longer applies to this surface, and
+   `mergedView.ts` itself is now dead code (nothing imports it — see
+   Structural observations below).
+5. **`HeuristicNote.tsx` was NOT deleted**, even though `RiskSurfacePage`/
+   the merged Benchmark tab (its last two importers per session 3's own
+   "worth a decision" note) were exactly the files this session rebuilt.
+   Both now use `HonestyNote`/`CALIBRATION_COPY`/`ScoreExplainer` instead,
+   same as Overview already did — `HeuristicNote.tsx` genuinely has zero
+   remaining importers after this session. Left in place rather than
+   deleted purely because removing a now-dead file wasn't explicitly
+   asked for and this session was already touching a very large surface
+   area; flagged below as a real, safe deletion candidate for whoever
+   next touches `components/`.
+6. **The whole-app accessibility/360px sweep ran against LIVE data from a
+   real pinned showcase repository, not mocked fixtures**, per the
+   session's own confirmed plan for this run. This is what actually
+   surfaced four of the eight Known Hazards below (the tab-nav
+   `scrollWidth` edge case, the two 360px overflow bugs it was hiding, the
+   126-node Risk contrast failure, the Overview "three things to know"
+   overflow) — every one of these needed a REAL, full-size finding list or
+   a REAL long file path to trigger; none would have appeared against the
+   small, hand-written e2e fixtures alone. Confirms the plan's own
+   judgement call was the right one for this specific session.
+7. **`overflow-x: hidden` was added to `html, body` (`index.css`) as a
+   page-level backstop**, rather than chasing the exact Chromium
+   `scrollWidth`-computation mechanism behind Known Hazard #1 below to a
+   single root cause. This is a deliberate "make the guarantee structural"
+   choice, not a shortcut: Part H's own governing rule (echoed in this
+   harness's own artifact-authoring guidance) is that the page body must
+   NEVER scroll horizontally, full stop — an absolute backstop at the
+   `html`/`body` level makes that true regardless of which specific nested
+   flex/overflow interaction produces the next edge case, rather than
+   this session's fix being narrowly correct only for the one instance it
+   found.
+8. **The e2e spec's flow follows Part G literally** (landing → Overview →
+   Map → Findings → Risk) and does NOT carry forward sessions 9/11's
+   additional Tour/People/Impact/second-repo-failed-stage steps the
+   PREVIOUS spec had accumulated. Part G's own text redefines the flow
+   from scratch rather than saying "extend the existing test," unlike
+   every prior session's own instruction for this same file — read as a
+   deliberate, not accidental, narrowing. The failed-optional-`security`-
+   stage rendering (session 10/11's own flagship "two sections, one
+   errored" scenario) is still real, still implemented in the rebuilt
+   `FindingsSurfacePage.tsx` exactly as before, and was spot-checked
+   manually rather than in the automated spec — `SecretsResponseEmpty`/
+   `vulnerabilitiesResponseEmptyPrimary`-shaped fixtures for a
+   second REPO_ID_2 scenario are still sitting in `e2e/fixtures.ts`
+   unused, left in place rather than deleted, in case a future session
+   wants to re-add that scenario as a second flow step.
+
+## Structural observations noticed, not fixed this session
+
+1. **`pages/repo/mergedView.ts` (`useMergedViewParam`) is now genuinely
+   dead code** — every one of the four surfaces that used to import it
+   (`Findings`/`Risk`/`Structure`/`EvolutionSurfacePage.tsx`) was rewritten
+   this session with its own local `useState` + `useSearchParams`
+   handling instead, and no other file imports it. Not deleted here
+   purely because it wasn't the specific thing broken; a two-line grep
+   (`grep -rn "mergedView" src/`) confirms zero remaining importers for
+   whoever removes it next.
+2. **`components/HeuristicNote.tsx` is also dead code now** — see
+   Judgement Call #5 above. Same "confirmed unused, not removed this
+   session" status as `mergedView.ts`.
+3. **`e2e/fixtures.ts` still carries the `REPO_ID_2`/`RUN_ID_2`/
+   `repoOutSecurityFail`/`repoStatusSecurityFailed`/
+   `secretsResponseWithHistoryHit` fixture block**, unused by the
+   rewritten spec (see Judgement Call #8). Not dead in the sense of being
+   unreachable — it's exactly the shape a future session would want if it
+   re-adds the failed-optional-stage scenario as an explicit e2e step —
+   but genuinely unreferenced by the current spec file today.
+4. **`RepoLayout.tsx`'s `CompareLink` still reads `runs.data?.runs.length
+   >= 2` and links to `evolution?tab=compare`** — unchanged, still
+   correct, but worth noting it now depends on `EvolutionSurfacePage`'s
+   own `?tab=compare` contract being a real, permanent part of that
+   surface (which it now is, not scaffolding) rather than an interim
+   mounting choice.
+5. **The `ScoreExplainer`/`HonestyNote` "which surfaces have which"
+   inventory implied by section 5.1's table is now fully placed** — every
+   row this session owned (risk_score, coupling_degree, module coupling,
+   instability_score, test_cochange_ratio, benchmark percentile) has a
+   working explainer or honesty note somewhere in Findings/Risk/Structure/
+   Evolution. Not re-verified here that EVERY row of that table across
+   ALL eight surfaces (including the four sessions 1-3 built) is still
+   correctly placed after this session's shared-component fixes
+   (`Expander`, `SegmentedControl`, `ErrorState`) — those three files are
+   used by surfaces this session didn't otherwise touch (People, Tour,
+   Overview all use `Expander` via `ScoreExplainer`; every page uses
+   `ErrorState`), so the FIXES themselves are correctly scoped and tested,
+   but a full page-by-page re-walk of sessions 1-3's own explainer
+   placements was out of this session's own time budget beyond the direct
+   accessibility sweep already covering those same eight routes.
+
+## Known Hazards, as they actually happened this session
+
+1. **A tab nav that measures as correctly self-contained by every DOM
+   property can still inflate `document.documentElement.scrollWidth` on a
+   sufficiently tall page** — found on `/repos/:id/findings` specifically
+   (the one repo surface tall enough, against real data, to trigger a
+   document-level vertical scroll), and NOT reproducible against the
+   smaller e2e/manual-QA fixtures every prior session used. `RepoLayout`'s
+   tab `<nav>` (`overflow-x-auto`, `flex`) measured `clientWidth=328`/
+   `scrollWidth=559` (correctly self-clipped) and its own
+   `getBoundingClientRect().right` never exceeded the viewport, yet
+   `document.documentElement.scrollWidth` still read 578 against a 360px
+   viewport — repeatable across three fresh browser contexts with a 3.5s
+   settle time, not a timing fluke (an EARLIER, shorter-settle-time
+   measurement genuinely did read `360` by chance, which is itself worth
+   recording: a single passing measurement of this exact property is not
+   proof of no bug). Fixed structurally (Judgement Call #7) rather than by
+   chasing the precise Chromium internals.
+2. **Two separate, genuine 360px overflow bugs were hiding UNDER the nav
+   issue above and only became visible once it was fixed**: `RepoLayout`'s
+   repo-URL link had no `break-all`, and `OverviewPage`'s "three things to
+   know" row plus its entry-point badges both had a `shrink-0` sibling
+   next to a flex item with no `min-w-0` — a long unbroken token (a real
+   Java package path; the `graph_inferred` entry-point kind's full-
+   sentence label crammed into a badge meant for short text) pushed each
+   row wider than the viewport instead of wrapping. See DESIGN.md's own
+   session 4 entry for the full detail and fix.
+3. **`Expander`'s pure-CSS collapse keeps children permanently in the DOM
+   but never made them un-focusable** — `aria-hidden="true"` alone hides
+   from assistive tech without removing tab-order membership, so a
+   collapsed `ScoreExplainer`'s `InfoTooltip` buttons were reachable by
+   keyboard while invisible. Fixed with React 19's `inert` prop alongside
+   `aria-hidden`. This is a session-1-authored component this session
+   didn't otherwise touch — fixed anyway per Part H's "fix every genuine
+   violation" mandate for the final whole-app pass.
+4. **`SegmentedControl` never rendered a Radix `Tabs.Content` panel**,
+   so every trigger's Radix-generated `aria-controls` pointed at an id
+   that never existed in the DOM — on all four of its real call sites
+   (Map, Risk, Structure, Evolution). Fixed with a real (if empty)
+   `Tabs.Content` per option.
+5. **A background tint used to mark a "distinct row treatment" can fail
+   contrast for text on top of it even when the same text passes against
+   the page's normal background** — `RiskRow`'s low-confidence highlight
+   measured `text-muted` at 4.4:1 against its `bg-warning-bg` wash in the
+   dark scheme, across ~126 real elements on a real-sized risk list (this
+   ratio and node count came directly from `spring-petclinic`'s real
+   data, not a hypothetical). `ErrorState`'s message paragraph
+   (`text-muted` on `bg-danger-bg`) separately measured 4.36:1 in light.
+   Both fixed by moving the "distinct" signal off the background fill
+   entirely (a left border for RiskRow, full-strength `text` instead of
+   `text-muted` for ErrorState) — see DESIGN.md for the exact numbers.
+6. **A scrollable list of plain, non-interactive rows is invisible to
+   keyboard navigation unless the scroll container itself is focusable**
+   — all four `overflow-y-auto` lists on the Structure surface. Fixed
+   with `tabIndex={0}` + a descriptive `aria-label` on each. Three OTHER
+   `overflow-y-auto` regions elsewhere in the app were reviewed and left
+   alone, since each already contains real interactive children per row
+   (see DESIGN.md for which, and why that's what keeps axe's rule from
+   firing on them specifically).
+7. **A heading level was skipped on a page an earlier session (2) built
+   and manually reviewed** — `/how-it-works`'s pipeline-stage headings
+   were `h3`, directly under the page's own `h1`, with no `h2` between
+   them anywhere before the stage list. A one-line fix (`h3` → `h2`),
+   worth recording specifically because it's a real defect this session
+   found OUTSIDE its own new code, exactly as Part H's "final quality
+   pass across the whole app" instruction intends — not a redesign, a bug
+   fix in code this session otherwise left alone.
+8. **The pre-paint theme script (an inline `<script>` in `index.html`
+   since UI rebuild session 1) was silently blocked by `frontend/
+   vercel.json`'s own `script-src 'self'` directive** — no `'unsafe-
+   inline'`, no nonce, no hash, so the browser refused to execute it
+   under a real CSP. This is a genuine regression that slipped past every
+   prior session's own verification: session 16 (which built and verified
+   `vercel.json`'s CSP) predates the pre-paint script's existence
+   entirely, and sessions 1-3 verified the script's FUNCTIONAL correctness
+   (no flash of the wrong theme) without ever re-running it against the
+   actual CSP headers. The fix — moving it to `public/pre-paint-theme.js`,
+   a same-origin external script needing no CSP change at all — was
+   chosen over adding a `sha256-...` hash entry to `vercel.json`
+   specifically because a hash silently goes stale the moment anyone
+   edits the script's content with no automated check catching the
+   mismatch, which is exactly the class of drift this whole document
+   exists to flag before it becomes a live bug. Confirmed fixed with a
+   real production build served under the exact `vercel.json` header
+   block: a screenshot of the 3D city (`spring-petclinic`, `?view=city`)
+   showing real extruded building geometry, zero CSP console violations,
+   at `http://localhost:5173` (matched to the backend's own configured
+   `FRONTEND_ORIGIN` so CORS didn't confound the CSP check — the
+   `connect-src 'self' https:` directive was ALSO separately confirmed to
+   correctly reject a plain-`http://` backend origin, which is expected
+   and matches the deliberate design choice CLAUDE.md's Observability
+   section already documents; production always serves its real API over
+   HTTPS).
+9. **`page-has-heading-one` fired on `/dashboard` and `/portfolio` for an
+   anonymous visitor specifically** — both pages' `<h1>` only ever
+   rendered on the fully-loaded, logged-in success path; every
+   loading/logged-out/error early return bypassed it. Fixed by keeping
+   the `<h1>` present in every branch of both components' return value —
+   a real, common state for both pages (an anonymous visitor hits both
+   routinely), not an edge case.
+
+## Verification
+
+- `npm run typecheck` / `npm run lint` / `npx vitest run` / `npm run
+  build` / `npm run format:check`: all clean, re-run after every
+  Known-Hazard fix above, not just once at the end. Final state:
+  **161 tests, 24 files, all passing** (net vs. session 3's 162/24: -1
+  test, +2 test files — `pages/audit/FindingsPage.test.tsx` (5 tests) and
+  `ArchitecturePage.test.ts` (4 tests) deleted alongside their source
+  files; `pages/repo/FindingsSurfacePage.test.tsx` (5 tests, same subtrac
+  tive/never-re-sorts coverage, retargeted) and `StructureSurfacePage.
+  test.ts` (4 tests, same anti-drift coverage, retargeted) added). `npx
+  playwright test` (the one e2e spec, rewritten for the new route map):
+  **1 passed**. `CodeCity-*.js` still a separate ~916KB chunk from
+  `index-*.js` after every change this session made, confirmed in the
+  final build.
+- **Bundle size, before vs. after this whole session** (a real
+  `git stash`/build/`git stash pop` round-trip against the pre-session-4
+  working tree, not an estimate): main bundle `1,338.24 kB` → `1,339.19
+  kB` (`404.84 kB` → `404.87 kB` gzip) — effectively unchanged, new
+  surface code roughly offset by deleted scaffolding/legacy pages.
+  `CodeCity-*.js` `915.98 kB` → `916.07 kB` gzip-identical, confirming the
+  lazy-load boundary this session's own CodeCity edits (two class-name
+  changes only) didn't disturb it. CSS `57.95 kB` → `46.82 kB` (`13.13
+  kB` → `11.62 kB` gzip) — an 11 KB / ~19.6% reduction, entirely explained
+  by Part F deleting the transitional slate/indigo/session-15-semantic-
+  name remap block from `tokens.css` and every legacy page that generated
+  Tailwind utility classes against it.
+- **Accessibility**: `@axe-core/playwright`, installed with `--no-save`
+  (confirmed via `git status` on `package.json`/`package-lock.json` —
+  neither shows as modified), across all 13 routes (8 repo surfaces + 5
+  global pages) × 2 colour schemes = 26 combinations, against REAL data
+  from a live, pinned showcase repository (`spring-projects/spring-
+  petclinic`) through the project's own configured `DATABASE_URL`
+  (read-only — no write, no migration touched). First full pass: **22
+  violations**. Final pass, after the 9 Known Hazard fixes above: **0
+  violations**, 0 `scrollWidth !== 360` failures, 0 `prefers-reduced-
+  motion: reduce` console/page errors across all 26 combinations plus a
+  13-route reduced-motion-only pass.
+- **Contrast**: table in DESIGN.md updated with every new/changed pairing
+  (the new scene-overlay tokens, the diverging pair's new text usage, the
+  RiskRow border and ErrorState text fixes) — every row clears its bar;
+  see DESIGN.md's own session 4 section for the measured numbers.
+- **CSP**: a real production build (`npm run build`) served by a
+  throwaway static server applying `frontend/vercel.json`'s EXACT header
+  block (not a subset, not `'unsafe-inline'` added for convenience),
+  driven by Playwright across all 13 routes plus the 3D city and 2D
+  force-graph views specifically. Zero CSP violations after the pre-paint
+  script fix (Known Hazard #8); the 3D city confirmed rendering real
+  extruded building geometry via a real screenshot (`spring-petclinic`),
+  not just an absent console error.
+- `pytest --collect-only` was NOT re-run this session — no backend engine
+  or formula code changed (confirmed: `git diff --stat -- backend/` for
+  this session is empty except this doc file itself), so the count from
+  session 3's own entry (528 tests collected, 0 errors) still applies
+  verbatim.

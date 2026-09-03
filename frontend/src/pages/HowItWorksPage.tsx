@@ -318,7 +318,11 @@ function StageSection({
           <span className="tabular-nums text-xs text-text-muted">
             {String(index + 1).padStart(2, "0")}
           </span>
-          <h3 className="font-display text-xl text-text-heading">{stage.name}</h3>
+          {/* h2, not h3 -- this is the only heading level between the
+              page's own h1 and this stage card; skipping straight to h3
+              was a real heading-order violation this session's own
+              accessibility sweep caught. */}
+          <h2 className="font-display text-xl text-text-heading">{stage.name}</h2>
           <span
             className={`cp-label rounded-full border px-2 py-0.5 ${
               stage.kind === "fact"

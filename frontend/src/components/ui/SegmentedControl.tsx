@@ -43,6 +43,18 @@ export function SegmentedControl({
           </RadixTabs.Trigger>
         ))}
       </RadixTabs.List>
+      {/* Radix's own Tabs.Trigger always sets aria-controls pointing at a
+          same-value Tabs.Content -- this component is a pure view SWITCH
+          (the actual content it switches lives elsewhere in the caller's
+          tree, not inside a Tabs.Content), so without this, every trigger's
+          aria-controls referenced an id that never existed anywhere in the
+          DOM (an invalid ARIA attribute value, caught by this session's own
+          accessibility sweep). A real, empty Content per option gives the
+          active trigger's aria-controls a genuine target; Radix itself
+          keeps only the active one mounted. */}
+      {options.map((opt) => (
+        <RadixTabs.Content key={opt.value} value={opt.value} />
+      ))}
     </RadixTabs.Root>
   );
 }

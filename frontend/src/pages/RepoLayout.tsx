@@ -200,7 +200,7 @@ export function RepoLayout() {
         : "border-accent text-accent";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -211,7 +211,7 @@ export function RepoLayout() {
               href={repo.url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-text-muted hover:underline"
+              className="break-all text-xs text-text-muted hover:underline"
             >
               {repo.url}
             </a>

@@ -47,15 +47,27 @@ describe("chartTheme subsystem palette anti-drift", () => {
 
   // Source-text scan (the same style of guard session 12's
   // test_narrative_factpack.py uses for its import-path check, and
-  // lib/copy.test.ts uses for its exhaustiveness list): each of the four
+  // lib/copy.test.ts uses for its exhaustiveness list): each of the
   // renderers must import the shared accessor rather than defining its own
   // hex palette. A file that starts hardcoding `#rrggbb` categorical arrays
   // again is exactly the drift this test exists to catch.
+  //
+  // UI rebuild session 4 update: the former `pages/audit/CouplingPage.tsx`
+  // and `pages/audit/ArchitecturePage.tsx` (two separate files, two
+  // separate RENDERERS entries) were deleted and merged into ONE file,
+  // `pages/repo/StructureSurfacePage.tsx` (Part C), which contains both the
+  // former Coupling view's force graph and the former Architecture view's
+  // graph. Collapsed to one entry rather than kept as two pointing at the
+  // same path -- a rewrite genuinely required this change (the two old
+  // paths no longer exist on disk at all), not a silent behaviour change;
+  // see DESIGN_NOTES.md's session 4 entry.
   const RENDERERS: { label: string; path: string }[] = [
-    { label: "force graph (Audit coupling view)", path: "pages/audit/CouplingPage.tsx" },
+    {
+      label: "Structure surface (architecture + coupling views)",
+      path: "pages/repo/StructureSurfacePage.tsx",
+    },
     { label: "treemap (codebase map)", path: "pages/onboard/MapPage.tsx" },
     { label: "city layout (3D city)", path: "components/CodeCity.tsx" },
-    { label: "Audit architecture view", path: "pages/audit/ArchitecturePage.tsx" },
   ];
 
   for (const { label, path: relPath } of RENDERERS) {

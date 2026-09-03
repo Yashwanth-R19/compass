@@ -54,13 +54,13 @@ export function FindingItem({
             {categoryLabel(finding.category)}
           </span>
           <ConfidenceMeter confidence={finding.confidence} size="sm" />
-          <span className="ml-auto shrink-0 text-xs text-ink-faint">
+          <span className="ml-auto shrink-0 text-xs text-text-muted">
             {expanded ? "Hide evidence ▲" : "Show evidence ▼"}
           </span>
         </div>
-        <p className="text-sm font-medium text-ink">{finding.title}</p>
+        <p className="text-sm font-medium text-text">{finding.title}</p>
         {finding.file_path ? (
-          <p className="truncate font-mono text-xs text-ink-faint" title={finding.file_path}>
+          <p className="truncate font-mono text-xs text-text-muted" title={finding.file_path}>
             {finding.file_path}
           </p>
         ) : null}

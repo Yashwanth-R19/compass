@@ -3,10 +3,10 @@ import type { FindingCategory, FindingOut } from "../api/types";
 export interface FindingDeepLink {
   /** Absolute path (starting with `/repos/<repoId>/...`), ready for
    * react-router's `<Link to>` -- built absolute rather than relative
-   * because FindingItem is rendered from `audit/findings`, and a relative
-   * `audit/risk?...` there would resolve UNDER `audit/findings`, not as a
-   * sibling tab (the same reasoning RepoLayout's own LegacyRedirect
-   * documents for why it builds absolute targets). */
+   * because FindingItem is rendered from `findings`, and a relative
+   * `risk?...` there would resolve UNDER `findings`, not as a sibling
+   * surface (the same reasoning RepoLayout's own LegacyRedirect documents
+   * for why it builds absolute targets). */
   to: string;
   label: string;
 }
@@ -36,11 +36,19 @@ export function parseOsvId(title: string): string | null {
  * finding to the coupling graph focused on that pair, ...). Every category
  * a finding can carry (FindingCategory) must resolve to something, or
  * `null` when there's genuinely nothing more specific to focus on than the
- * tab itself. Judgement call (RULES.md sec 2.5): the session prompt names
- * three example destinations for three categories: this table extends that
- * same one-category-one-destination shape to the other five categories by
- * the same reasoning (send the viewer to the page that already visualizes
- * that category's evidence), documented per-case below. */
+ * surface itself. Judgement call (RULES.md sec 2.5), unchanged since this
+ * table was first built: extend the "send the viewer to the page that
+ * already visualizes that category's evidence" reasoning uniformly across
+ * every category.
+ *
+ * UI rebuild session 4: retargeted for the 8-surface route map (section
+ * 4.1). `hygiene`/`test_gap`/`secret`/`vulnerability` used to point at
+ * standalone `audit/hygiene`/`audit/security` pages; those pages no longer
+ * exist -- their evidence sections now live INSIDE this same `findings`
+ * surface (Part A), so those four categories link to
+ * `findings?category=<category>&...`, a same-surface deep link that
+ * filters the ranked list to that category and scrolls/highlights the
+ * matching evidence row, rather than navigating to a different surface. */
 export function findingDeepLink(finding: FindingOut, repoId: string): FindingDeepLink | null {
   const base = `/repos/${repoId}`;
   const path = finding.file_path;
@@ -50,65 +58,62 @@ export function findingDeepLink(finding: FindingOut, repoId: string): FindingDee
     case "risk":
       // "a risk finding to that file's risk detail" (Part A, verbatim).
       return path
-        ? { to: `${base}/audit/risk?file=${encodeURIComponent(path)}`, label: "View in Risk" }
+        ? {
+            to: `${base}/risk?tab=hotspots&file=${encodeURIComponent(path)}`,
+            label: "View in Risk",
+          }
         : null;
 
     case "hidden_dependency": {
       // "a coupling finding links to the coupling graph focused on that
       // pair" -- hidden_dependency IS the coupling-derived category (there
       // is no separate "coupling" FindingCategory), so this is that example.
-      const params = new URLSearchParams({ hiddenOnly: "1" });
+      const params = new URLSearchParams({ view: "coupling", hiddenOnly: "1" });
       const pair = parseHiddenDependencyPair(finding.title);
       if (pair) params.set("pair", pair.join("|"));
-      return { to: `${base}/audit/coupling?${params.toString()}`, label: "View in Coupling" };
+      return { to: `${base}/structure?${params.toString()}`, label: "View in Coupling" };
     }
 
     case "architecture":
       return {
         to: path
-          ? `${base}/audit/architecture?file=${encodeURIComponent(path)}`
-          : `${base}/audit/architecture`,
+          ? `${base}/structure?view=architecture&file=${encodeURIComponent(path)}`
+          : `${base}/structure?view=architecture`,
         label: "View in Architecture",
       };
 
     case "knowledge":
       // Knowledge-distribution findings are about who knows a file --
       // People is where that's answered (same cross-page pattern
-      // TourPage/GlossaryPage already use for `onboard/people?path=`).
+      // Tour/Glossary already use for `people?path=`).
       return path
-        ? { to: `${base}/onboard/people?path=${encodeURIComponent(path)}`, label: "View in People" }
+        ? { to: `${base}/people?path=${encodeURIComponent(path)}`, label: "View in People" }
         : null;
 
-    case "hygiene":
-      return {
-        to: path
-          ? `${base}/audit/hygiene?file=${encodeURIComponent(path)}`
-          : `${base}/audit/hygiene`,
-        label: "View in Hygiene",
-      };
+    case "hygiene": {
+      const params = new URLSearchParams({ category: "hygiene" });
+      if (path) params.set("file", path);
+      return { to: `${base}/findings?${params.toString()}`, label: "View in Findings" };
+    }
 
     case "test_gap": {
-      const params = new URLSearchParams({ tab: "tests" });
+      const params = new URLSearchParams({ category: "test_gap" });
       if (path) params.set("file", path);
-      return { to: `${base}/audit/hygiene?${params.toString()}`, label: "View in Hygiene" };
+      return { to: `${base}/findings?${params.toString()}`, label: "View in Findings" };
     }
 
     case "secret": {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ category: "secret" });
       if (finding.evidence_sha) params.set("sha", finding.evidence_sha);
       if (path) params.set("file", path);
-      const qs = params.toString();
-      return { to: `${base}/audit/security${qs ? `?${qs}` : ""}`, label: "View in Security" };
+      return { to: `${base}/findings?${params.toString()}`, label: "View in Findings" };
     }
 
     case "vulnerability": {
+      const params = new URLSearchParams({ category: "vulnerability" });
       const osvId = parseOsvId(finding.title);
-      return {
-        to: osvId
-          ? `${base}/audit/security?osv=${encodeURIComponent(osvId)}`
-          : `${base}/audit/security`,
-        label: "View in Security",
-      };
+      if (osvId) params.set("osv", osvId);
+      return { to: `${base}/findings?${params.toString()}`, label: "View in Findings" };
     }
 
     default:

@@ -158,7 +158,7 @@ export function AppShell() {
             </nav>
           </header>
 
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
+          <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">
             <Outlet />
           </main>
         </div>

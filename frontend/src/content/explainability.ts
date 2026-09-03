@@ -543,4 +543,17 @@ export const HONESTY = {
     "Bot commits are excluded from authorship modelling entirely, not merely down-weighted. A file only ever touched by a bot — a lockfile only a dependency-update bot edits, for example — has no expert at all, rather than a weak one.",
   identityMergingIsRuleBasedNotFuzzy:
     "Contributor identities are merged by deterministic, rule-based matching only — an exact email, a GitHub noreply address, an exact name, or a shared email local part — never fuzzy string similarity. A missed merge only slightly undercounts one person's activity; a false merge would put someone else's history under the wrong name, which is the worse mistake to risk.",
+  // UI rebuild session 4 additions -- Findings, Risk, Structure, Evolution.
+  timeOfDayExcludedFromHygiene:
+    "Time of day is deliberately not one of the risky-commit conditions. It is folklore — dependent on a contributor's own timezone, which commit metadata doesn't reliably record — and including it would weaken the credibility of the three evidence-based conditions this signal actually uses.",
+  riskConfidenceNotAFourthTerm:
+    "risk_confidence is not a fourth term in the risk_score formula — it is a completely independent measure of how much commit history backs the score. A file can be exactly as risky as its score says and still be low-confidence, simply because there isn't much history behind the number yet.",
+  benchmarkVsPortfolioDistinct:
+    "This is a comparison against a curated corpus of OTHER repositories — a genuine external benchmark. It is a different thing from the Portfolio page's pooled distributions, which compare a repository only against the caller's own other repositories. The two are never rendered through the same component.",
+  directoryGrainHasNoStructuralCrossReference:
+    "\"Hidden dependencies only\" isn't offered at directory granularity — the backend's own directory-truncation depth isn't known to the frontend, so there is no honest way to check which directory pairs share a structural edge at this grain. Switch to subsystem or file granularity for that filter.",
+  layeringHeuristicConservative:
+    "Layering violations use a conservative, keyword-based heuristic: a file matching none of the UI/service/database layer keywords is left unclassified and excluded entirely, rather than guessed at. A clean result here does not guarantee there is no layering problem — only that none was found among files this heuristic could confidently classify.",
+  subsystemIdentityInferredByOverlap:
+    "A subsystem's identity across two runs is inferred by how much its membership overlaps, never tracked directly — there is no stable subsystem id. A large refactor that leaves no subsystem on either side overlapping by 50% or more will legitimately show as one subsystem disappearing and a different one appearing, rather than a rename.",
 } as const;

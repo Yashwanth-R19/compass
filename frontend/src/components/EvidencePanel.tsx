@@ -25,16 +25,16 @@ export function EvidencePanel({
   deepLink?: FindingDeepLink | null;
 }) {
   return (
-    <div className="flex flex-col gap-2.5 border-l-2 border-border-strong bg-surface-2 p-3 text-sm">
-      <p className="text-ink-muted">{detail}</p>
+    <div className="flex flex-col gap-2.5 border-l-2 border-border-strong bg-bg-inset p-3 text-sm">
+      <p className="text-text-muted">{detail}</p>
 
       {evidenceSha ? (
-        <div className="flex items-center gap-2 text-xs text-ink-muted">
+        <div className="flex items-center gap-2 text-xs text-text-muted">
           <span>Evidence commit:</span>
           {repoUrl ? (
             <EvidenceLink repoUrl={repoUrl} sha={evidenceSha} />
           ) : (
-            <span className="w-fit cp-stat border border-border bg-surface px-1.5 py-0.5 text-xs text-ink-muted">
+            <span className="w-fit cp-stat border border-border bg-bg-elevated px-1.5 py-0.5 text-xs text-text-muted">
               {shortSha(evidenceSha)}
             </span>
           )}
@@ -48,7 +48,7 @@ export function EvidencePanel({
           </span>
           <ul className="flex flex-col gap-0.5">
             {affectedFiles.map((f) => (
-              <li key={f} className="truncate font-mono text-xs text-ink-muted" title={f}>
+              <li key={f} className="truncate font-mono text-xs text-text-muted" title={f}>
                 {f}
               </li>
             ))}
@@ -57,7 +57,7 @@ export function EvidencePanel({
       ) : null}
 
       {deepLink ? (
-        <Link to={deepLink.to} className="w-fit text-xs font-medium text-signal hover:underline">
+        <Link to={deepLink.to} className="w-fit text-xs font-medium text-accent hover:underline">
           {deepLink.label} →
         </Link>
       ) : null}

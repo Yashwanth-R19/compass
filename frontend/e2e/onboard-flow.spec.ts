@@ -1,46 +1,40 @@
 import { expect, test, type Route } from "@playwright/test";
 import {
   REPO_ID,
-  REPO_ID_2,
   architectureResponse,
-  blastRadiusResponse,
-  cityResponse,
-  contributorsResponse,
   couplingResponse,
-  entryPointsResponse,
-  expertiseResponse,
   findingsResponse,
+  formulasResponse,
+  healthResponse,
   hiddenDependenciesResponse,
-  knowledgeMapResponse,
+  hygieneResponseEmpty,
   moduleCouplingSubsystemResponse,
   passportResponse,
+  pipelineResponse,
   repoOut,
-  repoOutSecurityFail,
   repoStatus,
-  repoStatusSecurityFailed,
-  secretsResponseWithHistoryHit,
+  riskResponse,
+  runsResponse,
+  secretsResponseEmpty,
+  showcaseReposResponse,
   subsystemsResponse,
-  tourResponse,
-  truckFactorResponse,
-  vulnerabilitiesResponseEmpty,
+  testGapsResponseEmpty,
+  vulnerabilitiesResponseEmptyPrimary,
 } from "./fixtures";
 
 const API_URL = "http://localhost:8000";
 
-// One Playwright test, not a suite (RULES.md sec 8 / Part H): "the Onboard
-// product works" end to end against a mocked API -- Onboard -> passport ->
-// tour -> people -> map -> impact -> Audit findings -> a deep link -> a
-// failed optional stage rendering one errored section. Every backend call
-// this flow can make is routed here explicitly; anything unmatched falls
-// through to a 404 fixture rather than a real network call, so a missed
-// mock fails loudly (a hung/failed request) instead of silently hitting
-// localhost:8000. Session 09 extended this SAME test with the map's
-// expand/collapse interaction and the impact explorer's file-select flow;
-// session 11 extends it again with Audit mode, per the same "extend the
-// single existing test" instruction each prior session has followed.
-test("Onboard mode: passport -> tour -> people -> map -> impact -> Audit findings", async ({
-  page,
-}) => {
+// One Playwright test, not a suite (UI rebuild session 4, Part G): the
+// product works end to end against a mocked API, on the NEW 8-surface
+// route map (section 4.1) -- landing (a showcase card is visible) into a
+// repository's Overview, then Map (expand and collapse a subsystem), then
+// Findings (open a finding's evidence panel and follow its deep link to
+// the destination surface), then Risk (expand a hotspot row and open its
+// ScoreExplainer). Every backend call this flow can make is routed here
+// explicitly; anything unmatched falls through to a 404 fixture rather
+// than a real network call, so a missed mock fails loudly (a hung/failed
+// request) instead of silently hitting localhost:8000.
+test("Compass: landing -> Overview -> Map -> Findings -> Risk", async ({ page }) => {
   await page.route(`${API_URL}/**`, (route: Route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -48,35 +42,58 @@ test("Onboard mode: passport -> tour -> people -> map -> impact -> Audit finding
     if (path === "/auth/me") {
       return route.fulfill({ status: 401, json: { detail: "Not authenticated" } });
     }
+    if (path === "/repos/showcase") {
+      return route.fulfill({ json: showcaseReposResponse });
+    }
+    if (path === "/meta/formulas") {
+      return route.fulfill({ json: formulasResponse });
+    }
+    if (path === "/meta/pipeline") {
+      return route.fulfill({ json: pipelineResponse });
+    }
+
     if (path === `/repos/${REPO_ID}`) {
       return route.fulfill({ json: repoOut });
     }
     if (path === `/repos/${REPO_ID}/status`) {
       return route.fulfill({ json: repoStatus });
     }
+    if (path === `/repos/${REPO_ID}/runs`) {
+      return route.fulfill({ json: runsResponse });
+    }
+
+    // Overview.
     if (path === `/repos/${REPO_ID}/passport`) {
       return route.fulfill({ json: passportResponse });
     }
+    if (path === `/repos/${REPO_ID}/health`) {
+      return route.fulfill({ json: healthResponse });
+    }
     if (path === `/repos/${REPO_ID}/truck-factor`) {
-      return route.fulfill({ json: truckFactorResponse });
+      return route.fulfill({
+        json: {
+          repo_id: REPO_ID,
+          value: 2,
+          removal_order: [],
+          total_files_considered: 120,
+          orphaned_file_count: 5,
+          note: null,
+          interpretation: "This measures the project's knowledge-distribution risk.",
+        },
+      });
     }
     if (path === `/repos/${REPO_ID}/entry-points`) {
-      return route.fulfill({ json: entryPointsResponse });
+      return route.fulfill({
+        json: {
+          repo_id: REPO_ID,
+          entry_points: [
+            { file_path: "src/app.py", kind: "web_server", evidence: "Referenced by package.json scripts.start.", confidence: 0.95, rank: 0 },
+          ],
+        },
+      });
     }
-    if (path === `/repos/${REPO_ID}/tour`) {
-      return route.fulfill({ json: tourResponse });
-    }
-    if (path === `/repos/${REPO_ID}/knowledge-map`) {
-      return route.fulfill({ json: knowledgeMapResponse });
-    }
-    if (path === `/repos/${REPO_ID}/contributors`) {
-      return route.fulfill({ json: contributorsResponse });
-    }
-    if (path === `/repos/${REPO_ID}/expertise`) {
-      expect(url.searchParams.get("path")).toBe("src/app.py");
-      return route.fulfill({ json: expertiseResponse });
-    }
-    // Session 09: codebase map + impact explorer.
+
+    // Map.
     if (path === `/repos/${REPO_ID}/subsystems`) {
       return route.fulfill({ json: subsystemsResponse });
     }
@@ -93,75 +110,50 @@ test("Onboard mode: passport -> tour -> people -> map -> impact -> Audit finding
       return route.fulfill({ json: hiddenDependenciesResponse });
     }
     if (path === `/repos/${REPO_ID}/city`) {
-      return route.fulfill({ json: cityResponse });
+      return route.fulfill({ status: 202, json: { stage: "onboarding", status: "running" } });
     }
-    if (path === `/repos/${REPO_ID}/blast-radius`) {
-      expect(url.searchParams.get("path")).toBe("src/app.py");
-      return route.fulfill({ json: blastRadiusResponse });
-    }
-    // Session 11: Audit mode -- findings + its coupling deep link.
+
+    // Findings -- the ranked stream plus its four evidence sections.
     if (path === `/repos/${REPO_ID}/findings`) {
       return route.fulfill({ json: findingsResponse });
     }
+    if (path === `/repos/${REPO_ID}/secrets`) {
+      return route.fulfill({ json: secretsResponseEmpty });
+    }
+    if (path === `/repos/${REPO_ID}/vulnerabilities`) {
+      return route.fulfill({ json: vulnerabilitiesResponseEmptyPrimary });
+    }
+    if (path === `/repos/${REPO_ID}/hygiene`) {
+      return route.fulfill({ json: hygieneResponseEmpty });
+    }
+    if (path === `/repos/${REPO_ID}/test-gaps`) {
+      return route.fulfill({ json: testGapsResponseEmpty });
+    }
 
-    // Session 11: a second, separate repo whose "security" stage failed --
-    // the security page must render its vulnerabilities section as errored
-    // while secrets (a different stage) works normally.
-    if (path === `/repos/${REPO_ID_2}`) {
-      return route.fulfill({ json: repoOutSecurityFail });
-    }
-    if (path === `/repos/${REPO_ID_2}/status`) {
-      return route.fulfill({ json: repoStatusSecurityFailed });
-    }
-    if (path === `/repos/${REPO_ID_2}/secrets`) {
-      return route.fulfill({ json: secretsResponseWithHistoryHit });
-    }
-    if (path === `/repos/${REPO_ID_2}/vulnerabilities`) {
-      return route.fulfill({ json: vulnerabilitiesResponseEmpty });
+    // Risk.
+    if (path === `/repos/${REPO_ID}/risk`) {
+      return route.fulfill({ json: riskResponse });
     }
 
     return route.fulfill({ status: 404, json: { detail: `unmocked path: ${path}` } });
   });
 
-  await page.goto(`/repos/${REPO_ID}`);
+  // --- Landing: a showcase card is visible, click straight into Overview. ---
+  await page.goto("/");
+  await expect(page.getByText("acme/widgets")).toBeVisible();
+  await expect(page.getByText("500 commits · 5 subsystems · truck factor 2")).toBeVisible();
+  await page.getByText("acme/widgets").click();
 
-  // Index redirect lands on Onboard's default tab (a fresh browser context
-  // has no stored mode preference).
-  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/onboard/passport$`));
+  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/overview$`));
   await expect(page.getByRole("heading", { name: "acme/widgets", level: 1 })).toBeVisible();
   await expect(page.getByText("Onboarding difficulty")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Team shape" })).toBeVisible();
+  await expect(page.getByText("Team shape")).toBeVisible();
 
-  // Passport -> Tour.
-  await page.getByRole("link", { name: "Tour" }).click();
-  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/onboard/tour$`));
-  await expect(page.getByText("Why this order")).toBeVisible();
-  await expect(page.getByText("src/app.py")).toBeVisible();
-
-  // Tour -> People.
-  await page.getByRole("link", { name: "People" }).click();
-  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/onboard/people$`));
-  await expect(page.getByText("Who do I ask?")).toBeVisible();
-
-  // The flagship search: type into the file picker and select a match.
-  const search = page.getByPlaceholder("Search files by path…");
-  await search.click();
-  await search.fill("app.py");
-  await page.getByRole("button", { name: "src/app.py" }).click();
-
-  // Its expert shows up, DOA and change count included, no email anywhere.
-  await expect(page.getByText("Jane Doe").first()).toBeVisible();
-  await expect(page.getByText("DOA 92%")).toBeVisible();
-  await expect(page.getByText("40 changes")).toBeVisible();
-  await expect(page.getByText("@example.com")).toHaveCount(0);
-
-  // People -> Map. Opens at subsystem level (never file level) -- the
-  // "Subsystems" side list is DOM, unlike the force-graph canvas itself, so
-  // this is what the test can actually assert against.
+  // --- Overview -> Map. Opens at subsystem level (never file level). -------
   await page.getByRole("link", { name: "Map" }).click();
-  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/onboard/map$`));
-  await expect(page.getByRole("heading", { name: "Subsystems" })).toBeVisible();
-  await expect(page.getByText("billing", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/map$`));
+  await expect(page.getByText("Subsystems")).toBeVisible();
+  await expect(page.getByText("billing", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Click a subsystem to expand it into its files.")).toBeVisible();
 
   // Expand "billing" -- the side list doubles as an expand control.
@@ -173,27 +165,10 @@ test("Onboard mode: passport -> tour -> people -> map -> impact -> Audit finding
   await page.getByRole("button", { name: "collapse" }).click();
   await expect(page.getByText("Click a subsystem to expand it into its files.")).toBeVisible();
 
-  // Map -> Impact. Pick a file, see its blast radius -- "coupled but NOT
-  // imported" is the flagship result and must be visible, first.
-  await page.getByRole("link", { name: "Impact" }).click();
-  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/onboard/impact$`));
-  const impactSearch = page.getByPlaceholder("Search files by path…");
-  await impactSearch.click();
-  await impactSearch.fill("app.py");
-  await page.getByRole("button", { name: "src/app.py" }).click();
-
-  await expect(page.getByRole("heading", { name: "Coupled but NOT imported" })).toBeVisible();
-  await expect(page.getByText("Files affected")).toBeVisible();
-  // surprising_affected is a subset of historical_affected by definition
-  // (coupled AND not structurally imported), so this text legitimately
-  // appears more than once on the page -- .first() is the correct
-  // assertion, not a workaround.
-  await expect(page.getByText("src/auth/login.py").first()).toBeVisible();
-
-  // --- Session 11: Audit mode -- Findings -> expand -> follow its deep
-  // link -> land on Coupling with the SAME pair focused, not just the tab.
-  await page.getByRole("link", { name: "Audit" }).click();
-  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/audit/findings$`));
+  // --- Map -> Findings. Expand a finding, follow its deep link into
+  // Structure, forced to file granularity with "hidden only" applied. ------
+  await page.getByRole("link", { name: "Findings" }).click();
+  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/findings$`));
 
   const findingTitle = "Hidden dependency: src/app.py <-> src/auth/login.py";
   await expect(page.getByText(findingTitle)).toBeVisible();
@@ -205,25 +180,25 @@ test("Onboard mode: passport -> tour -> people -> map -> impact -> Audit finding
   await expect(couplingDeepLink).toBeVisible();
   await couplingDeepLink.click();
 
-  // Lands on Coupling, forced to FILE granularity (a hidden_dependency
-  // finding's signature is always a file pair) with "hidden only" already
-  // applied -- and the exact pair from the finding is what's shown, not
-  // just the tab in general.
-  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/audit/coupling\\?`));
-  await expect(page.getByText(/hidden only/i)).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/structure\\?`));
+  await expect(page.getByText(/hidden dependencies only/i)).toBeVisible();
   await expect(page.getByText("app.py ↔ login.py")).toBeVisible();
   await expect(page.getByText("hidden", { exact: true }).first()).toBeVisible();
 
-  // --- Session 11: Security page, a DIFFERENT repo whose "security" stage
-  // (session 10's optional stage) failed -- one section errored, the other
-  // (secrets, a separate stage) working normally. This is the visible
-  // payoff of per-stage failure isolation (session 10 Part E).
-  await page.goto(`/repos/${REPO_ID_2}/audit/security`);
+  // --- Structure -> Risk. Expand a hotspot row and open its ScoreExplainer,
+  // reading the real, live weights from GET /meta/formulas. -----------------
+  await page.getByRole("link", { name: "Risk" }).click();
+  await expect(page).toHaveURL(new RegExp(`/repos/${REPO_ID}/risk$`));
+  await expect(page.getByText("Risk vs. confidence")).toBeVisible();
+  await expect(page.getByText("src/billing/invoice.py")).toBeVisible();
+
+  await page.getByText("src/billing/invoice.py").click();
+  await expect(page.getByText("View blast radius →")).toBeVisible();
+
+  await page.getByText("How this is calculated").click();
   await expect(
-    page.getByRole("heading", { name: "Removed from code but still in git history" }),
+    page.getByText(
+      "risk_score = 0.60 x norm(churn_weighted x complexity) + 0.25 x norm(max coupling_degree) + 0.15 x norm(commit_count)",
+    ),
   ).toBeVisible();
-  await expect(page.getByText("AWS Access Key ID")).toBeVisible();
-  await expect(page.getByText(/should be rotated/)).toBeVisible();
-  await expect(page.getByText("This section couldn't be computed")).toBeVisible();
-  await expect(page.getByText(/OSV.dev request failed/)).toBeVisible();
 });

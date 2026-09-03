@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { resolveNodeColor } from "./ArchitecturePage";
+import { resolveNodeColor } from "./StructureSurfacePage";
 import { colorForSubsystem } from "../../lib/subsystemColors";
 
 // Session 09's subsystemColors.test.ts covers colorForSubsystem's own
 // determinism; this is the "extend it to cover this view" anti-drift test
-// Known Hazard #4 calls for -- it asserts the Architecture graph's node
+// Known Hazard #4 calls for -- it asserts the Architecture view's node
 // coloring resolves to the EXACT SAME color colorForSubsystem would give
-// the Onboard map / 3D city for the same subsystem label, and that
+// the Map surface / 3D city for the same subsystem label, and that
 // selection/cycle highlighting takes priority over it without silently
 // replacing it with a locally-invented palette.
-describe("ArchitecturePage.resolveNodeColor", () => {
+//
+// UI rebuild session 4: retargeted from pages/audit/ArchitecturePage.tsx
+// (deleted, merged into StructureSurfacePage.tsx) -- same assertions, same
+// exported function, new home.
+describe("StructureSurfacePage.resolveNodeColor", () => {
   it("colors an unselected, non-cycle node the same as colorForSubsystem for its label", () => {
     for (const label of ["billing", "auth", "search", null, undefined]) {
       const color = resolveNodeColor("src/a.py", {

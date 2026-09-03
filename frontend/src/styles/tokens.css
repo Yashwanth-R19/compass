@@ -40,29 +40,17 @@
  *     same switchable value, with zero per-component `data-theme` branching
  *     needed anywhere else in the app.
  *
- * TRANSITIONAL COMPATIBILITY REMAP — read before deleting anything here.
- * Sessions 3 and 4 have not rebuilt their pages yet. Every currently
- * un-rebuilt page (everything under `pages/onboard/`, `pages/audit/`,
- * `DashboardPage`, `PortfolioPage`, `ComparePage`, plus a handful of
- * shared components this session deliberately left alone — `NarrativeBlock`,
- * `FindingItem`, `EvidencePanel`, `GraphCanvas`, `ModeSelect`,
- * `DirectoryTreemap`, `CodeCity`) still references BOTH:
- *   (a) raw Tailwind `slate-*`/`indigo-*` utilities with explicit `dark:`
- *       pairs, and
- *   (b) the session-15 SEMANTIC token names (`bg-surface`, `text-ink`,
- *       `text-ink-muted`, `border-signal`, `text-sev-high`, `text-conf-high`,
- *       `bg-risk-2`, ...) — every shared primitive this repo had before
- *       session 15 was refit onto these, and that refit was never undone,
- *       so (b) is actually the LARGER surface, not (a). The rebuild spec's
- *       own Part B only names (a) explicitly, but leaving (b) unmapped
- *       would break literally every un-rebuilt page and every primitive
- *       this session did not touch — "the app stays fully functional and
- *       reviewable" (Part J) is not achievable without also remapping (b).
- *       Recorded as a deliberate reading of the spec in DESIGN_NOTES.md.
- * BOTH (a) and (b) are remapped below onto Verdigris & Bone equivalents,
- * clearly fenced and commented "TRANSITIONAL". Session 4 deletes this
- * entire fenced region once no page references any name in it — grep for
- * the fence comment before touching a page that still needs it.
+ * UI rebuild session 1 shipped a TRANSITIONAL compatibility remap here
+ * (raw Tailwind `slate-*`/`indigo-*` utilities, plus the outgoing
+ * session-15 semantic token names `bg-surface`/`text-ink`/`border-signal`/
+ * `text-sev-*`/`text-conf-*`/`bg-risk-*`/`text-recency-*`) so every
+ * not-yet-rebuilt page stayed visually coherent while sessions 3 and 4
+ * worked through the eight repo surfaces. UI rebuild session 4 deleted
+ * that entire block once every page and shared component had migrated off
+ * it (confirmed by grep — zero remaining `slate-`/`indigo-`/old-semantic-
+ * name usages anywhere in `src/` — see DESIGN_NOTES.md's session 4 entry).
+ * If you are looking for it, it no longer exists; every page now uses the
+ * going-forward semantic tokens below directly.
  *
  * Every token group below is documented at its own declaration. Never
  * inline a raw hex/px/ms value in a component — add a token here first.
@@ -160,46 +148,6 @@
   --tracking-wide: 0.09em; /* uppercase eyebrows and section labels */
 
   /* ============================================================
-   * TRANSITIONAL — remapped base Tailwind palette ("slate", "indigo").
-   * See the file-header note above. `slate` is a warm, olive-tinted
-   * neutral ramp anchored on the new bg/text extremes (50 = bone-white,
-   * 950 = near-black ink) so `bg-white dark:bg-slate-950`-style pairs in
-   * un-rebuilt pages land inside the new palette family instead of a
-   * stray cool grey. `indigo` is repointed onto the new verdigris accent
-   * family so `bg-indigo-600`-style primary-action classes in those same
-   * pages read as "the app's one accent", not a leftover SaaS blue.
-   * Both are STATIC (no data-theme switching of their own) — the
-   * un-rebuilt pages that use them already pair each with an explicit
-   * `dark:` variant, and `dark:` itself is what switches (see the
-   * `@custom-variant dark` declaration below index.css imports this file).
-   * DELETE THIS WHOLE BLOCK IN SESSION 4 once no page references
-   * `slate-*`/`indigo-*` any longer.
-   * ============================================================ */
-  --color-slate-50: #f3f1e8;
-  --color-slate-100: #e7e3d3;
-  --color-slate-200: #d3cdb4;
-  --color-slate-300: #b6ac8c;
-  --color-slate-400: #94896a;
-  --color-slate-500: #756c52;
-  --color-slate-600: #5a5340;
-  --color-slate-700: #423d30;
-  --color-slate-800: #262420;
-  --color-slate-900: #17150f;
-  --color-slate-950: #0b0c0a;
-
-  --color-indigo-50: #eaf6f1;
-  --color-indigo-100: #d0ecdf;
-  --color-indigo-200: #a4dcc2;
-  --color-indigo-300: #7ecaa8;
-  --color-indigo-400: #6cbc98;
-  --color-indigo-500: #5fb99a;
-  --color-indigo-600: #46967a;
-  --color-indigo-700: #367561;
-  --color-indigo-800: #275544;
-  --color-indigo-900: #1b3c30;
-  --color-indigo-950: #0e211a;
-
-  /* ============================================================
    * Semantic tokens — the going-forward system (section 3.1).
    * Every one indirects through a --cp-* private variable (or, for
    * the subsystem/heat-ramp values, a --subsystem-N/--scale-N plain
@@ -253,6 +201,22 @@
      ("an agent needing a value not listed must add it, following the
      naming conventions here"). Used by Drawer's modal backdrop. */
   --color-overlay: var(--cp-overlay);
+
+  /* Not in section 3's list — added per the rebuild spec's own rule (UI
+     rebuild session 4, Part F). The 3D city's own lighting/ground is the
+     one deliberate exception to "every surface reskins with the theme
+     toggle" (rule V3's own carve-out) — its floating HTML labels/tooltips
+     (components/CodeCity.tsx, drei's <Html> overlays projected over the
+     WebGL canvas) need a chip treatment that stays legible against that
+     scene regardless of the app's light/dark toggle, the same convention
+     map-style on-canvas labels use everywhere. Declared once, scheme-
+     INVARIANT (no light override, same treatment as --color-subsystem-*),
+     replacing what used to be raw slate-900/slate-700/slate-300 utility
+     classes. */
+  --color-scene-overlay-bg: var(--scene-overlay-bg);
+  --color-scene-overlay-border: var(--scene-overlay-border);
+  --color-scene-overlay-text: var(--scene-overlay-text);
+  --color-scene-overlay-text-muted: var(--scene-overlay-text-muted);
 
   /* Six-stop heat ramp (section 3.1) — the ONE ordered scale for risk,
      severity and any other "how bad / how much" encoding. Never green
@@ -309,52 +273,6 @@
   --color-subsystem-11: var(--subsystem-11);
   --color-subsystem-12: var(--subsystem-12);
   --color-subsystem-unassigned: var(--subsystem-unassigned);
-
-  /* ============================================================
-   * TRANSITIONAL — old (session-15) semantic token NAMES, remapped
-   * onto the new private values so every un-rebuilt page/component
-   * keeps rendering coherently. See the file-header note. Each old
-   * name below reuses a --cp-* or --scale-* value already declared
-   * above for a new-named token — never a third copy of a colour.
-   * DELETE ALONGSIDE THE slate/indigo BLOCK ABOVE, same trigger
-   * (session 4, once nothing references these names).
-   * ============================================================ */
-  --color-signal: var(--cp-accent);
-  --color-signal-ink: var(--cp-accent-contrast);
-  --color-ink: var(--cp-text);
-  --color-ink-muted: var(--cp-text-muted);
-  /* Old system had a fourth, fainter tier with no new-system equivalent
-     (section 3.1 defines exactly three text tiers) — collapsed onto
-     text-muted rather than inventing a fourth token nothing new will
-     ever reference. */
-  --color-ink-faint: var(--cp-text-muted);
-  --color-surface: var(--cp-bg-elevated);
-  --color-surface-2: var(--cp-bg-inset);
-  --color-surface-inset: var(--cp-bg-subtle);
-  /* --color-border-interactive is declared ONCE, above, as a NEW-system
-     token (not repeated here) — old and new code both want the same name
-     for the same purpose, and un-rebuilt pages using it get the
-     accessibility fix for free rather than inheriting the old, failing
-     --cp-border-strong value a second declaration here would have
-     silently reverted it to (the later declaration in an @theme block
-     wins). */
-
-  --color-sev-high: var(--scale-5);
-  --color-sev-med: var(--scale-3);
-  --color-sev-low: var(--scale-1);
-
-  --color-conf-low: var(--cp-warning);
-  --color-conf-medium: var(--cp-text-muted);
-  --color-conf-high: var(--cp-success);
-
-  --color-risk-0: var(--scale-0);
-  --color-risk-1: var(--scale-1);
-  --color-risk-2: var(--scale-2);
-  --color-risk-3: var(--scale-4);
-  --color-risk-4: var(--scale-5);
-
-  --color-recency-fresh: var(--cp-accent);
-  --color-recency-stale: var(--cp-text-muted);
 }
 
 /*
@@ -419,6 +337,14 @@
   --scale-3: #c97b4a;
   --scale-4: #b85c4e;
   --scale-5: #9e4038;
+
+  /* Scene-overlay chip (3D city HTML labels) -- scheme-invariant on purpose,
+     see the --color-scene-overlay-* comment above. Values are this file's
+     own dark-scheme bg-elevated/border/text-heading/text-muted, fixed. */
+  --scene-overlay-bg: rgb(19 21 18 / 90%);
+  --scene-overlay-border: #363b31;
+  --scene-overlay-text: #f2efe4;
+  --scene-overlay-text-muted: #8a8f80;
 }
 
 /* ============================================================

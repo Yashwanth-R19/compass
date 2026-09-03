@@ -1,7 +1,8 @@
 // Session 09, Part A: the ONE palette shared by the codebase map's subsystem
 // graph (pages/onboard/MapPage.tsx), its treemap, the 3D code city
-// (components/CodeCity.tsx), and the Audit architecture graph
-// (pages/audit/ArchitecturePage.tsx). A subsystem must render as the same
+// (components/CodeCity.tsx), and the Structure surface's architecture graph
+// (pages/repo/StructureSurfacePage.tsx, UI rebuild session 4 -- formerly
+// pages/audit/ArchitecturePage.tsx). A subsystem must render as the same
 // colour in all four -- otherwise they feel like unrelated apps rather than
 // four lenses on the same computed partition.
 //

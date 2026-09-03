@@ -5,24 +5,14 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Compass</title>
-    <script>
-      // Pre-paint theme application (Part D) -- runs before any stylesheet,
-      // so the correct theme is on <html> before the first paint, avoiding
-      // a light-to-dark flash. Dark is the app's UNCONDITIONAL default:
-      // this reads localStorage['compass-theme'] and applies "light" ONLY
-      // when that value is exactly "light" -- there is no
-      // prefers-color-scheme fallback here, matching
-      // src/theme/ThemeProvider.tsx's readInitialTheme() exactly. If you
-      // change one, change the other -- they must agree exactly.
-      (function () {
-        try {
-          var stored = window.localStorage.getItem("compass-theme");
-          document.documentElement.setAttribute("data-theme", stored === "light" ? "light" : "dark");
-        } catch (e) {
-          document.documentElement.setAttribute("data-theme", "dark");
-        }
-      })();
-    </script>
+    <!-- Pre-paint theme application (UI rebuild session 1, Part D; moved to
+         an external same-origin file in session 4, Part H -- see
+         public/pre-paint-theme.js's own comment for why: an inline
+         <script> here was silently blocked by vercel.json's
+         `script-src 'self'` CSP directive, found by this session's own
+         production CSP verification pass). Runs before any stylesheet, so
+         the correct theme is on <html> before the first paint. -->
+    <script src="/pre-paint-theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,14 +1,81 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FindingsPage } from "./FindingsPage";
+import { FindingsSurfacePage } from "./FindingsSurfacePage";
 import type { FindingOut } from "../../api/types";
 import type { RepoOutletContext } from "../RepoLayout";
 
 const useFindingsMock = vi.fn();
 
+const EMPTY_PENDING = { isPending: true, isError: false, isFetching: true, data: undefined };
+
 vi.mock("../../api/hooks", () => ({
   useFindings: (...args: unknown[]) => useFindingsMock(...args),
+  useSecrets: () => ({
+    isPending: false,
+    isError: false,
+    data: {
+      kind: "data",
+      data: {
+        repo_id: "repo-1",
+        hits: [],
+        still_in_head_count: 0,
+        total: 0,
+        truncated: false,
+        truncation_reason: null,
+      },
+    },
+  }),
+  useVulnerabilities: () => ({
+    isPending: false,
+    isError: false,
+    data: {
+      kind: "data",
+      data: { repo_id: "repo-1", vulnerabilities: [], no_supported_manifest: false },
+    },
+  }),
+  useHygiene: () => ({
+    isPending: false,
+    isError: false,
+    data: {
+      kind: "data",
+      data: {
+        repo_id: "repo-1",
+        events_by_kind: {},
+        files: [],
+        insufficient_history_for_oversized: false,
+      },
+    },
+  }),
+  useTestGaps: () => ({
+    isPending: false,
+    isError: false,
+    data: {
+      kind: "data",
+      data: {
+        repo_id: "repo-1",
+        files: [],
+        test_file_ratio: 0,
+        mean_test_cochange_ratio: 0,
+        limitation: "",
+      },
+    },
+  }),
+  useRisk: () => ({ data: undefined }),
+  useRepoStatus: () => ({
+    data: {
+      repo_id: "repo-1",
+      repo_status: "ready",
+      current_run_id: "run-1",
+      run_id: "run-1",
+      run_status: "ready",
+      run_error: null,
+      stages: [],
+      facts_archived: false,
+    },
+  }),
+  useNarrative: () => EMPTY_PENDING,
+  useFormulas: () => ({ data: undefined }),
 }));
 
 function finding(overrides: Partial<FindingOut>): FindingOut {
@@ -44,7 +111,7 @@ const REPO_CONTEXT: RepoOutletContext = {
   share: undefined,
 };
 
-function renderFindingsPage(findings: FindingOut[]) {
+function renderFindingsSurface(findings: FindingOut[]) {
   useFindingsMock.mockReturnValue({
     isPending: false,
     isError: false,
@@ -53,17 +120,17 @@ function renderFindingsPage(findings: FindingOut[]) {
   });
 
   render(
-    <MemoryRouter initialEntries={["/repos/repo-1/audit/findings"]}>
+    <MemoryRouter initialEntries={["/repos/repo-1/findings"]}>
       <Routes>
         <Route path="repos/:repoId" element={<Outlet context={REPO_CONTEXT} />}>
-          <Route path="audit/findings" element={<FindingsPage />} />
+          <Route path="findings" element={<FindingsSurfacePage />} />
         </Route>
       </Routes>
     </MemoryRouter>,
   );
 }
 
-describe("FindingsPage -- the subtractive default (RULES.md sec 12, Known Hazard #2)", () => {
+describe("FindingsSurfacePage -- the subtractive default (section 5.2, Known Hazard #2)", () => {
   beforeEach(() => {
     useFindingsMock.mockReset();
   });
@@ -72,7 +139,7 @@ describe("FindingsPage -- the subtractive default (RULES.md sec 12, Known Hazard
     const findings = Array.from({ length: 15 }, (_, i) =>
       finding({ id: String(i), title: `Finding ${i}`, rank: i }),
     );
-    renderFindingsPage(findings);
+    renderFindingsSurface(findings);
 
     expect(screen.getAllByText(/^Finding \d+$/)).toHaveLength(10);
     expect(screen.getByText("Show all 15 findings")).toBeTruthy();
@@ -82,7 +149,7 @@ describe("FindingsPage -- the subtractive default (RULES.md sec 12, Known Hazard
     const findings = Array.from({ length: 15 }, (_, i) =>
       finding({ id: String(i), title: `Finding ${i}`, rank: i }),
     );
-    renderFindingsPage(findings);
+    renderFindingsSurface(findings);
 
     fireEvent.click(screen.getByText("Show all 15 findings"));
     expect(screen.getAllByText(/^Finding \d+$/)).toHaveLength(15);
@@ -95,23 +162,22 @@ describe("FindingsPage -- the subtractive default (RULES.md sec 12, Known Hazard
     const findings = Array.from({ length: 4 }, (_, i) =>
       finding({ id: String(i), title: `Finding ${i}`, rank: i }),
     );
-    renderFindingsPage(findings);
+    renderFindingsSurface(findings);
 
     expect(screen.getAllByText(/^Finding \d+$/)).toHaveLength(4);
     expect(screen.queryByText(/Show all/)).toBeNull();
   });
 });
 
-describe("FindingsPage -- never re-sorts (Known Hazard #1)", () => {
+describe("FindingsSurfacePage -- never re-sorts (Known Hazard #1)", () => {
   beforeEach(() => {
     useFindingsMock.mockReset();
   });
 
   it("renders findings in the exact order the backend returned them, even when severity is deliberately out of order", () => {
-    // Deliberately NOT sorted by severity (med, high, low, high, low...) --
-    // a client-side severity sort would visibly reorder this list. The
-    // backend's `rank` field is what determines order; this array's OWN
-    // position is what must be preserved.
+    // Deliberately NOT sorted by severity -- a client-side severity sort
+    // would visibly reorder this list. The backend's `rank` field decides
+    // order; this array's own position is what must be preserved.
     const shuffled: FindingOut[] = [
       finding({ id: "a", title: "Finding A", severity: "med", rank: 0 }),
       finding({ id: "b", title: "Finding B", severity: "high", rank: 1 }),
@@ -119,7 +185,7 @@ describe("FindingsPage -- never re-sorts (Known Hazard #1)", () => {
       finding({ id: "d", title: "Finding D", severity: "high", rank: 3 }),
       finding({ id: "e", title: "Finding E", severity: "low", rank: 4 }),
     ];
-    renderFindingsPage(shuffled);
+    renderFindingsSurface(shuffled);
 
     const rendered = screen.getAllByText(/^Finding [A-E]$/).map((el) => el.textContent);
     expect(rendered).toEqual(["Finding A", "Finding B", "Finding C", "Finding D", "Finding E"]);
@@ -133,9 +199,11 @@ describe("FindingsPage -- never re-sorts (Known Hazard #1)", () => {
       finding({ id: "d", title: "Finding D", severity: "low", rank: 3 }),
       finding({ id: "e", title: "Finding E", severity: "high", rank: 4 }),
     ];
-    renderFindingsPage(shuffled);
+    renderFindingsSurface(shuffled);
 
-    fireEvent.change(screen.getByDisplayValue("All severities"), { target: { value: "high" } });
+    fireEvent.change(screen.getByLabelText("Filter findings by severity"), {
+      target: { value: "high" },
+    });
 
     const rendered = screen.getAllByText(/^Finding [A-E]$/).map((el) => el.textContent);
     expect(rendered).toEqual(["Finding A", "Finding C", "Finding E"]);

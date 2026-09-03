@@ -45,7 +45,9 @@ describe("parseOsvId", () => {
 describe("findingDeepLink", () => {
   it("links a risk finding to that file's risk detail", () => {
     const link = findingDeepLink(baseFinding({ category: "risk", file_path: "src/a.py" }), REPO_ID);
-    expect(link?.to).toBe(`/repos/${REPO_ID}/audit/risk?file=${encodeURIComponent("src/a.py")}`);
+    expect(link?.to).toBe(
+      `/repos/${REPO_ID}/risk?tab=hotspots&file=${encodeURIComponent("src/a.py")}`,
+    );
   });
 
   it("returns null for a risk finding with no file_path", () => {
@@ -61,7 +63,8 @@ describe("findingDeepLink", () => {
       }),
       REPO_ID,
     );
-    expect(link?.to).toContain("/audit/coupling?");
+    expect(link?.to).toContain("/structure?");
+    expect(link?.to).toContain("view=coupling");
     expect(link?.to).toContain("hiddenOnly=1");
     expect(link?.to).toContain(`pair=${encodeURIComponent("src/a.py|src/b.py")}`);
   });
@@ -71,26 +74,25 @@ describe("findingDeepLink", () => {
       baseFinding({ category: "knowledge", file_path: "src/a.py" }),
       REPO_ID,
     );
-    expect(link?.to).toBe(
-      `/repos/${REPO_ID}/onboard/people?path=${encodeURIComponent("src/a.py")}`,
-    );
+    expect(link?.to).toBe(`/repos/${REPO_ID}/people?path=${encodeURIComponent("src/a.py")}`);
   });
 
-  it("links a secret finding to Security with its commit sha", () => {
+  it("links a secret finding back into Findings, filtered to secrets, with its commit sha", () => {
     const link = findingDeepLink(
       baseFinding({ category: "secret", evidence_sha: "abc123", file_path: "src/a.py" }),
       REPO_ID,
     );
-    expect(link?.to).toContain("/audit/security?");
+    expect(link?.to).toContain("/findings?");
+    expect(link?.to).toContain("category=secret");
     expect(link?.to).toContain("sha=abc123");
   });
 
-  it("links a vulnerability finding to Security with its parsed OSV id", () => {
+  it("links a vulnerability finding back into Findings, filtered to vulnerabilities, with its parsed OSV id", () => {
     const link = findingDeepLink(
       baseFinding({ category: "vulnerability", title: "GHSA-xxxx: requests@2.31.0" }),
       REPO_ID,
     );
-    expect(link?.to).toBe(`/repos/${REPO_ID}/audit/security?osv=GHSA-xxxx`);
+    expect(link?.to).toBe(`/repos/${REPO_ID}/findings?category=vulnerability&osv=GHSA-xxxx`);
   });
 
   it("builds every link as an ABSOLUTE /repos/<id>/... path", () => {

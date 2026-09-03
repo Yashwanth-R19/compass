@@ -4,17 +4,18 @@
 /*
  * Repoints Tailwind's `dark:` variant at the app's OWN manual theme
  * (theme/ThemeProvider.tsx's `data-theme` attribute) instead of its v4
- * default, `@media (prefers-color-scheme: dark)`. Necessary for the
- * transitional slate/indigo compatibility remap (tokens.css) to actually
- * work: every un-rebuilt page pairs a base class with an explicit `dark:`
- * variant (`bg-white dark:bg-slate-950`), and since dark is now this app's
- * UNCONDITIONAL default regardless of OS preference (decision #9, section
- * 3 rule "no prefers-color-scheme fallback for the initial theme"), those
- * `dark:` classes must fire based on OUR OWN toggle state, not the OS's.
- * `ThemeProvider` always stamps data-theme to an explicit "dark" or
- * "light" value (never leaves it absent) specifically so this selector has
- * something concrete to match at all times once React has mounted; the
- * inline pre-paint script in index.html does the same before that.
+ * default, `@media (prefers-color-scheme: dark)`. Since dark is now this
+ * app's UNCONDITIONAL default regardless of OS preference (decision #9,
+ * section 3 rule "no prefers-color-scheme fallback for the initial
+ * theme"), any `dark:`-variant class in the app must fire based on OUR OWN
+ * toggle state, not the OS's -- true of every remaining `dark:` usage
+ * (session 15-era pages not yet touched by this rebuild) now that UI
+ * rebuild session 4 has deleted the transitional slate/indigo remap this
+ * comment used to cite. `ThemeProvider` always stamps data-theme to an
+ * explicit "dark" or "light" value (never leaves it absent) specifically
+ * so this selector has something concrete to match at all times once React
+ * has mounted; the inline pre-paint script in index.html does the same
+ * before that.
  */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -32,6 +33,23 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/* UI rebuild session 4, Part H: the page body must never scroll
+   horizontally -- wide content (a graph, a table, a code block) scrolls
+   inside its OWN overflow-x-auto container instead (e.g. RepoLayout's tab
+   nav, several ranked-list panels). This is the top-level backstop for
+   that rule: found and fixed during this session's own 360px sweep, where
+   a page tall enough to scroll vertically could occasionally report
+   `document.documentElement.scrollWidth` wider than the viewport even
+   though every individual element's own bounding box measured within it --
+   a browser scrollWidth-computation edge case around a nested
+   `overflow-x: auto` flex container, not a layout bug in any one
+   component. Setting `overflow-x: hidden` here makes the guarantee
+   absolute regardless of that lower-level mechanism. */
+html,
+body {
+  overflow-x: hidden;
 }
 
 html {

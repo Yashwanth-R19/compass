@@ -250,7 +250,7 @@ function DistrictLabels({ districts, center }: { districts: District[]; center: 
           distanceFactor={80}
           occlude={false}
         >
-          <div className="pointer-events-none rounded bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-white">
+          <div className="pointer-events-none rounded bg-scene-overlay-bg px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-scene-overlay-text">
             {d.label}
           </div>
         </Html>
@@ -271,17 +271,17 @@ function HoverTooltip({ info }: { info: HoverInfo }) {
       center
       style={{ pointerEvents: "none" }}
     >
-      <div className="w-56 rounded-md border border-slate-700 bg-slate-900/95 p-2 text-[11px] text-slate-100 shadow-lg">
+      <div className="w-56 rounded-md border border-scene-overlay-border bg-scene-overlay-bg p-2 text-[11px] text-scene-overlay-text shadow-lg">
         <p className="truncate font-mono" title={building.path}>
           {building.path}
         </p>
-        <p className="mt-1 text-slate-300">
+        <p className="mt-1 text-scene-overlay-text-muted">
           {building.loc.toLocaleString()} LOC · complexity {building.complexity.toFixed(1)}
         </p>
         {file?.riskScore != null ? (
-          <p className="text-slate-300">Risk {(file.riskScore * 100).toFixed(0)}%</p>
+          <p className="text-scene-overlay-text-muted">Risk {(file.riskScore * 100).toFixed(0)}%</p>
         ) : null}
-        <p className="text-slate-400">{districtLabel}</p>
+        <p className="text-scene-overlay-text-muted">{districtLabel}</p>
       </div>
     </Html>
   );
