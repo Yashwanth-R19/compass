@@ -50,7 +50,7 @@ def get_remote_head_sha(url: str) -> str:
         output = git.Git().ls_remote(url, "HEAD")
     except git.exc.GitCommandError as exc:
         raise RuntimeError(redact(f"git ls-remote failed: {exc}")) from None
-    return output.split()[0]
+    return str(output).split()[0]
 
 
 def clone_repo(url: str) -> str:
@@ -126,7 +126,7 @@ def clone_repo(url: str) -> str:
 
     tmp_dir = tempfile.mkdtemp(prefix="compass-clone-")
     try:
-        git.Repo.clone_from(url, tmp_dir, **clone_kwargs)
+        git.Repo.clone_from(url, tmp_dir, **clone_kwargs)  # type: ignore[arg-type]
     except git.exc.GitCommandError as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise RuntimeError(redact(f"git clone failed: {exc}")) from None

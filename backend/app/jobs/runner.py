@@ -134,6 +134,8 @@ def run_ingestion_job(
         session.commit()
 
         repo_row = session.get(Repo, repo_id)
+        if repo_row is None:
+            raise RuntimeError(f"repo {repo_id} does not exist")
         previous_head_sha = repo_row.head_sha
         previous_run_id = repo_row.current_run_id
 
@@ -366,6 +368,8 @@ def run_ingestion_job(
         session.commit()
 
         run_row = session.get(AnalysisRun, run_id)
+        if run_row is None:
+            raise RuntimeError(f"analysis run {run_id} does not exist")
         run_row.status = AnalysisRunStatus.ready
         run_row.finished_at = datetime.now(UTC)
 

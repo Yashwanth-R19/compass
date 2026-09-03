@@ -57,6 +57,7 @@ from urllib.parse import urlparse
 
 import yaml
 from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 
 from app.baseline.heuristic import size_bucket_for
 from app.db.base import SessionLocal
@@ -118,7 +119,7 @@ def _owner_name_from_url(url: str) -> tuple[str, str]:
     return "local", Path(url).name or "repo"
 
 
-def _database_size_bytes(session) -> int:
+def _database_size_bytes(session: Session) -> int:
     return session.execute(text("SELECT pg_database_size(current_database())")).scalar_one()
 
 
@@ -143,7 +144,9 @@ def _save_state(path: Path, state: dict[str, Any]) -> None:
     path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def _max_coupling_by_path_id(session, repo_id: uuid.UUID, run_id: uuid.UUID) -> dict[int, float]:
+def _max_coupling_by_path_id(
+    session: Session, repo_id: uuid.UUID, run_id: uuid.UUID
+) -> dict[int, float]:
     rows = session.execute(
         select(Coupling.path_a_id, Coupling.path_b_id, Coupling.coupling_degree).where(
             Coupling.repo_id == repo_id, Coupling.analysis_run_id == run_id
@@ -157,8 +160,11 @@ def _max_coupling_by_path_id(session, repo_id: uuid.UUID, run_id: uuid.UUID) -> 
 
 
 def _accumulate_one_repo(
-    session, repo: Repo, run_id: uuid.UUID, accumulator: dict[tuple[str, str, str], list[float]]
-) -> tuple[str, int, int]:
+    session: Session,
+    repo: Repo,
+    run_id: uuid.UUID,
+    accumulator: dict[tuple[str, str, str], list[float]],
+) -> tuple[str, str, int]:
     """Reads this repo's just-computed per-file/per-repo metrics and adds
     them to ``accumulator`` (keyed ``(metric, language, size_bucket)``),
     tagging every value with the REPO's OWN dominant language/size_bucket --
