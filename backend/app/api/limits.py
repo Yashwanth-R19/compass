@@ -19,9 +19,10 @@ not rate-limited by this module):
   ``COMPASS_MAX_CONCURRENT_RUNS`` analysis runs may be ``running`` across
   the whole system at once, checked directly against the ``analysis_runs``
   table (real DB state, not an in-memory count -- this half of the module
-  has no single-process caveat). Session 14 replaces this with a real
-  queue; this session deliberately does not build one, and does not add a
-  ``queued`` run status.
+  has no single-process caveat). Excess submissions are rejected outright
+  with a 429 and a ``Retry-After`` header -- there is deliberately no queue
+  and no ``queued`` run status; a rejected submission can simply be
+  resubmitted once a slot frees up.
 """
 
 import threading
@@ -238,7 +239,7 @@ def check_user_repo_cap(user: User, db: Session) -> None:
 def check_concurrency_cap(db: Session) -> None:
     """Raises HTTP 429 if ``COMPASS_MAX_CONCURRENT_RUNS`` analysis runs are
     already ``running`` system-wide. Excess submissions are rejected, not
-    queued (session 14 adds a real queue; this deliberately does not)."""
+    queued -- there is no run queue in this codebase."""
     running = (
         db.scalar(
             select(func.count())

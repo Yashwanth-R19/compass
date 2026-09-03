@@ -64,11 +64,6 @@ class AnalysisRunStatus(str, enum.Enum):
     ready = "ready"
     failed = "failed"
     superseded = "superseded"
-    # Session 14: a run created but not yet dispatched -- the portfolio run
-    # queue (app/jobs/queue.py). Postgres native enum -- adding this value
-    # requires an explicit ALTER TYPE ... ADD VALUE in the migration;
-    # autogenerate will not produce it (plan/RULES.md sec 7).
-    queued = "queued"
 
 
 class StageStatus(str, enum.Enum):
@@ -266,21 +261,6 @@ class AnalysisRun(Base):
     triggered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # Session 14: when this run was ADDED TO THE QUEUE (app/jobs/queue.py),
-    # distinct from `started_at` above -- `started_at` is stamped at row
-    # creation for every run (a plain server_default), which for a run
-    # created directly as "running" (the pre-session-14 path) genuinely
-    # means "when it started". A queued run's row is also created up front
-    # (so its analysis_stages exist for /status to render), but doesn't
-    # actually start doing work until app/jobs/queue.py::dispatch_pending
-    # picks it up -- `queued_at` is what the round-robin selection orders
-    # by and what GET /portfolio/queue reports a wait estimate from;
-    # `started_at` is left alone at creation and is NOT re-stamped when a
-    # queued run is dispatched (it already reflects "row created", which
-    # for the queue case is also "queued" -- only `queued_at` distinguishes
-    # a queued run from a normal one). NULL for every run that was never
-    # queued (the overwhelming majority, including all pre-session-14 runs).
-    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AnalysisStage(Base):
@@ -419,9 +399,11 @@ class File(Base):
     is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
     # Session 03: populated by persist.py's shared test-path classifier
     # (app/ingestion/persist.py::classify_is_test) during persist_facts --
-    # one function, reused by session 07's test-gap analysis, so the two
-    # never define "is this a test file" differently. See that function's
-    # docstring for the exact per-language rules.
+    # the one place "is this a test file" is defined; reused by the
+    # entry-point detector (test_root grouping) and by HygieneEngine's
+    # risky-commit scoring (a commit that changes no test file scores
+    # higher). See that function's docstring for the exact per-language
+    # rules.
     is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Session 07 (Risk v2): computed once by app/ingestion/miner.py during
     # mining (a pure function of this file's own touches across the mined
@@ -487,17 +469,6 @@ class FileMetrics(Base):
     revert_cycle_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     oversized_commit_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fixup_commit_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Session 07: test-gap columns (app/engines/test_gaps.py::TestGapEngine),
-    # same UPDATE-after-RiskEngine-insert pattern as the hygiene columns
-    # above -- TestGapEngine runs last in the "risk" stage, after
-    # HygieneEngine. test_classification is one of "no_test"/"stale_test"/
-    # "tracked" (null only for a file TestGapEngine never scored, e.g. a
-    # test file itself). mapped_test_path_ids is the union of both mapping
-    # methods (naming convention + structural import edge) -- see that
-    # module's docstring.
-    test_classification: Mapped[str | None] = mapped_column(Text, nullable=True)
-    test_cochange_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
-    mapped_test_path_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger), nullable=True)
 
 
 class Coupling(Base):
@@ -1006,33 +977,6 @@ class Baseline(Base):
     n_files: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
-class PortfolioCache(Base):
-    """Insight-adjacent but deliberately NEITHER Facts nor per-run Insight
-    (session 14, Part B) -- ``app/analysis/portfolio.py``'s computed view
-    spans every one of a user's repositories at once and has no
-    ``analysis_run_id`` to key off. Recomputed on demand with a 10-minute
-    cache (``PORTFOLIO_CACHE_TTL_SECONDS``, app/analysis/portfolio.py) rather
-    than storing history -- this is a derived view over data that already
-    exists elsewhere (repos, analysis_runs, file_metrics, contributors, ...),
-    not a new fact. Never wired into ``wipe_facts``/``prune_run``: it isn't
-    scoped to a repo or a run at all, only to a user, and a stale cache row
-    self-heals on the next request past its TTL regardless of what happens
-    to any one repo underneath it.
-
-    ``user_id`` is the primary key directly (one row per user, upserted in
-    place) rather than a synthetic id plus a unique constraint -- there is
-    never more than one cached portfolio per user to look up.
-    """
-
-    __tablename__ = "portfolio_cache"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
-
-
 class TourStop(Base):
     """Insight (session 06): one stop in ``app/engines/tour.py``'s computed
     guided reading order for a run. ``position`` is the 1-based reading
@@ -1405,15 +1349,21 @@ class OsvCache(Base):
 
 
 class Narrative(Base):
-    """Insight (session 12, Part D): one cached LLM-phrased narrative for a
-    run -- ``app/narrative/generate.py`` writes these, lazily, the first
-    time ``GET /repos/{id}/narrative`` is asked for a given
-    ``(surface, subject_key)``; every later call for the same triple reads
-    this row instead of calling a provider again. ``surface`` is one of
-    ``"passport"``/``"risk_file"``/``"security"``; ``subject_key`` is the
-    file path for ``"risk_file"`` (one surface, many narratives) and left
-    unused (empty string, never a raw ``NULL`` -- see the API layer's
-    comment on why) for the two whole-run surfaces. ``factpack_hash`` is a
+    """Insight: one cached LLM-phrased narrative for a run --
+    ``app/narrative/generate.py`` writes this, lazily, the first time
+    ``GET /repos/{id}/narrative`` is asked for it; every later call for the
+    same run reads this row instead of calling a provider again.
+
+    ``surface`` is always the literal string ``"repo"`` -- the narrative
+    layer phrases exactly one whole-repository summary now (the rebuild
+    collapsed the former ``"passport"``/``"risk_file"``/``"security"`` split
+    into a single triggered "Explain this repo" action). The column is kept
+    (rather than dropped) so the unique constraint below still has something
+    to key on and a future surface could be reintroduced without a schema
+    change. ``subject_key`` is likewise always the empty string, never a raw
+    ``NULL`` -- Postgres' unique index treats ``NULL`` as distinct from every
+    other ``NULL``, so a bare column would not stop two concurrent requests
+    from both inserting a row for the same run. ``factpack_hash`` is a
     sha256 of the serialized fact pack that produced ``content`` -- a
     changed fact pack (in practice: this would only happen if the DATA
     itself changed, which for a fixed ``analysis_run_id`` should never
@@ -1425,9 +1375,7 @@ class Narrative(Base):
     No ``repo_id`` column: this table is looked up ONLY by
     ``analysis_run_id`` (a run already implies exactly one repo), unlike
     most other Insight tables, which also carry a denormalised ``repo_id``
-    for cheap repo-scoped queries that don't apply here -- the session
-    prompt's own column list for this table is exhaustive and doesn't
-    include one.
+    for cheap repo-scoped queries that don't apply here.
     """
 
     __tablename__ = "narratives"

@@ -161,7 +161,7 @@ def test_pipeline_insight_stages_name_real_engine_classes(client):
     # The "risk" stage's callables are wrapper functions (per-call
     # BaselineProvider injection, session 14) -- the pipeline response must
     # still name the real engines they wrap, not the private helper names.
-    assert stages["risk"]["engines"] == ["RiskEngine", "HygieneEngine", "TestGapEngine"]
+    assert stages["risk"]["engines"] == ["RiskEngine", "HygieneEngine"]
 
 
 def test_worked_example_is_null_when_no_showcase_repo_has_a_ready_run(client):

@@ -84,8 +84,6 @@ class RiskFileOut(BaseModel):
     churn_weighted: float
     instability_score: float | None
     revert_cycle_count: int | None
-    test_classification: str | None
-    test_cochange_ratio: float | None
     expert_count: int
     is_orphaned_knowledge: bool
 
@@ -312,8 +310,7 @@ class PassportResponse(BaseModel):
 
 # Session 07: blast radius (mirrors app/analysis/blast_radius.py's
 # dataclasses -- pure computation, never persisted, see that module's
-# docstring), commit hygiene, and test gap / maintenance analysis (mirror
-# app/engines/{hygiene,test_gaps}.py).
+# docstring) and commit hygiene (mirrors app/engines/hygiene.py).
 
 
 class BlastRadiusAffectedFileOut(BaseModel):
@@ -374,21 +371,6 @@ class HygieneResponse(BaseModel):
     events_by_kind: dict[str, list[HygieneEventOut]]
     files: list[HygieneFileOut]
     insufficient_history_for_oversized: bool
-
-
-class TestGapFileOut(BaseModel):
-    file_path: str
-    classification: str
-    test_cochange_ratio: float | None
-    mapped_test_paths: list[str]
-
-
-class TestGapsResponse(BaseModel):
-    repo_id: uuid.UUID
-    files: list[TestGapFileOut]
-    test_file_ratio: float
-    mean_test_cochange_ratio: float
-    limitation: str
 
 
 # Session 09, Part E: the codebase-map/city payload. A pure JOIN of

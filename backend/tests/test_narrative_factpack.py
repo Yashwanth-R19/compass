@@ -1,5 +1,5 @@
-"""Session 12, Part B/F: fact packs -- the structural enforcement that a
-narrative can only ever see already-computed numbers/booleans/fixed labels.
+"""Fact packs -- the structural enforcement that a narrative can only ever
+see already-computed numbers/booleans/fixed labels.
 
 Two tests here need no database at all (the import-boundary check and the
 field-type allowlist check); the builder tests exercise real persisted rows
@@ -21,24 +21,16 @@ from app.db.models import (
     AnalysisRun,
     AnalysisRunStatus,
     AnalysisStage,
-    Contributor,
-    Coupling,
-    File,
-    FileExpertise,
-    FileMetrics,
     Repo,
     RepoPassport,
-    RepoPath,
     RepoStatus,
     SecretHit,
     StageStatus,
     Vulnerability,
 )
 from app.narrative.factpack import (
-    PassportFactPack,
-    build_passport_factpack,
-    build_risk_file_factpack,
-    build_security_factpack,
+    RepoFactPack,
+    build_repo_factpack,
     validate_factpack_allowlist,
 )
 
@@ -76,36 +68,40 @@ def test_factpack_module_never_imports_from_ingestion_or_security():
 # ---------------------------------------------------------------------------
 
 
-def test_allowlist_accepts_every_real_factpack_shape():
-    validate_factpack_allowlist(
-        PassportFactPack(
-            onboarding_difficulty=10.0,
-            calibration="heuristic",
-            file_count=1,
-            loc=1,
-            commit_count=1,
-            contributor_count=1,
-            subsystem_count=1,
-            age_days=1.0,
-            commits_last_30d=1,
-            commits_last_90d=1,
-            commits_last_365d=1,
-            is_dormant=False,
-            active_contributor_count=1,
-            stale_contributor_count=0,
-            bot_commit_ratio=0.0,
-            truck_factor=1,
-            modularity=0.5,
-            entry_point_count=1,
-            top_risk_file_count=1,
-            churn_concentration=0.1,
-            health_score=80.0,
-            high_risk_ratio=0.1,
-            cycle_count=0,
-            hidden_dependency_count=0,
-            primary_language="python",
-        )
+def _make_repo_factpack(**overrides) -> RepoFactPack:
+    defaults = dict(
+        calibration="heuristic",
+        file_count=10,
+        loc=500,
+        commit_count=20,
+        contributor_count=2,
+        subsystem_count=1,
+        truck_factor=1,
+        health_score=80.0,
+        high_risk_ratio=0.1,
+        cycle_count=0,
+        hidden_dependency_count=0,
+        onboarding_difficulty=42.0,
+        finding_count_high=0,
+        finding_count_med=1,
+        finding_count_low=2,
+        secret_count_still_in_head=0,
+        secret_count_history_only=0,
+        vulnerability_count_high=0,
+        vulnerability_count_med=0,
+        vulnerability_count_low=0,
+        vulnerability_count_unknown=0,
     )
+    defaults.update(overrides)
+    return RepoFactPack(**defaults)
+
+
+def test_allowlist_accepts_a_real_factpack_shape():
+    validate_factpack_allowlist(_make_repo_factpack())
+
+
+def test_allowlist_accepts_the_corpus_calibration_label_too():
+    validate_factpack_allowlist(_make_repo_factpack(calibration="corpus"))
 
 
 def test_allowlist_rejects_a_free_text_field():
@@ -143,7 +139,7 @@ def test_allowlist_accepts_a_literal_string_field():
 
 
 # ---------------------------------------------------------------------------
-# Builders.
+# The builder.
 # ---------------------------------------------------------------------------
 
 
@@ -166,323 +162,167 @@ def _make_stage(db_session, run_id: uuid.UUID, name: str, status: StageStatus, s
     db_session.commit()
 
 
-def test_build_passport_factpack_returns_none_when_no_row_exists(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/passport-none")
+_PASSPORT_DATA = {
+    "identity": {
+        "name": "repo",
+        "owner": "fixture",
+        "url": "https://github.com/fixture/repo",
+        "primary_language": "python",
+        "language_breakdown": {"python": 10},
+        "license_spdx": "MIT",
+        "has_readme": True,
+        "readme_lines": 5,
+    },
+    "scale": {
+        "files": 10,
+        "loc": 500,
+        "commits": 20,
+        "contributors": 2,
+        "subsystems": 1,
+        "age_days": 30.0,
+        "first_commit_at": None,
+        "last_commit_at": None,
+    },
+    "cadence": {
+        "commits_last_30d": 5,
+        "commits_last_90d": 10,
+        "commits_last_365d": 20,
+        "median_commits_per_active_week": 1.0,
+        "active_days": 15,
+        "longest_gap_days": 2.0,
+        "is_dormant": False,
+    },
+    "team": {
+        "active_contributors": 2,
+        "stale_contributors": 0,
+        "bot_commit_ratio": 0.0,
+        "truck_factor": 1,
+        "top_contributors": [{"name": "Real Person Name", "share": 1.0, "is_stale": False}],
+    },
+    "shape": {
+        "subsystems": [{"label": "core", "file_count": 10, "cohesion": 0.9}],
+        "entry_points": [{"path": "main.py", "kind": "cli"}],
+        "modularity": 0.9,
+    },
+    "hotspots": {
+        "top_risk_files": [{"path": "main.py", "risk_score": 0.5, "risk_confidence": 0.5}],
+        "churn_concentration": 0.4,
+    },
+    "health": {
+        "score": 80.0,
+        "high_risk_ratio": 0.1,
+        "cycle_count": 0,
+        "hidden_dependency_count": 0,
+        "calibration": "heuristic",
+    },
+    "first_pr": [],
+}
+
+
+def test_build_repo_factpack_returns_none_when_no_passport_row_exists(db_session):
+    repo_id = _make_repo(db_session, "https://github.com/fixture/repo-no-passport")
     run_id = _make_run(db_session, repo_id)
-    assert build_passport_factpack(db_session, run_id) is None
+    assert build_repo_factpack(db_session, repo_id, run_id) is None
 
 
-def test_build_passport_factpack_reads_only_numeric_fields_from_the_persisted_row(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/passport-ok")
+def test_build_repo_factpack_returns_none_until_security_stage_is_terminal(db_session):
+    repo_id = _make_repo(db_session, "https://github.com/fixture/repo-pending-security")
     run_id = _make_run(db_session, repo_id)
-
-    data = {
-        "identity": {
-            "name": "repo",
-            "owner": "fixture",
-            "url": "https://github.com/fixture/passport-ok",
-            "primary_language": "python",
-            "language_breakdown": {"python": 10},
-            "license_spdx": "MIT",
-            "has_readme": True,
-            "readme_lines": 5,
-        },
-        "scale": {
-            "files": 10,
-            "loc": 500,
-            "commits": 20,
-            "contributors": 2,
-            "subsystems": 1,
-            "age_days": 30.0,
-            "first_commit_at": None,
-            "last_commit_at": None,
-        },
-        "cadence": {
-            "commits_last_30d": 5,
-            "commits_last_90d": 10,
-            "commits_last_365d": 20,
-            "median_commits_per_active_week": 1.0,
-            "active_days": 15,
-            "longest_gap_days": 2.0,
-            "is_dormant": False,
-        },
-        "team": {
-            "active_contributors": 2,
-            "stale_contributors": 0,
-            "bot_commit_ratio": 0.0,
-            "truck_factor": 1,
-            "top_contributors": [{"name": "Real Person Name", "share": 1.0, "is_stale": False}],
-        },
-        "shape": {
-            "subsystems": [{"label": "core", "file_count": 10, "cohesion": 0.9}],
-            "entry_points": [{"path": "main.py", "kind": "cli"}],
-            "modularity": 0.9,
-        },
-        "hotspots": {
-            "top_risk_files": [{"path": "main.py", "risk_score": 0.5, "risk_confidence": 0.5}],
-            "churn_concentration": 0.4,
-        },
-        "health": {
-            "score": 80.0,
-            "high_risk_ratio": 0.1,
-            "cycle_count": 0,
-            "hidden_dependency_count": 0,
-            "calibration": "heuristic",
-        },
-        "first_pr": [],
-    }
     db_session.add(
         RepoPassport(
             analysis_run_id=run_id,
             repo_id=repo_id,
-            data=data,
+            data=_PASSPORT_DATA,
             onboarding_difficulty=42.0,
             difficulty_breakdown={},
         )
     )
     db_session.commit()
 
-    pack = build_passport_factpack(db_session, run_id)
+    # Passport is ready, but "security" hasn't reached a terminal status yet
+    # -- the vulnerability counts below aren't trustworthy until it has.
+    assert build_repo_factpack(db_session, repo_id, run_id) is None
+
+    _make_stage(db_session, run_id, "security", StageStatus.done)
+    assert build_repo_factpack(db_session, repo_id, run_id) is not None
+
+
+def test_build_repo_factpack_reads_scores_and_never_a_name_or_path(db_session):
+    repo_id = _make_repo(db_session, "https://github.com/fixture/repo-ok")
+    run_id = _make_run(db_session, repo_id)
+    db_session.add(
+        RepoPassport(
+            analysis_run_id=run_id,
+            repo_id=repo_id,
+            data=_PASSPORT_DATA,
+            onboarding_difficulty=42.0,
+            difficulty_breakdown={},
+        )
+    )
+    _make_stage(db_session, run_id, "security", StageStatus.done)
+    db_session.commit()
+
+    pack = build_repo_factpack(db_session, repo_id, run_id)
     assert pack is not None
     assert pack.onboarding_difficulty == 42.0
     assert pack.file_count == 10
     assert pack.subsystem_count == 1
-    assert pack.entry_point_count == 1  # a COUNT, never "main.py" itself
-    assert pack.primary_language == "python"
+    assert pack.truck_factor == 1
+    assert pack.health_score == 80.0
+    assert pack.calibration in ("heuristic", "corpus")
 
     # Rule 1/allowlist, checked end to end: nothing on this model can hold
     # "Real Person Name", "main.py", or "MIT" -- the builder never even
     # tries to copy them across.
     for value in pack.model_dump().values():
-        assert not isinstance(value, str) or value in ("heuristic", "python")
+        assert not isinstance(value, str) or value in ("heuristic", "corpus")
 
 
-def test_build_passport_factpack_falls_back_to_other_for_unknown_language(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/passport-unknown-lang")
+def test_build_repo_factpack_counts_findings_secrets_and_vulnerabilities(db_session):
+    repo_id = _make_repo(db_session, "https://github.com/fixture/repo-counts")
     run_id = _make_run(db_session, repo_id)
-    data = {
-        "identity": {"primary_language": "rust"},
-        "scale": {
-            "files": 1,
-            "loc": 1,
-            "commits": 1,
-            "contributors": 1,
-            "subsystems": 1,
-            "age_days": 1.0,
-        },
-        "cadence": {
-            "commits_last_30d": 0,
-            "commits_last_90d": 0,
-            "commits_last_365d": 0,
-            "is_dormant": True,
-        },
-        "team": {
-            "active_contributors": 0,
-            "stale_contributors": 0,
-            "bot_commit_ratio": 0.0,
-            "truck_factor": 0,
-        },
-        "shape": {"subsystems": [], "entry_points": [], "modularity": 0.0},
-        "hotspots": {"top_risk_files": [], "churn_concentration": 0.0},
-        "health": {
-            "score": 0.0,
-            "high_risk_ratio": 0.0,
-            "cycle_count": 0,
-            "hidden_dependency_count": 0,
-        },
-    }
     db_session.add(
         RepoPassport(
             analysis_run_id=run_id,
             repo_id=repo_id,
-            data=data,
-            onboarding_difficulty=0.0,
+            data=_PASSPORT_DATA,
+            onboarding_difficulty=42.0,
             difficulty_breakdown={},
         )
     )
+    _make_stage(db_session, run_id, "security", StageStatus.done)
     db_session.commit()
 
-    pack = build_passport_factpack(db_session, run_id)
-    assert pack.primary_language == "other"
+    from app.db.models import Finding, Severity
 
-
-def _intern_path(db_session, repo_id: uuid.UUID, path: str) -> int:
-    db_session.execute(insert(RepoPath), [{"repo_id": repo_id, "path": path}])
-    db_session.commit()
-    from sqlalchemy import select
-
-    return db_session.scalar(
-        select(RepoPath.id).where(RepoPath.repo_id == repo_id, RepoPath.path == path)
-    )
-
-
-def test_build_risk_file_factpack_returns_none_for_unknown_path(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/risk-none")
-    run_id = _make_run(db_session, repo_id)
-    assert build_risk_file_factpack(db_session, repo_id, run_id, "no/such/file.py") is None
-
-
-def test_build_risk_file_factpack_reads_scores_and_never_the_path(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/risk-ok")
-    run_id = _make_run(db_session, repo_id)
-    path_id = _intern_path(db_session, repo_id, "app/services/billing.py")
-
-    now = datetime.now(UTC)
-    db_session.add(
-        File(
-            repo_id=repo_id,
-            path_id=path_id,
-            path="app/services/billing.py",
-            language="python",
-            current_loc=200,
-            complexity=25.0,
-            churn_total=500,
-            churn_weighted=300.0,
-            commit_count=40,
-            first_seen=now,
-            last_seen=now,
-            is_deleted=False,
-            is_test=False,
-        )
-    )
-    db_session.add(
-        FileMetrics(
-            analysis_run_id=run_id,
-            repo_id=repo_id,
-            path_id=path_id,
-            risk_score=0.77,
-            risk_confidence=0.8,
-            hotspot_rank=0,
-            instability_score=0.3,
-            revert_cycle_count=1,
-            test_classification="no_test",
-            test_cochange_ratio=None,
-        )
-    )
-    db_session.commit()
-
-    pack = build_risk_file_factpack(db_session, repo_id, run_id, "app/services/billing.py")
-    assert pack is not None
-    assert pack.risk_score == 0.77
-    assert pack.language == "python"
-    assert pack.test_classification == "no_test"
-    assert pack.expert_count == 0
-    assert pack.is_orphaned_knowledge is False
-    for value in pack.model_dump().values():
-        assert value != "app/services/billing.py"
-
-
-def test_build_risk_file_factpack_computes_max_coupling_and_orphaned_knowledge(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/risk-coupled")
-    run_id = _make_run(db_session, repo_id)
-    path_a = _intern_path(db_session, repo_id, "a.py")
-    path_b = _intern_path(db_session, repo_id, "b.py")
-
-    now = datetime.now(UTC)
-    for path_id, path in ((path_a, "a.py"), (path_b, "b.py")):
-        db_session.add(
-            File(
+    db_session.add_all(
+        [
+            Finding(
+                analysis_run_id=run_id,
                 repo_id=repo_id,
-                path_id=path_id,
-                path=path,
-                language="python",
-                current_loc=10,
-                complexity=1.0,
-                churn_total=1,
-                churn_weighted=1.0,
-                commit_count=1,
-                first_seen=now,
-                last_seen=now,
-                is_deleted=False,
-                is_test=False,
-            )
-        )
-    db_session.add(
-        FileMetrics(
-            analysis_run_id=run_id,
-            repo_id=repo_id,
-            path_id=path_a,
-            risk_score=0.5,
-            risk_confidence=0.5,
-            hotspot_rank=0,
-        )
+                category="risk",
+                severity=Severity.high,
+                confidence=0.9,
+                path_id=None,
+                evidence_sha=None,
+                title="t",
+                detail="d",
+                rank=0,
+            ),
+            Finding(
+                analysis_run_id=run_id,
+                repo_id=repo_id,
+                category="risk",
+                severity=Severity.med,
+                confidence=0.5,
+                path_id=None,
+                evidence_sha=None,
+                title="t2",
+                detail="d2",
+                rank=1,
+            ),
+        ]
     )
-    db_session.add(
-        Coupling(
-            analysis_run_id=run_id,
-            repo_id=repo_id,
-            path_a_id=path_a,
-            path_b_id=path_b,
-            shared_revs=5,
-            coupling_degree=0.66,
-            avg_revs=6.0,
-        )
-    )
-    contributor = Contributor(
-        analysis_run_id=run_id,
-        repo_id=repo_id,
-        canonical_name="Someone",
-        canonical_email="s@example.com",
-        aliases=[],
-        commit_count=5,
-        lines_added=1,
-        lines_deleted=1,
-        first_commit_at=now,
-        last_commit_at=now,
-        active_days=1,
-        is_bot=False,
-        is_stale=True,
-        rank=0,
-    )
-    db_session.add(contributor)
-    db_session.flush()
-    db_session.add(
-        FileExpertise(
-            analysis_run_id=run_id,
-            path_id=path_a,
-            contributor_id=contributor.id,
-            doa=4.0,
-            doa_normalized=1.0,
-            is_expert=True,
-            changes=5,
-            last_touched_at=now,
-        )
-    )
-    db_session.commit()
-
-    pack = build_risk_file_factpack(db_session, repo_id, run_id, "a.py")
-    assert pack.max_coupling_degree == 0.66
-    assert pack.expert_count == 1
-    assert pack.is_orphaned_knowledge is True  # sole expert, and that expert is stale
-
-
-def test_build_security_factpack_none_until_both_gating_stages_are_terminal(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/sec-pending")
-    run_id = _make_run(db_session, repo_id)
-    assert build_security_factpack(db_session, repo_id, run_id) is None
-
-    _make_stage(db_session, run_id, "secrets", StageStatus.done)
-    assert (
-        build_security_factpack(db_session, repo_id, run_id) is None
-    )  # security stage still missing
-
-    _make_stage(db_session, run_id, "security", StageStatus.done)
-    assert build_security_factpack(db_session, repo_id, run_id) is not None
-
-
-def test_build_security_factpack_counts_never_carry_a_preview_or_version(db_session):
-    repo_id = _make_repo(db_session, "https://github.com/fixture/sec-counts")
-    run_id = _make_run(db_session, repo_id)
-    _make_stage(db_session, run_id, "secrets", StageStatus.done, summary={"truncated": True})
-    _make_stage(db_session, run_id, "security", StageStatus.done)
-    _make_stage(
-        db_session,
-        run_id,
-        "structure",
-        StageStatus.done,
-        summary={"dependency_manifest_found": True},
-    )
-
     db_session.execute(
         insert(SecretHit),
         [
@@ -536,17 +376,37 @@ def test_build_security_factpack_counts_never_carry_a_preview_or_version(db_sess
     )
     db_session.commit()
 
-    pack = build_security_factpack(db_session, repo_id, run_id)
-    assert pack.secret_count_total == 2
+    pack = build_repo_factpack(db_session, repo_id, run_id)
+    assert pack is not None
+    assert pack.finding_count_high == 1
+    assert pack.finding_count_med == 1
+    assert pack.finding_count_low == 0
     assert pack.secret_count_still_in_head == 1
     assert pack.secret_count_history_only == 1
-    assert pack.vulnerability_count_total == 1
     assert pack.vulnerability_count_high == 1
-    assert pack.vulnerability_count_direct == 1
-    assert pack.secrets_truncated is True
-    assert pack.no_supported_manifest is False
 
     for value in pack.model_dump().values():
         assert value != "SHOULD****NEVER**BE"
         assert value != "sneaky-should-never-appear"
         assert value != "9.9.9-should-never-appear"
+
+
+def test_build_repo_factpack_uses_query_result_not_stage_dict(db_session):
+    """The gate reads the persisted ``analysis_stages`` row for "security"
+    directly (never a stage-summary teaser) -- a row that exists but is
+    still ``running``/``pending`` must not be treated as ready."""
+    repo_id = _make_repo(db_session, "https://github.com/fixture/repo-still-running")
+    run_id = _make_run(db_session, repo_id)
+    db_session.add(
+        RepoPassport(
+            analysis_run_id=run_id,
+            repo_id=repo_id,
+            data=_PASSPORT_DATA,
+            onboarding_difficulty=42.0,
+            difficulty_breakdown={},
+        )
+    )
+    _make_stage(db_session, run_id, "security", StageStatus.running)
+    db_session.commit()
+
+    assert build_repo_factpack(db_session, repo_id, run_id) is None

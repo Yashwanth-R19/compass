@@ -278,3 +278,71 @@ complete successfully rather than just prove the dispatch fires).
 | App refuses to start in production citing `COMPASS_TOKEN_ENCRYPTION_KEY` | The key is missing, empty, or not a valid Fernet key, and `COMPASS_ENV=production` | Generate one per step 5 and set it on the Render service; this check is intentional (`app/auth/crypto.py`) — do not "fix" it by unsetting `COMPASS_ENV` |
 | A private repo's re-analysis fails with a token/decryption error | The repo owner's stored token was encrypted under a DIFFERENT `COMPASS_TOKEN_ENCRYPTION_KEY` than the one currently configured (the key was rotated) | The owner needs to reconnect private repositories (`scope=repo` login) to re-store a token under the current key — there's no way to recover the old one |
 | `POST /repos` returns 429 | The per-IP/per-user rate limit or the global concurrency cap (`app/api/limits.py`) was hit | Expected behavior under load — the response's `Retry-After` header/detail message says when to retry; if this fires constantly under normal usage, the limits in `COMPASS_RATE_LIMIT_*`/`COMPASS_MAX_CONCURRENT_RUNS` may need raising |
+
+---
+
+## 12. Applying the schema squash (Simplify & Orient rebuild, one-time)
+
+The "Simplify & Orient" rebuild (`plan/REBUILD.md` §3.4, decision D18)
+deleted all 16 incremental Alembic migration files and replaced them with a
+single fresh baseline (`backend/alembic/versions/70017ee3b25d_initial_schema.py`),
+generated from an empty database and verified (`upgrade head` →
+`downgrade base` → `upgrade head` → `alembic check`, all clean) against a
+disposable local Postgres container — **never** against the real, deployed
+Neon database. Applying it there is a manual, deliberate, one-time step the
+owner has to do, and it is destructive: the old migration chain and the
+new one share no common history, so Alembic cannot "upgrade" the existing
+Neon database from wherever it currently sits — the existing schema has to
+be dropped and recreated from the new baseline. **This wipes every row in
+the database.** That's the accepted cost of D18, not an accident — re-run
+the corpus build only if you maintain your own copy of
+`corpus_breakpoints.json`'s inputs; the checked-in `corpus_breakpoints.json`
+itself is unaffected (it's a file in the repo, not a database table) and
+`python -m app.baseline.seed_baselines` alone repopulates `baselines` from
+it. Showcase repositories, however, must be re-analysed and re-pinned after
+this — their rows are gone too.
+
+1. **Back up first if you want the old data for any reason** — `pg_dump`
+   the Neon connection string, or use Neon's own branch/restore feature.
+   There is no way to recover the old rows through Compass itself once step
+   3 below runs.
+2. **Drop and recreate the `public` schema** on the real Neon database
+   (connect with `psql "$DATABASE_URL"` or Neon's SQL editor — this is the
+   one deliberate, documented exception to "never run destructive SQL
+   against the real database" in this whole file):
+   ```sql
+   DROP SCHEMA public CASCADE;
+   CREATE SCHEMA public;
+   ```
+3. **Apply the new baseline migration** — from `backend/`, with
+   `DATABASE_URL` set to the real Neon connection string (never the
+   disposable-container URL used for the migration's own development/
+   verification):
+   ```bash
+   cd backend
+   alembic upgrade head
+   ```
+   `alembic current` should now show `70017ee3b25d (head)` and nothing else
+   — there is no longer a chain of prior revisions to see.
+4. **Reseed the corpus baseline table** (`baselines` is empty after step 2
+   — the corpus breakpoints themselves are safe in the checked-in
+   `corpus_breakpoints.json`, only the DB table needs repopulating):
+   ```bash
+   python -m app.baseline.seed_baselines
+   ```
+5. **Re-pin and re-analyse every showcase repository.** `repos.is_showcase`
+   was wiped along with everything else — read `SHOWCASE.md` at the repo
+   root for the current, real list of pinned repository URLs and their
+   ranks (do not guess at URLs; that file is the source of truth), then for
+   each one:
+   ```bash
+   python -m app.scripts.showcase add <url> --rank <N>
+   ```
+   This re-runs the full ingestion pipeline for that repository and
+   pre-generates its narrative (if `COMPASS_GEMINI_KEYS`/`COMPASS_GROQ_KEYS`
+   are configured) — the same command `SHOWCASE.md`/step above already
+   documents, run fresh because the old showcase data no longer exists.
+6. **Verify**: `GET /health` reports the new `migration_version`
+   (`70017ee3b25d`), `GET /repos/showcase` lists the repositories from step
+   5, and a fresh `POST /repos` submission against a small test repository
+   completes end to end.

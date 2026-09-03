@@ -1,12 +1,10 @@
-"""Session 12, Part E/F: GET /repos/{id}/narrative and
-POST /internal/runs/{id}/pregenerate-narratives.
+"""GET /repos/{id}/narrative and POST /internal/runs/{id}/pregenerate-narratives.
 
 These tests never make a real network call -- either the key pool is
 genuinely empty (the default, unmodified test environment: no
 ``COMPASS_GEMINI_KEYS``/``COMPASS_GROQ_KEYS``), or ``generate_narrative``
-itself is mocked. The mock is the "spy" Part F's cache test asks for: it
-lets a test assert exactly how many times a live generation would have
-happened.
+itself is mocked. The mock is the "spy" the cache test needs: it lets a
+test assert exactly how many times a live generation would have happened.
 """
 
 import uuid
@@ -15,9 +13,11 @@ from unittest.mock import MagicMock
 from app.db.models import (
     AnalysisRun,
     AnalysisRunStatus,
+    AnalysisStage,
     Repo,
     RepoPassport,
     RepoStatus,
+    StageStatus,
 )
 from app.jobs.stages import create_pending_stages
 from app.narrative.generate import GenerationResult
@@ -63,7 +63,7 @@ def _make_repo(db_session, url: str, **kwargs) -> Repo:
 
 
 def _make_ready_run_with_passport(
-    db_session, repo_id: uuid.UUID, difficulty: float = 40.0
+    db_session, repo_id: uuid.UUID, difficulty: float = 40.0, *, security_done: bool = True
 ) -> uuid.UUID:
     run = AnalysisRun(repo_id=repo_id, status=AnalysisRunStatus.ready, head_sha="sha1")
     db_session.add(run)
@@ -78,17 +78,35 @@ def _make_ready_run_with_passport(
             difficulty_breakdown={},
         )
     )
+    if security_done:
+        # create_pending_stages already left every stage `pending` -- flip
+        # the one this fact pack's gate actually reads.
+        from sqlalchemy import select
+
+        stage_row = db_session.scalar(
+            select(AnalysisStage).where(
+                AnalysisStage.run_id == run.id, AnalysisStage.name == "security"
+            )
+        )
+        stage_row.status = StageStatus.done
     db_session.commit()
     return run.id
 
 
-def test_returns_available_false_no_keys_when_pool_is_empty(client, db_session):
-    """The default, unmodified test environment has zero narrative keys
-    configured -- this must be a clean, honest false, never a 500."""
+def test_returns_available_false_no_keys_when_pool_is_empty(client, db_session, monkeypatch):
+    """An empty key pool -- a clean, honest false, never a 500. Forced via
+    monkeypatch (rather than relying on the ambient environment having no
+    narrative keys configured) so this test is reproducible even on a
+    developer machine whose own .env carries real COMPASS_GEMINI_KEYS/
+    COMPASS_GROQ_KEYS values for manual narrative testing."""
+    import app.api.narrative as narrative_api
+
+    monkeypatch.setattr(narrative_api.pool, "has_any_keys", lambda: False)
+
     repo = _make_repo(db_session, "https://github.com/fixture/narrative-nokeys")
     _make_ready_run_with_passport(db_session, repo.id)
 
-    resp = client.get(f"/repos/{repo.id}/narrative?surface=passport")
+    resp = client.get(f"/repos/{repo.id}/narrative")
     assert resp.status_code == 200
     body = resp.json()
     assert body["available"] is False
@@ -96,31 +114,32 @@ def test_returns_available_false_no_keys_when_pool_is_empty(client, db_session):
     assert body["content"] is None
 
 
-def test_invalid_surface_is_422(client, db_session):
-    repo = _make_repo(db_session, "https://github.com/fixture/narrative-badsurface")
-    _make_ready_run_with_passport(db_session, repo.id)
-    resp = client.get(f"/repos/{repo.id}/narrative?surface=not_a_real_surface")
-    assert resp.status_code == 422
-
-
-def test_risk_file_without_subject_is_422(client, db_session):
-    repo = _make_repo(db_session, "https://github.com/fixture/narrative-nosubject")
-    _make_ready_run_with_passport(db_session, repo.id)
-    resp = client.get(f"/repos/{repo.id}/narrative?surface=risk_file")
-    assert resp.status_code == 422
-
-
 def test_no_analysis_run_yet_is_404(client, db_session):
     repo = _make_repo(db_session, "https://github.com/fixture/narrative-norun")
-    resp = client.get(f"/repos/{repo.id}/narrative?surface=passport")
+    resp = client.get(f"/repos/{repo.id}/narrative")
     assert resp.status_code == 404
 
 
-def test_security_surface_is_disabled_until_stages_are_terminal(client, db_session):
+def test_disabled_until_the_security_stage_is_terminal(client, db_session):
     repo = _make_repo(db_session, "https://github.com/fixture/narrative-secpending")
-    run_id = _make_ready_run_with_passport(db_session, repo.id)
-    # create_pending_stages already left "secrets"/"security" as `pending`.
-    resp = client.get(f"/repos/{repo.id}/narrative?surface=security&run_id={run_id}")
+    run_id = _make_ready_run_with_passport(db_session, repo.id, security_done=False)
+    # create_pending_stages already left "security" as `pending`.
+    resp = client.get(f"/repos/{repo.id}/narrative?run_id={run_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is False
+    assert body["reason"] == "disabled"
+
+
+def test_disabled_when_no_repo_passport_row_exists_yet(client, db_session):
+    repo = _make_repo(db_session, "https://github.com/fixture/narrative-nopassport")
+    run = AnalysisRun(repo_id=repo.id, status=AnalysisRunStatus.ready, head_sha="sha1")
+    db_session.add(run)
+    db_session.flush()
+    create_pending_stages(run.id, db_session)
+    db_session.commit()
+
+    resp = client.get(f"/repos/{repo.id}/narrative?run_id={run.id}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["available"] is False
@@ -145,7 +164,7 @@ def test_generated_narrative_is_cached_second_request_makes_no_generation_call(
     run_id = _make_ready_run_with_passport(db_session, repo.id)
     mock_generate = _enable_pool_and_mock_generation(monkeypatch)
 
-    first = client.get(f"/repos/{repo.id}/narrative?surface=passport&run_id={run_id}")
+    first = client.get(f"/repos/{repo.id}/narrative?run_id={run_id}")
     assert first.status_code == 200
     body1 = first.json()
     assert body1["available"] is True
@@ -153,7 +172,7 @@ def test_generated_narrative_is_cached_second_request_makes_no_generation_call(
     assert body1["provider"] == "gemini"
     assert mock_generate.call_count == 1
 
-    second = client.get(f"/repos/{repo.id}/narrative?surface=passport&run_id={run_id}")
+    second = client.get(f"/repos/{repo.id}/narrative?run_id={run_id}")
     assert second.status_code == 200
     body2 = second.json()
     assert body2["available"] is True
@@ -167,7 +186,7 @@ def test_changed_factpack_hash_regenerates(client, db_session, monkeypatch):
     run_id = _make_ready_run_with_passport(db_session, repo.id, difficulty=40.0)
     mock_generate = _enable_pool_and_mock_generation(monkeypatch, content="First version.")
 
-    first = client.get(f"/repos/{repo.id}/narrative?surface=passport&run_id={run_id}")
+    first = client.get(f"/repos/{repo.id}/narrative?run_id={run_id}")
     assert first.json()["content"] == "First version."
     assert mock_generate.call_count == 1
 
@@ -182,7 +201,7 @@ def test_changed_factpack_hash_regenerates(client, db_session, monkeypatch):
     db_session.commit()
 
     mock_generate.return_value = GenerationResult(True, "Second version.", "gemini", "m", None)
-    second = client.get(f"/repos/{repo.id}/narrative?surface=passport&run_id={run_id}")
+    second = client.get(f"/repos/{repo.id}/narrative?run_id={run_id}")
     assert second.json()["content"] == "Second version."
     assert mock_generate.call_count == 2
 
@@ -201,7 +220,7 @@ def test_rejected_generation_returns_available_false_reason_rejected(
         MagicMock(return_value=GenerationResult(False, None, None, None, "rejected")),
     )
 
-    resp = client.get(f"/repos/{repo.id}/narrative?surface=passport&run_id={run_id}")
+    resp = client.get(f"/repos/{repo.id}/narrative?run_id={run_id}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["available"] is False
@@ -223,7 +242,7 @@ def test_a_rejected_generation_is_never_persisted(client, db_session, monkeypatc
         "generate_narrative",
         MagicMock(return_value=GenerationResult(False, None, None, None, "rejected")),
     )
-    client.get(f"/repos/{repo.id}/narrative?surface=passport&run_id={run_id}")
+    client.get(f"/repos/{repo.id}/narrative?run_id={run_id}")
 
     rows = db_session.scalars(select(Narrative).where(Narrative.analysis_run_id == run_id)).all()
     assert rows == []
@@ -268,4 +287,21 @@ def test_pregenerate_endpoint_generates_with_correct_token(client, db_session, m
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert {"surface": "passport", "subject": ""} in body["generated"]
+    assert {"surface": "repo"} in body["generated"]
+
+
+def test_pregenerate_endpoint_skips_when_not_ready(client, db_session, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "COMPASS_ADMIN_TOKEN", "correct-token")
+    repo = _make_repo(db_session, "https://github.com/fixture/narrative-admin-notready")
+    run_id = _make_ready_run_with_passport(db_session, repo.id, security_done=False)
+
+    resp = client.post(
+        f"/internal/runs/{run_id}/pregenerate-narratives",
+        headers={"X-Admin-Token": "correct-token"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["generated"] == []
+    assert {"surface": "repo", "reason": "not_ready"} in body["skipped"]

@@ -83,7 +83,6 @@ def test_benchmark_reports_percentiles_with_honesty_fields(tmp_path, db_session,
         "risk_score",
         "health_score",
         "onboarding_difficulty",
-        "test_cochange_ratio",
     }
 
     by_metric = {m["metric"]: m for m in body["metrics"]}

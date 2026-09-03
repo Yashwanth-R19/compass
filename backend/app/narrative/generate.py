@@ -35,8 +35,10 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are given already-computed metrics about a code repository, listed "
-    "below as plain key/value facts. Write 2-4 sentences of plain prose "
-    "explaining what these metrics mean for someone joining this codebase.\n\n"
+    "below as plain key/value facts. Write 3-5 sentences of plain prose "
+    "explaining what these metrics mean for someone joining this codebase -- "
+    "its overall health, how risky and how well-distributed the knowledge of "
+    "it is, and whether it has any outstanding security concerns.\n\n"
     "Rules, followed exactly:\n"
     "- Do NOT introduce any number, percentage, filename, or person's name "
     "that is not present in the facts given below.\n"

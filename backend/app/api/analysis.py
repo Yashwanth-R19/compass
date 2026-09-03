@@ -50,7 +50,6 @@ from app.engines.coupling import confidence_hint, is_low_confidence
 from app.engines.module_coupling import is_module_coupling_low_confidence
 from app.engines.passport import RepoPassportData
 from app.engines.risk import max_coupling_by_path
-from app.engines.test_gaps import MIN_COMMITS_FOR_STALE_CLASSIFICATION
 from app.schemas.analysis import (
     CITY_FILE_COLUMNS,
     ArchitectureResponse,
@@ -100,8 +99,6 @@ from app.schemas.analysis import (
     SubsystemMemberOut,
     SubsystemOut,
     SubsystemsResponse,
-    TestGapFileOut,
-    TestGapsResponse,
     TourResponse,
     TourStopOut,
     TruckFactorRemovalStepOut,
@@ -138,14 +135,6 @@ UNREFERENCED_FILES_CAVEAT = (
     "This list carries no severity and produces no findings -- see session 07's Part E."
 )
 MAX_UNREFERENCED_FILES = 25
-
-TEST_GAP_LIMITATION_NOTE = (
-    "This measures test MAINTENANCE -- whether a file's mapped tests keep changing alongside "
-    "it -- never test coverage or quality. A repository with an integration-test-only strategy, "
-    "or simply well-written tests that rarely need touching, will look worse here than it "
-    "actually is. Mapping between a source file and its tests is best-effort (naming convention "
-    "plus import edges); this is not a claim that unmapped code has no tests."
-)
 
 # Session 14: derives from the ACTIVE BaselineProvider at runtime
 # (app/baseline/provider.py::calibration_label) rather than a hardcoded
@@ -416,8 +405,6 @@ def get_risk(
             churn_weighted=file.churn_weighted,
             instability_score=metrics.instability_score,
             revert_cycle_count=metrics.revert_cycle_count,
-            test_classification=metrics.test_classification,
-            test_cochange_ratio=metrics.test_cochange_ratio,
             expert_count=len(experts_by_path.get(file.path_id, [])),
             is_orphaned_knowledge=(
                 len(experts_by_path.get(file.path_id, [])) == 1 and experts_by_path[file.path_id][0]
@@ -1124,94 +1111,6 @@ def get_hygiene(
     )
 
 
-@router.get("/repos/{repo_id}/test-gaps", response_model=TestGapsResponse)
-def get_test_gaps(
-    repo_id: uuid.UUID,
-    run_id: uuid.UUID | None = None,
-    db: Session = Depends(get_db),
-    repo: Repo = Depends(require_repo_access),
-) -> TestGapsResponse | JSONResponse:
-    """Session 07, Part C: test maintenance classifications
-    (app/engines/test_gaps.py::TestGapEngine) -- never "coverage" or
-    "untested", see TEST_GAP_LIMITATION_NOTE above, attached to every
-    response. Gates on "risk" (TestGapEngine runs last in that stage, after
-    RiskEngine and HygieneEngine -- no standalone stage)."""
-    resolved_run_id = _resolve_run_or_404(repo, run_id, db)
-    pending = _pending_response(resolved_run_id, "risk", db)
-    if pending is not None:
-        return pending
-
-    rows = db.execute(
-        select(File, FileMetrics)
-        .join(
-            FileMetrics,
-            (FileMetrics.path_id == File.path_id)
-            & (FileMetrics.analysis_run_id == resolved_run_id),
-        )
-        .where(File.repo_id == repo_id, FileMetrics.test_classification.isnot(None))
-    ).all()
-    path_map = load_path_map(repo_id, db)
-    files = [
-        TestGapFileOut(
-            file_path=file.path,
-            classification=metrics.test_classification,
-            test_cochange_ratio=metrics.test_cochange_ratio,
-            mapped_test_paths=[
-                path_map[pid] for pid in (metrics.mapped_test_path_ids or []) if pid in path_map
-            ],
-        )
-        for file, metrics in rows
-    ]
-
-    # test_file_ratio is purely Facts-derived (files.is_test) -- no run
-    # dependency at all, unlike everything else on this response.
-    test_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(File)
-            .where(File.repo_id == repo_id, File.is_deleted.is_(False), File.is_test.is_(True))
-        )
-        or 0
-    )
-    source_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(File)
-            .where(File.repo_id == repo_id, File.is_deleted.is_(False), File.is_test.is_(False))
-        )
-        or 0
-    )
-    test_file_ratio = test_count / source_count if source_count else 0.0
-
-    # mean_test_cochange_ratio recomputed fresh from the persisted per-file
-    # columns (like /tour's subsystems_covered) rather than trusted from the
-    # engine's own stage-summary teaser -- excludes files below the same
-    # commit floor TestGapEngine itself uses to avoid classifying (session
-    # 07 Known Hazard #6: a low-commit file's ratio is meaningless).
-    ratio_rows = db.execute(
-        select(FileMetrics.test_cochange_ratio)
-        .join(
-            File,
-            (File.path_id == FileMetrics.path_id) & (File.repo_id == repo_id),
-        )
-        .where(
-            FileMetrics.analysis_run_id == resolved_run_id,
-            FileMetrics.test_cochange_ratio.isnot(None),
-            File.commit_count >= MIN_COMMITS_FOR_STALE_CLASSIFICATION,
-        )
-    ).all()
-    ratios = [r[0] for r in ratio_rows]
-    mean_ratio = sum(ratios) / len(ratios) if ratios else 0.0
-
-    return TestGapsResponse(
-        repo_id=repo_id,
-        files=files,
-        test_file_ratio=test_file_ratio,
-        mean_test_cochange_ratio=mean_ratio,
-        limitation=TEST_GAP_LIMITATION_NOTE,
-    )
-
-
 @router.get("/repos/{repo_id}/city", response_model=CityResponse)
 def get_city(
     repo_id: uuid.UUID,
@@ -1493,10 +1392,9 @@ BENCHMARK_METRICS = (
     "risk_score",
     "health_score",
     "onboarding_difficulty",
-    "test_cochange_ratio",
 )
-"""Session 14, Part D -- the seven metrics ``GET /repos/{id}/benchmark``
-compares against the corpus. Five are PER-FILE (this repo's own MEDIAN
+"""Session 14, Part D -- the six metrics ``GET /repos/{id}/benchmark``
+compares against the corpus. Four are PER-FILE (this repo's own MEDIAN
 across its files is what's compared -- the same "typical file" framing the
 corpus itself was built from, one value per corpus file); two
 (health_score, onboarding_difficulty) are PER-REPO already, one value per
@@ -1549,13 +1447,6 @@ def get_benchmark(
         "max_coupling_degree": _median([max_coupling.get(f.path, 0.0) for f in files]),
         "risk_score": _median(
             [fm.risk_score for fm in file_metrics_rows if fm.risk_score is not None]
-        ),
-        "test_cochange_ratio": _median(
-            [
-                fm.test_cochange_ratio
-                for fm in file_metrics_rows
-                if fm.test_cochange_ratio is not None
-            ]
         ),
     }
     health_row = db.scalar(select(Health).where(Health.analysis_run_id == resolved_run_id))

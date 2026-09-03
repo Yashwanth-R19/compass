@@ -8,10 +8,10 @@
 (``app.jobs.runner.run_ingestion_job``, unchanged -- no duplicated pipeline
 logic, the same discipline ``app/baseline/build_corpus.py`` already
 established for a different console script), then pins the repository
-(``repos.is_showcase = True``) and pre-generates every narrative surface for
-it (session 12's ``pregenerate_narratives``, called as a plain function --
-this is a console script in the same process, not an HTTP client of its own
-API) so no visitor of the showcase page ever triggers a live LLM call.
+(``repos.is_showcase = True``) and pre-generates its one repo-level
+narrative (``pregenerate_narratives``, called as a plain function -- this is
+a console script in the same process, not an HTTP client of its own API) so
+no visitor of the showcase page ever triggers a live LLM call.
 
 **The secret check is not optional** (session 16 Known Hazard #6). ``add``
 always prints every ``secret_hits`` row with ``still_in_head=True`` it finds,

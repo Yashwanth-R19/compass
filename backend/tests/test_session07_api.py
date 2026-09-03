@@ -79,22 +79,20 @@ def _add_file(
     return path_id
 
 
-def test_hygiene_and_test_gaps_gate_on_risk_stage(client, db_session):
+def test_hygiene_gates_on_risk_stage(client, db_session):
     repo_id = _make_repo(db_session, "https://github.com/fixture/session07-gating")
     run_id = _make_run_with_pending_stages(db_session, repo_id)
 
-    for path in (f"/repos/{repo_id}/hygiene", f"/repos/{repo_id}/test-gaps"):
-        pending = client.get(path)
-        assert pending.status_code == 202
-        assert pending.json() == {"stage": "risk", "status": "pending"}
+    pending = client.get(f"/repos/{repo_id}/hygiene")
+    assert pending.status_code == 202
+    assert pending.json() == {"stage": "risk", "status": "pending"}
 
     _set_stage_status(db_session, run_id, "risk", StageStatus.done)
 
-    for path in (f"/repos/{repo_id}/hygiene", f"/repos/{repo_id}/test-gaps"):
-        ready = client.get(path)
-        assert ready.status_code == 200
-        body = ready.json()
-        assert body["repo_id"] == str(repo_id)
+    ready = client.get(f"/repos/{repo_id}/hygiene")
+    assert ready.status_code == 200
+    body = ready.json()
+    assert body["repo_id"] == str(repo_id)
 
 
 def test_blast_radius_gates_on_coupling_stage_and_404s_for_unknown_path(client, db_session):

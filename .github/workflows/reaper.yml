@@ -1,12 +1,10 @@
 name: Reaper
 
-# Public repository -- see mine.yml's header comment. reap_stale_runs()
-# prints only its own count log line; app/jobs/log_redaction.py's filter is
-# installed the same way worker.py installs it (session 14), since
-# dispatch_pending() (app/jobs/queue.py) can now call run_ingestion_job
-# synchronously from inside this same workflow run -- the exact same
-# pipeline mine.yml's dedicated worker runs, just triggered from the queue
-# instead of a repository_dispatch event.
+# Public repository -- see mine.yml's header comment. reap_stale_runs()/
+# run_eviction() print only their own count log lines, but
+# app/jobs/log_redaction.py's filter is still installed the same way
+# worker.py installs it (app/jobs/reaper.py::main), as defensive insurance
+# against any future log line that might otherwise echo something sensitive.
 
 on:
   schedule:
@@ -19,23 +17,14 @@ permissions:
 jobs:
   reap:
     runs-on: ubuntu-latest
-    # Session 14: this tick can now dispatch up to COMPASS_MAX_CONCURRENT_RUNS
-    # queued analyses SEQUENTIALLY (app/jobs/queue.py::dispatch_pending has
-    # no always-on worker to hand off to -- see that module's docstring), so
-    # the old 5-minute budget (reap-only) is no longer enough. Kept well
-    # under STALE_AFTER_MINUTES=20 (app/jobs/reaper.py) so this job's own
-    # timeout is never what makes a run look reaper-stale to itself.
-    timeout-minutes: 18
+    # Reaping stale runs and running eviction's storage check are both cheap,
+    # DB-only operations -- comfortably under STALE_AFTER_MINUTES=20
+    # (app/jobs/reaper.py) so this job's own timeout is never what makes a
+    # run look reaper-stale to itself.
+    timeout-minutes: 5
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      # Session 14: dispatch_pending() may now clone a private repository's
-      # owner's queued submission via the same
-      # app/ingestion/clone_url.py::resolve_clone_url path mine.yml's worker
-      # uses -- needs this to decrypt the stored token. Never echoed by any
-      # step here; app/jobs/log_redaction.py's filter (installed below,
-      # before app.jobs.reaper is imported) scrubs it defensively regardless.
-      COMPASS_TOKEN_ENCRYPTION_KEY: ${{ secrets.COMPASS_TOKEN_ENCRYPTION_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,5 +38,5 @@ jobs:
       - name: Install backend
         run: pip install ./backend
 
-      - name: Reap stale runs and drain the queue
+      - name: Reap stale runs and run storage eviction
         run: python -m app.jobs.reaper

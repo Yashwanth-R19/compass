@@ -11,7 +11,6 @@ from app.api import (
     me,
     meta,
     narrative,
-    portfolio,
     repos,
     share,
     timeline,
@@ -77,4 +76,3 @@ app.include_router(share.router)
 app.include_router(narrative.router)
 app.include_router(timeline.router)
 app.include_router(compare.router)
-app.include_router(portfolio.router)

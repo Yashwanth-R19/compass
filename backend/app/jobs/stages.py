@@ -25,7 +25,6 @@ from app.engines.passport import PassportEngine
 from app.engines.risk import RiskEngine
 from app.engines.security import SecurityEngine, fetch_and_persist_vulnerabilities
 from app.engines.subsystems import SubsystemEngine
-from app.engines.test_gaps import TestGapEngine
 from app.engines.timeline import TimelineEngine
 from app.engines.tour import TourEngine
 from app.engines.truck_factor import TruckFactorEngine
@@ -112,7 +111,7 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
     Stage(
         "architecture", "insight", (ArchEngine().run, EntryPointEngine().run, OverlayEngine().run)
     ),
-    Stage("risk", "insight", (_run_risk_engine, _run_hygiene_engine, TestGapEngine().run)),
+    Stage("risk", "insight", (_run_risk_engine, _run_hygiene_engine)),
     Stage("knowledge", "insight", (ExpertiseEngine().run, TruckFactorEngine().run)),
     Stage(
         "onboarding",
@@ -157,15 +156,10 @@ whole run (app/jobs/stages.py::stage's ``optional`` parameter)."""
   also depends on ArchEngine's structural edges for the hidden-dependency
   join.
 - "risk" needs Coupling's max coupling_degree per file. Within it (session
-  07), RiskEngine must run FIRST -- HygieneEngine and TestGapEngine both
-  UPDATE the ``file_metrics`` rows RiskEngine inserts for this run_id
-  (never insert their own; the unique constraint on
-  (analysis_run_id, path_id) would reject a second insert). TestGapEngine
-  additionally reads ``file_metrics.risk_score`` (for its top-risk-quartile
-  finding) and must therefore run AFTER RiskEngine has written it; it runs
-  after HygieneEngine too, but the two don't depend on each other -- that
-  relative order is fixed only because it's the order the session prompt
-  named them in.
+  07), RiskEngine must run FIRST -- HygieneEngine UPDATEs the
+  ``file_metrics`` rows RiskEngine inserts for this run_id (never inserts
+  its own; the unique constraint on (analysis_run_id, path_id) would reject
+  a second insert).
 - "knowledge" (session 05) needs Risk's file_metrics.risk_score (the
   orphaned-knowledge finding) and Subsystems' partition (the
   single-expert-subsystem finding) -- MUST run after both, hence its

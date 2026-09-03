@@ -96,7 +96,6 @@ BREAKPOINT_METRICS = (
     "risk_score",
     "health_score",
     "onboarding_difficulty",
-    "test_cochange_ratio",
 )
 
 
@@ -196,10 +195,6 @@ def _accumulate_one_repo(
         select(FileMetrics).where(FileMetrics.analysis_run_id == run_id)
     ).all()
     _add("risk_score", [fm.risk_score for fm in file_metrics if fm.risk_score is not None])
-    _add(
-        "test_cochange_ratio",
-        [fm.test_cochange_ratio for fm in file_metrics if fm.test_cochange_ratio is not None],
-    )
 
     health = session.scalar(select(Health).where(Health.analysis_run_id == run_id))
     if health is not None:

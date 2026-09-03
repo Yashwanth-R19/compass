@@ -7,8 +7,8 @@ re-analysis, reused here for a different trigger).
 
 Policy, applied in this exact order every time ``run_eviction`` is called
 (wired into the existing 15-minute reaper cron, ``app/jobs/reaper.py`` --
-there is no separate always-on eviction process, same "the reaper's cron tick
-is the only driver" precedent session 14's queue dispatcher already set):
+there is no separate always-on eviction process; the reaper's cron tick is
+the only driver):
 
 1. **Never evict**: showcase repositories (``repos.is_showcase``), the
    current run of any repo (never even considered -- only ``superseded`` runs

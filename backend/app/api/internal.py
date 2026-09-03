@@ -3,8 +3,7 @@
 ``POST /internal/runs/{id}/pregenerate-narratives`` (session 12) already
 uses. Neither is ``/repos/{``-shaped, so neither is part of
 ``test_access_control.py``'s repo-access sweep -- these aren't repo-scoped at
-all, same precedent ``app/api/portfolio.py``'s own auth note already
-documents for a different reason.
+all.
 """
 
 from __future__ import annotations

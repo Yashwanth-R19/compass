@@ -53,7 +53,6 @@ from app.engines import coupling as coupling_engine_module
 from app.engines import expertise, glossary, health, hygiene, module_coupling, passport
 from app.engines import risk as risk_engine_module
 from app.engines import subsystems as subsystems_module
-from app.engines import test_gaps as test_gaps_module
 from app.engines import truck_factor as truck_factor_module
 from app.engines.findings import SEVERITY_WEIGHT
 from app.jobs.stages import ALL_STAGES, FACT_STAGES
@@ -406,29 +405,6 @@ def get_formulas() -> FormulasResponse:
                     hygiene.MIN_COMMITS_FOR_PERCENTILE,
                     "Below this many total commits, oversized-commit detection is skipped "
                     "entirely -- a percentile over a handful of points is noise.",
-                ),
-            ],
-        ),
-        FormulaGroup(
-            key="test_gaps",
-            label="Test maintenance",
-            status="heuristic",
-            formula=(
-                "stale_test iff a mapped test exists, test_cochange_ratio <= threshold, "
-                "and the file has enough commit history to classify"
-            ),
-            constants=[
-                _c(
-                    "stale_test_ratio_threshold",
-                    test_gaps_module.STALE_TEST_RATIO_THRESHOLD,
-                    "test_cochange_ratio at or below this value classifies as stale_test.",
-                ),
-                _c(
-                    "min_commits_for_stale_classification",
-                    test_gaps_module.MIN_COMMITS_FOR_STALE_CLASSIFICATION,
-                    "A file needs at least this many commits before it can be classified "
-                    "stale_test at all -- otherwise it is left as tracked, benefit of the "
-                    "doubt.",
                 ),
             ],
         ),

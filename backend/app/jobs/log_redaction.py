@@ -59,14 +59,15 @@ def add_secret_values(values: list[str]) -> None:
     """Registers additional secret values to scrub, beyond the env-var-NAME-
     based scan ``_env_secret_values()`` already ran at import time.
 
-    Session 12: ``app/narrative/pool.py`` reads ``COMPASS_GEMINI_KEYS``/
-    ``COMPASS_GROQ_KEYS`` -- both names already contain the "KEY" marker, so
-    the *whole* comma-separated blob is already caught by
-    ``_ENV_SECRET_VALUES`` above. That only redacts a log line containing
-    the entire blob verbatim; it does nothing for a single parsed key value
-    appearing alone (e.g. inside a provider adapter's HTTP error message),
-    which is the actually-likely case. The pool calls this once, at
-    pool-construction time, with every individual parsed key.
+    For an env var whose value is itself a comma-separated blob of several
+    individual secrets (a rotating API-key pool, for instance), the whole
+    blob is already caught by ``_ENV_SECRET_VALUES`` above as long as the
+    var's NAME contains a marker like "KEY". That only redacts a log line
+    containing the entire blob verbatim, though -- it does nothing for a
+    single parsed value appearing alone (e.g. inside a provider adapter's
+    HTTP error message), which is the actually-likely case. A caller that
+    parses such a blob into individual values should call this once, with
+    every individual value, right after parsing.
 
     Re-sorts longest-first afterward, preserving ``redact()``'s documented
     invariant that a shorter secret which happens to be a substring of a
