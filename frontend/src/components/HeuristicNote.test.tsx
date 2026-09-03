@@ -13,4 +13,11 @@ describe("HeuristicNote", () => {
     expect(screen.getByText("Custom heuristic note text.")).toBeTruthy();
     expect(screen.queryByText(/not yet corpus-calibrated/i)).toBeNull();
   });
+
+  it("switches to the corpus message and tone when calibration is 'corpus'", () => {
+    const { container } = render(<HeuristicNote calibration="corpus" />);
+    expect(screen.getByText(/calibrated against a curated corpus/i)).toBeTruthy();
+    expect(container.innerHTML).toContain("border-success");
+    expect(container.innerHTML).not.toContain("border-warning");
+  });
 });

@@ -1,12 +1,12 @@
 /** A filled, coloured tag -- unlike Badge (an outline label for static
  * metadata), Chip carries a solid background and is used where the colour
  * itself IS the primary signal (a subsystem name, a contributor identity).
- * `dot`, when given, renders a small square swatch before the label instead
- * of tinting the whole chip -- useful when the colour comes from the
- * high-cardinality categorical palette (subsystemColors.ts) and a
+ * `dot`, when given, renders a small square swatch before the label
+ * instead of tinting the whole chip -- useful when the colour comes from
+ * the high-cardinality categorical palette (subsystemColors.ts) and a
  * full-strength fill across 12 hues would compete with everything else on
  * the page; a solid `color` fill (no `dot`) is for the small, fixed set of
- * semantic tones (severity, confidence). */
+ * semantic tones. */
 export function Chip({
   label,
   color,
@@ -21,7 +21,7 @@ export function Chip({
   if (dot) {
     return (
       <span
-        className={`inline-flex items-center gap-1.5 border border-border px-1.5 py-0.5 text-xs font-medium text-ink ${className}`}
+        className={`inline-flex items-center gap-1.5 rounded-xs border border-border px-1.5 py-0.5 text-xs font-medium text-text ${className}`}
       >
         <span aria-hidden="true" className="h-2 w-2 shrink-0" style={{ backgroundColor: color }} />
         {label}
@@ -30,7 +30,7 @@ export function Chip({
   }
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 text-xs font-medium text-white ${className}`}
+      className={`inline-flex items-center rounded-xs px-1.5 py-0.5 text-xs font-medium text-white ${className}`}
       style={{ backgroundColor: color }}
     >
       {label}

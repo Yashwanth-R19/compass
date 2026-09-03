@@ -5,6 +5,24 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Compass</title>
+    <script>
+      // Pre-paint theme application (Part D) -- runs before any stylesheet,
+      // so the correct theme is on <html> before the first paint, avoiding
+      // a light-to-dark flash. Dark is the app's UNCONDITIONAL default:
+      // this reads localStorage['compass-theme'] and applies "light" ONLY
+      // when that value is exactly "light" -- there is no
+      // prefers-color-scheme fallback here, matching
+      // src/theme/ThemeProvider.tsx's readInitialTheme() exactly. If you
+      // change one, change the other -- they must agree exactly.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem("compass-theme");
+          document.documentElement.setAttribute("data-theme", stored === "light" ? "light" : "dark");
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -12,7 +12,7 @@ export function GraphCapNotice({
   if (!nodesCapped && !edgesCapped) return null;
 
   return (
-    <p className="mb-2 border-l-2 border-conf-low py-1 pl-3 text-xs text-ink-muted">
+    <p className="mb-2 border-l-2 border-warning py-1 pl-3 text-xs text-text-muted">
       {nodesCapped
         ? `Showing top ${shownNodes} of ${totalNodes} files by coupling strength.`
         : "Some low-weight edges are hidden to keep this graph responsive."}

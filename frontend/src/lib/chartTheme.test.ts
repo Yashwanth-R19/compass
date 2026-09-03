@@ -74,11 +74,20 @@ describe("chartTheme subsystem palette anti-drift", () => {
   });
 });
 
-// Part F: "a token test: assert every semantic colour token is defined in
-// both the light and dark blocks (iterate the token names; a missing dark
-// value is the classic refit bug)." Parses the real tokens.css file rather
-// than re-declaring the token list by hand, so this test can never drift
-// out of sync with the file it's checking.
+// UI rebuild session 1: rewritten from "design token light/dark
+// completeness" to match tokens.css's new theme architecture. The outgoing
+// version anchored on `@media (prefers-color-scheme: dark) { :root { ... } }`
+// -- that block no longer exists at all, by design (rebuild spec decision
+// #9: dark is the unconditional :root default, with NO
+// prefers-color-scheme fallback for the initial theme; light is the one
+// applied under `:root[data-theme="light"]`). This is exactly the "a
+// rewrite genuinely requires changing behaviour" case the session rules
+// anticipate -- the STRUCTURE changed (which block is the base, which is
+// the anchored override), but the underlying property this test protects
+// (a token declared in one scheme having a matching declaration in the
+// other, so it can never silently fall back to an unstyled value) is
+// preserved verbatim, just checked against the new anchor. See
+// DESIGN_NOTES.md for this session's own note on the change.
 describe("design token light/dark completeness", () => {
   const css = readSource("styles/tokens.css");
 
@@ -106,55 +115,45 @@ describe("design token light/dark completeness", () => {
     return [...names];
   }
 
-  // The dark-mode override block is the one unambiguous anchor in this file
-  // (`@media (prefers-color-scheme: dark)` appears exactly once, as real
-  // code -- verified by the sanity-check test below). Extracting IT first,
-  // then treating everything OUTSIDE its span as "light", sidesteps needing
-  // a second, position-fragile anchor to find the light `:root` block
-  // specifically -- `--cp-*` DECLARATIONS (as opposed to `var(--cp-*)`
+  // The light-mode override block (`:root[data-theme="light"] { ... }`) is
+  // now the one unambiguous anchor -- extracting IT first, then treating
+  // everything OUTSIDE its span as "dark" (the base :root declarations),
+  // sidesteps needing a second, position-fragile anchor to find the base
+  // block specifically. `--cp-*` DECLARATIONS (as opposed to `var(--cp-*)`
   // references, which this token scan's `--cp-x:` pattern does not match)
-  // only ever appear in that one light block among the non-dark text, so
-  // scanning the whole non-dark remainder is equivalent to scanning just
-  // that block, without depending on exactly what precedes it (an earlier
-  // version of this test anchored on `}\s*:root` immediately after
-  // `@theme`'s closing brace, which broke the moment a documentation
-  // comment was inserted between them -- Known Hazard, this session).
-  const [darkStart, darkEnd] = blockSpan(
-    css,
-    /@media \(prefers-color-scheme: dark\)\s*{\s*:root\s*{/,
-  );
-  const darkBlock = css.slice(darkStart, darkEnd);
-  const lightText = css.slice(0, darkStart) + css.slice(darkEnd);
+  // only ever appear in that one light block among the non-light text, so
+  // scanning the whole non-light remainder is equivalent to scanning just
+  // the base :root block.
+  const [lightStart, lightEnd] = blockSpan(css, /:root\[data-theme=["']light["']\]\s*{/);
+  const lightBlock = css.slice(lightStart, lightEnd);
+  const darkText = css.slice(0, lightStart) + css.slice(lightEnd);
 
-  const lightTokens = tokenNames(lightText);
-  const darkTokens = tokenNames(darkBlock);
+  const darkTokens = tokenNames(darkText);
+  const lightTokens = tokenNames(lightBlock);
 
-  it("the dark-mode media block anchor (the actual rule, not prose mentioning it) appears exactly once", () => {
-    // The bare phrase "prefers-color-scheme: dark" also appears twice in
-    // this file's own explanatory comments -- that's expected and fine;
-    // what must be unique is the real CSS rule opener blockSpan anchors on.
-    const anchor = /@media \(prefers-color-scheme: dark\)\s*{\s*:root\s*{/g;
+  it("the light-mode override block anchor (the actual rule, not prose mentioning it) appears exactly once", () => {
+    const anchor = /:root\[data-theme=["']light["']\]\s*{/g;
     const occurrences = [...css.matchAll(anchor)].length;
     expect(occurrences).toBe(1);
   });
 
   it("found a non-trivial number of semantic tokens to check", () => {
-    expect(lightTokens.length).toBeGreaterThan(15);
+    expect(darkTokens.length).toBeGreaterThan(15);
   });
 
-  it("every light-mode --cp-* token has a dark-mode override", () => {
-    const missing = lightTokens.filter((name) => !darkTokens.includes(name));
-    expect(missing).toEqual([]);
-  });
-
-  it("every dark-mode --cp-* token has a light-mode definition (no orphaned dark-only token)", () => {
+  it("every dark-mode (base :root) --cp-* token has a light-mode override", () => {
     const missing = darkTokens.filter((name) => !lightTokens.includes(name));
     expect(missing).toEqual([]);
   });
 
-  it("the subsystem categorical palette is scheme-invariant by design (declared once, no dark override)", () => {
+  it("every light-mode --cp-* token has a dark-mode (base :root) definition (no orphaned light-only token)", () => {
+    const missing = lightTokens.filter((name) => !darkTokens.includes(name));
+    expect(missing).toEqual([]);
+  });
+
+  it("the subsystem categorical palette is scheme-invariant by design (declared once, no light override)", () => {
     // Documented deliberately in tokens.css: a subsystem's colour identity
     // must not change between light and dark screenshots of the same repo.
-    expect(darkBlock).not.toMatch(/--subsystem-\d+:/);
+    expect(lightBlock).not.toMatch(/--subsystem-\d+:/);
   });
 });

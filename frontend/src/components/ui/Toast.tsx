@@ -10,8 +10,8 @@ const ToastCtx = createContext<((message: string) => void) | null>(null);
 
 /** Mounted once in AppShell. `useToast()` gives any component a
  * `showToast(message)` function -- used for short, non-blocking
- * confirmations (e.g. ShareButton's "Link copied"), never for anything the
- * user must acknowledge (that's a Drawer/Dialog's job). */
+ * confirmations, never for anything the user must acknowledge (that's a
+ * Drawer/Dialog's job). */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
 
@@ -30,7 +30,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             onOpenChange={(open) => {
               if (!open) setItems((prev) => prev.filter((i) => i.id !== item.id));
             }}
-            className="border border-border bg-surface px-3 py-2 text-sm text-ink data-[state=open]:animate-none"
+            className="rounded-sm border border-border bg-bg-elevated px-3.5 py-2.5 text-sm text-text shadow-md data-[state=open]:animate-none"
           >
             <RadixToast.Description>{item.message}</RadixToast.Description>
           </RadixToast.Root>

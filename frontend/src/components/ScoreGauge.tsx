@@ -27,10 +27,10 @@ export function ScoreGauge({ score, size = 140 }: { score: number; size?: number
           r={radius}
           strokeWidth={10}
           fill="none"
-          strokeLinecap="butt"
+          strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className={`transition-[stroke-dashoffset] duration-700 ease-out motion-reduce:transition-none ${colors.ring}`}
+          className={`transition-[stroke-dashoffset] duration-[var(--dur-slow)] ease-[var(--ease-out)] motion-reduce:transition-none ${colors.ring}`}
         />
       </svg>
       <div className="absolute flex flex-col items-center">

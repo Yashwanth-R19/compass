@@ -1,19 +1,19 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
  * A dense data table -- sticky header, tabular numerals on every numeric
  * column, optional per-column client-side sort.
  *
- * IMPORTANT, session 11 (CLAUDE.md "Audit mode"): `FindingsRankEngine`
- * computes one global, cross-category rank server-side, and no page may
- * re-sort the findings stream (filtering by removing rows is fine;
- * reordering what's left is not). `pages/audit/FindingsPage.tsx` renders
- * its list through `FindingItem`, never through this `Table`, specifically
- * so this component's sort affordance can never be reached for that data —
- * but if a future page ever DOES render findings through `Table`, it must
- * pass `sortable={false}` and must not wire a column's `sortKey`. This
- * primitive being sortable is fine; the findings page using that
- * sortability would not be.
+ * IMPORTANT (CLAUDE.md "Audit mode"): `FindingsRankEngine` computes one
+ * global, cross-category rank server-side, and no page may re-sort the
+ * findings stream (filtering by removing rows is fine; reordering what's
+ * left is not). The findings surface renders through `FindingItem`, never
+ * through this `Table`, specifically so this component's sort affordance
+ * can never be reached for that data — but if a future page ever DOES
+ * render findings through `Table`, it must pass `sortable={false}` and
+ * must not wire a column's `sortKey`. This primitive being sortable is
+ * fine; the findings surface using that sortability would not be.
  */
 export function Table<T>({
   columns,
@@ -38,9 +38,9 @@ export function Table<T>({
   emptyMessage?: string;
 }) {
   return (
-    <div className="max-h-[32rem] overflow-auto border border-border">
+    <div className="max-h-[32rem] overflow-auto rounded-sm border border-border">
       <table className="w-full border-collapse text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-surface-2">
+        <thead className="sticky top-0 z-10 bg-bg-inset">
           <tr>
             {columns.map((col) => {
               const isSorted = sort?.key === col.key;
@@ -56,15 +56,19 @@ export function Table<T>({
                     <button
                       type="button"
                       onClick={() => onSortChange(col.key)}
-                      className="inline-flex items-center gap-1 hover:text-ink"
+                      className="inline-flex items-center gap-1 hover:text-text"
                       aria-sort={
                         isSorted ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
                       }
                     >
                       {col.header}
-                      <span aria-hidden="true" className="text-[10px]">
-                        {isSorted ? (sort.direction === "asc" ? "▲" : "▼") : ""}
-                      </span>
+                      {isSorted ? (
+                        sort.direction === "asc" ? (
+                          <ArrowUp size={10} aria-hidden="true" />
+                        ) : (
+                          <ArrowDown size={10} aria-hidden="true" />
+                        )
+                      ) : null}
                     </button>
                   ) : (
                     col.header
@@ -77,7 +81,10 @@ export function Table<T>({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-6 text-center text-sm text-ink-faint">
+              <td
+                colSpan={columns.length}
+                className="px-3 py-6 text-center text-sm text-text-muted"
+              >
                 {emptyMessage}
               </td>
             </tr>
@@ -85,7 +92,7 @@ export function Table<T>({
             rows.map((row) => (
               <tr
                 key={rowKey(row)}
-                className="border-b border-border last:border-b-0 hover:bg-surface-2"
+                className="border-b border-border last:border-b-0 hover:bg-bg-inset"
               >
                 {columns.map((col) => (
                   <td

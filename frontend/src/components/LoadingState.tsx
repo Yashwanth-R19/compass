@@ -1,11 +1,7 @@
 import { Skeleton } from "./ui/Skeleton";
 
 /** The generic fallback skeleton -- used by StageGate whenever a page
- * doesn't supply its own shape-matched `skeleton` prop. A handful of bars
- * approximating "a card with a few metric rows," which is the closest thing
- * to a representative default across this app's pages; pages whose real
- * shape differs a lot (a graph, a wide table) should pass their own
- * `skeleton` to StageGate instead of relying on this (Part D). */
+ * doesn't supply its own shape-matched `skeleton` prop. */
 export function LoadingState({ label }: { label?: string }) {
   return (
     <div className="flex flex-col gap-3 py-2" role="status" aria-label={label ?? "Loading"}>

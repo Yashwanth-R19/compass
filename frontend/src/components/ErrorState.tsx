@@ -10,9 +10,9 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
         : "Something went wrong.";
 
   return (
-    <div className="flex flex-col items-center justify-center gap-2 border border-sev-high/40 bg-sev-high/5 py-16 text-center">
-      <p className="text-sm font-medium text-sev-high">Couldn't load this data</p>
-      <p className="max-w-sm text-sm text-ink-muted">{message}</p>
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-danger/40 bg-danger-bg py-16 text-center">
+      <p className="text-sm font-medium text-danger">Couldn't load this data</p>
+      <p className="max-w-sm text-sm text-text-muted">{message}</p>
       {onRetry ? (
         <Button type="button" variant="danger" size="sm" onClick={onRetry} className="mt-2">
           Try again

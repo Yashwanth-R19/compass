@@ -1,28 +1,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { HomePage } from "./pages/HomePage";
+import { HowItWorksPage } from "./pages/HowItWorksPage";
+import { MethodsPage } from "./pages/MethodsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PortfolioPage } from "./pages/PortfolioPage";
 import { SharedRedirectPage } from "./pages/SharedRedirectPage";
 import { LegacyRedirect, RepoIndexRedirect, RepoLayout } from "./pages/RepoLayout";
-import { PassportPage } from "./pages/onboard/PassportPage";
-import { TourPage } from "./pages/onboard/TourPage";
-import { PeoplePage } from "./pages/onboard/PeoplePage";
-import { GlossaryPage } from "./pages/onboard/GlossaryPage";
-import { MapPage } from "./pages/onboard/MapPage";
-import { ImpactPage } from "./pages/onboard/ImpactPage";
-import { CityPage } from "./pages/onboard/CityPage";
-import { EvolutionPage } from "./pages/onboard/EvolutionPage";
-import { ComparePage } from "./pages/ComparePage";
-import { FindingsPage } from "./pages/audit/FindingsPage";
-import { CouplingPage } from "./pages/audit/CouplingPage";
-import { ArchitecturePage } from "./pages/audit/ArchitecturePage";
-import { RiskPage } from "./pages/audit/RiskPage";
-import { SecurityPage } from "./pages/audit/SecurityPage";
-import { HygienePage } from "./pages/audit/HygienePage";
-import { HealthPage } from "./pages/audit/HealthPage";
-import { BenchmarkPage } from "./pages/audit/BenchmarkPage";
+import { OverviewSurfacePage } from "./pages/repo/OverviewSurfacePage";
+import { MapSurfacePage } from "./pages/repo/MapSurfacePage";
+import { TourSurfacePage } from "./pages/repo/TourSurfacePage";
+import { PeopleSurfacePage } from "./pages/repo/PeopleSurfacePage";
+import { FindingsSurfacePage } from "./pages/repo/FindingsSurfacePage";
+import { RiskSurfacePage } from "./pages/repo/RiskSurfacePage";
+import { StructureSurfacePage } from "./pages/repo/StructureSurfacePage";
+import { EvolutionSurfacePage } from "./pages/repo/EvolutionSurfacePage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,54 +33,107 @@ function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<HomePage />} />
+            <Route path="how-it-works" element={<HowItWorksPage />} />
+            <Route path="methods" element={<MethodsPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="shared/:slug" element={<SharedRedirectPage />} />
+
             <Route path="repos/:repoId" element={<RepoLayout />}>
+              {/* Redirect #1 of 23 (section 4.2) -- the bare index route. */}
               <Route index element={<RepoIndexRedirect />} />
 
-              {/* Onboard mode: passport | tour | people | glossary | map |
-                  impact | city (the last three added session 09). */}
-              <Route path="onboard" element={<Navigate to="passport" replace />} />
-              <Route path="onboard/passport" element={<PassportPage />} />
-              <Route path="onboard/tour" element={<TourPage />} />
-              <Route path="onboard/people" element={<PeoplePage />} />
-              <Route path="onboard/glossary" element={<GlossaryPage />} />
-              <Route path="onboard/map" element={<MapPage />} />
-              <Route path="onboard/impact" element={<ImpactPage />} />
-              <Route path="onboard/city" element={<CityPage />} />
-              <Route path="onboard/evolution" element={<EvolutionPage />} />
+              {/* The eight real repository surfaces (section 4.1). */}
+              <Route path="overview" element={<OverviewSurfacePage />} />
+              <Route path="map" element={<MapSurfacePage />} />
+              <Route path="tour" element={<TourSurfacePage />} />
+              <Route path="people" element={<PeopleSurfacePage />} />
+              <Route path="findings" element={<FindingsSurfacePage />} />
+              {/*
+                Redirect #23 ("/repos/:id/risk -> /repos/:id/risk?tab=hotspots",
+                the session-02 legacy share-link path) is NOT a separate
+                route here -- it is the exact same "pleasant coincidence"
+                the rebuild spec calls out for "overview" (section 4.2's own
+                note), extended to this one case the spec's own note didn't
+                name: the new real surface is ALSO bare-named "risk", and
+                RiskSurfacePage already defaults its ?tab= to "hotspots"
+                when absent (pages/repo/RiskSurfacePage.tsx), so visiting
+                the legacy bare path produces byte-identical rendered
+                output to the redirect's own target. Registering a second
+                <Route path="risk"> here would either silently shadow this
+                real surface or never be reached, depending on order --
+                genuinely unreachable/harmful, not just redundant. See
+                DESIGN_NOTES.md for this session's note on the discrepancy
+                between the spec's literal 23-entry list and this one
+                necessary exception, and RepoLayout.redirects.test.tsx for
+                how this specific case is verified instead.
+              */}
+              <Route path="risk" element={<RiskSurfacePage />} />
+              <Route path="structure" element={<StructureSurfacePage />} />
+              <Route path="evolution" element={<EvolutionSurfacePage />} />
 
-              {/* Audit mode: findings | coupling | architecture | risk |
-                  security | hygiene | health -- fleshed out in session 11
-                  (security + hygiene are new; the other five were moved
-                  into this shell, unfleshed, in session 08). */}
-              <Route path="audit" element={<Navigate to="findings" replace />} />
-              <Route path="audit/findings" element={<FindingsPage />} />
-              <Route path="audit/coupling" element={<CouplingPage />} />
-              <Route path="audit/architecture" element={<ArchitecturePage />} />
-              <Route path="audit/risk" element={<RiskPage />} />
-              <Route path="audit/security" element={<SecurityPage />} />
-              <Route path="audit/hygiene" element={<HygienePage />} />
-              <Route path="audit/health" element={<HealthPage />} />
-              <Route path="audit/benchmark" element={<BenchmarkPage />} />
+              {/* Pre-consolidation dual-mode paths (session 08) --
+                  redirects #2-10 (onboard/*) and #11-19 (audit/*, minus
+                  audit/risk which is folded into risk's own redirect
+                  below) plus #20 (compare). */}
+              <Route path="onboard" element={<LegacyRedirect to="overview" />} />
+              <Route path="onboard/passport" element={<LegacyRedirect to="overview" />} />
+              <Route path="onboard/tour" element={<LegacyRedirect to="tour" />} />
+              <Route path="onboard/people" element={<LegacyRedirect to="people" />} />
+              <Route
+                path="onboard/glossary"
+                element={<LegacyRedirect to="tour?panel=glossary" />}
+              />
+              <Route path="onboard/map" element={<LegacyRedirect to="map?view=graph" />} />
+              <Route path="onboard/city" element={<LegacyRedirect to="map?view=city" />} />
+              <Route
+                path="onboard/impact"
+                element={<LegacyRedirect to="structure?view=impact" />}
+              />
+              <Route
+                path="onboard/evolution"
+                element={<LegacyRedirect to="evolution?tab=timeline" />}
+              />
 
-              {/* Session 13: run-vs-run compare -- not part of either mode's
-                  tab bar, reached via the header's "Compare" button
-                  (RepoLayout.tsx) whenever a repo has >= 2 runs. */}
-              <Route path="compare" element={<ComparePage />} />
+              <Route path="audit" element={<LegacyRedirect to="findings" />} />
+              <Route path="audit/findings" element={<LegacyRedirect to="findings" />} />
+              <Route
+                path="audit/security"
+                element={<LegacyRedirect to="findings?category=secret" />}
+              />
+              <Route
+                path="audit/hygiene"
+                element={<LegacyRedirect to="findings?category=hygiene" />}
+              />
+              <Route
+                path="audit/coupling"
+                element={<LegacyRedirect to="structure?view=coupling" />}
+              />
+              <Route
+                path="audit/architecture"
+                element={<LegacyRedirect to="structure?view=architecture" />}
+              />
+              <Route path="audit/risk" element={<LegacyRedirect to="risk?tab=hotspots" />} />
+              <Route path="audit/benchmark" element={<LegacyRedirect to="risk?tab=benchmark" />} />
+              <Route path="audit/health" element={<LegacyRedirect to="overview#health" />} />
 
-              {/* Pre-dual-mode paths (session 02 share links point at
-                  these) -- redirect rather than 404 (Known Hazard #1). */}
-              <Route path="overview" element={<LegacyRedirect to="onboard/passport" />} />
-              <Route path="coupling" element={<LegacyRedirect to="audit/coupling" />} />
-              <Route path="architecture" element={<LegacyRedirect to="audit/architecture" />} />
-              <Route path="risk" element={<LegacyRedirect to="audit/risk" />} />
+              <Route path="compare" element={<LegacyRedirect to="evolution?tab=compare" />} />
+
+              {/* Session-02 legacy share-link paths (still-live links, not
+                  a one-time migration aid -- must continue to work
+                  indefinitely). "risk" itself is handled above as a real
+                  route, not here -- see the comment on that route. */}
+              <Route path="coupling" element={<LegacyRedirect to="structure?view=coupling" />} />
+              <Route
+                path="architecture"
+                element={<LegacyRedirect to="structure?view=architecture" />}
+              />
             </Route>
+
             <Route
               path="*"
               element={
-                <div className="py-16 text-center text-sm text-ink-muted">Page not found.</div>
+                <div className="py-16 text-center text-sm text-text-muted">Page not found.</div>
               }
             />
           </Route>

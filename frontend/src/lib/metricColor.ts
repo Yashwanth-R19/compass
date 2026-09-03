@@ -45,7 +45,7 @@ export function majority<T>(values: (T | null | undefined)[]): T | null {
   return best;
 }
 
-/** 0 (lowest) .. 1 (highest), across chartTheme's 5-stop risk heat scale --
+/** 0 (lowest) .. 1 (highest), across chartTheme's six-stop heat ramp --
  * `score` is already the [0,1]-scaled risk_score every risk-related
  * response already carries, never rescaled here. */
 export function riskColor(score: number | null | undefined): string {

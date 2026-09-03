@@ -4,13 +4,10 @@ import { Input } from "./ui/Input";
 const MAX_SUGGESTIONS = 20;
 
 /** A client-side autocomplete over a repository's file paths. Takes the
- * already-fetched path list as a prop -- the "fetch once and memoise" half
- * of Part B.2's spec is TanStack Query's job (the caller's query hook
- * already caches the list), this component's own job is just the O(n)
- * substring filter, which is fine up to ~5,000 paths (Part B.2). Kept
- * dependency-free (no query hook of its own) so it's usable and testable in
- * isolation, e.g. against a repository's /risk or /knowledge-map file
- * list. */
+ * already-fetched path list as a prop -- the caller's query hook already
+ * caches the list; this component's own job is just the O(n) substring
+ * filter, which is fine up to ~5,000 paths. Kept dependency-free (no query
+ * hook of its own) so it's usable and testable in isolation. */
 export function FilePicker({
   paths,
   onSelect,
@@ -55,17 +52,17 @@ export function FilePicker({
       />
 
       {paths.length === 0 ? (
-        <p className="mt-1 text-xs text-ink-faint">No files available yet.</p>
+        <p className="mt-1 text-xs text-text-muted">No files available yet.</p>
       ) : null}
 
       {open && matches.length > 0 ? (
-        <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto border border-border bg-surface text-sm">
+        <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-sm border border-border bg-bg-elevated text-sm shadow-md">
           {matches.map((p) => (
             <li key={p}>
               <button
                 type="button"
                 onClick={() => handleSelect(p)}
-                className="block w-full truncate px-3 py-1.5 text-left font-mono text-xs text-ink-muted hover:bg-surface-2 hover:text-ink"
+                className="block w-full truncate px-3 py-1.5 text-left font-mono text-xs text-text-muted hover:bg-bg-inset hover:text-text"
                 title={p}
               >
                 {p}

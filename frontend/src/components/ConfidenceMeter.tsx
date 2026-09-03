@@ -2,22 +2,24 @@ import { confidenceLabel, formatPercent } from "../lib/format";
 
 const TIER_SEGMENTS: Record<"low" | "medium" | "high", number> = { low: 1, medium: 2, high: 3 };
 
-const TIER_COLOR: Record<"low" | "medium" | "high", string> = {
-  low: "bg-conf-low",
-  medium: "bg-conf-medium",
-  high: "bg-conf-high",
-};
+/** Section 3.1: "Confidence is never encoded by hue and never by opacity.
+ * It is a stepped three-bar glyph: filled bars use --color-text-muted (1),
+ * --color-text (2), --color-accent (3); unfilled bars use
+ * --color-border-strong." Each bar's colour is therefore fixed to ITS OWN
+ * position, not the overall tier -- a low-confidence value shows exactly
+ * one filled (muted-grey) bar and two unfilled ones, never a "low = amber"
+ * hue the way severity/health do. */
+const BAR_COLOR = ["bg-text-muted", "bg-text", "bg-accent"];
 
 /** How sure Compass is, rendered as a SEPARATE visual dimension from a
- * risk/finding score -- never opacity, never a fade (Known Hazard #3: a
- * faded row reads as "less risky", which is the wrong message; the file is
- * exactly as risky, just less certain). A stepped "signal bars" glyph (1-3
- * bars of increasing height) plus the percentage and, when low, an explicit
- * amber-family label -- a completely different shape from the flat
- * width-fill bar `risk_score` renders with elsewhere, so the two can never
- * be mistaken for variants of the same meter. `master-context.md` sec 8.1 /
- * RULES.md sec 3: risk_confidence is independent of risk_score and must be
- * shown as such. */
+ * risk/finding score -- never opacity, never a fade (a faded row would
+ * read as "less risky", which is the wrong message; the file is exactly as
+ * risky, just less certain -- master-context.md sec 8.1: risk_confidence
+ * is independent of risk_score and must be shown as such). A stepped
+ * "signal bars" glyph (1-3 bars of increasing height) plus the
+ * percentage, completely different in shape from the flat width-fill bar
+ * risk_score renders with elsewhere, so the two can never be mistaken for
+ * variants of the same meter. */
 export function ConfidenceMeter({
   confidence,
   size = "md",
@@ -41,14 +43,14 @@ export function ConfidenceMeter({
         {heights.map((h, i) => (
           <span
             key={i}
-            className={`${barWidth} ${i < filled ? TIER_COLOR[tier] : "bg-surface-inset"}`}
+            className={`${barWidth} rounded-[1px] ${i < filled ? BAR_COLOR[i] : "bg-border-strong"}`}
             style={{ height: h }}
           />
         ))}
       </span>
       <span
         className={`tabular-nums ${size === "sm" ? "text-xs" : "text-sm"} ${
-          tier === "low" ? "font-medium text-conf-low" : "text-ink-muted"
+          tier === "low" ? "font-medium text-text" : "text-text-muted"
         }`}
       >
         {formatPercent(confidence)} confidence{tier === "low" ? " (low)" : ""}
