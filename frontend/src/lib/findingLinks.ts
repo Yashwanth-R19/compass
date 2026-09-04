@@ -12,11 +12,14 @@ export interface FindingDeepLink {
 }
 
 /** `Hidden dependency: a/b.py <-> c/d.py` -- OverlayEngine's own literal
- * title format (app/engines/overlay.py). Parsed defensively: a title that
- * doesn't match this exact shape just means no pair can be highlighted, not
- * a crash. */
+ * title format (app/engines/overlay.py). `ModuleCouplingEngine`'s own
+ * subsystem-grain hidden-dependency findings (app/engines/module_coupling.py)
+ * use the identical shape with a trailing " (subsystems)" marker, which this
+ * strips -- so callers get the same clean `[a, b]` pair either way. Parsed
+ * defensively: a title that doesn't match this exact shape just means no
+ * pair can be highlighted, not a crash. */
 export function parseHiddenDependencyPair(title: string): [string, string] | null {
-  const match = /^Hidden dependency: (.+) <-> (.+)$/.exec(title);
+  const match = /^Hidden dependency: (.+) <-> (.+?)(?: \(subsystems\))?$/.exec(title);
   if (!match) return null;
   return [match[1], match[2]];
 }

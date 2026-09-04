@@ -1,7 +1,7 @@
-import { useState } from "react";
 import type { FindingCategory, FindingOut } from "../api/types";
 import { ConfidenceMeter } from "./ConfidenceMeter";
 import { EvidencePanel } from "./EvidencePanel";
+import { Expander } from "./motion/Expander";
 import { SeverityChip } from "./SeverityChip";
 import { FINDING_CATEGORY_COPY } from "../lib/copy";
 import { findingDeepLink, parseHiddenDependencyPair } from "../lib/findingLinks";
@@ -29,8 +29,6 @@ export function FindingItem({
   repoId: string;
   repoUrl?: string | null;
 }) {
-  const [expanded, setExpanded] = useState(false);
-
   const affectedFiles = (() => {
     if (finding.category === "hidden_dependency") {
       const pair = parseHiddenDependencyPair(finding.title);
@@ -42,35 +40,32 @@ export function FindingItem({
   const deepLink = findingDeepLink(finding, repoId);
 
   return (
-    <li className="border-b border-border py-3 last:border-0">
-      <button
-        type="button"
-        onClick={() => {
-          setExpanded((v) => !v);
-          markChecklistFlag("opened_finding");
+    <div className="border-b border-border py-3 last:border-0">
+      <Expander
+        onOpenChange={(open) => {
+          if (open) markChecklistFlag("opened_finding");
         }}
-        aria-expanded={expanded}
-        className="flex w-full flex-col gap-2 text-left"
+        trigger={
+          <span className="flex w-full flex-col gap-2">
+            <span className="flex flex-wrap items-center gap-2">
+              <SeverityChip severity={finding.severity} />
+              <span className="cp-label border border-border px-1.5 py-0.5">
+                {categoryLabel(finding.category)}
+              </span>
+              <ConfidenceMeter confidence={finding.confidence} size="sm" />
+            </span>
+            <span className="text-sm font-medium text-text">{finding.title}</span>
+            {finding.file_path ? (
+              <span
+                className="truncate font-mono text-xs text-text-muted"
+                title={finding.file_path}
+              >
+                {finding.file_path}
+              </span>
+            ) : null}
+          </span>
+        }
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <SeverityChip severity={finding.severity} />
-          <span className="cp-label border border-border px-1.5 py-0.5">
-            {categoryLabel(finding.category)}
-          </span>
-          <ConfidenceMeter confidence={finding.confidence} size="sm" />
-          <span className="ml-auto shrink-0 text-xs text-text-muted">
-            {expanded ? "Hide evidence ▲" : "Show evidence ▼"}
-          </span>
-        </div>
-        <p className="text-sm font-medium text-text">{finding.title}</p>
-        {finding.file_path ? (
-          <p className="truncate font-mono text-xs text-text-muted" title={finding.file_path}>
-            {finding.file_path}
-          </p>
-        ) : null}
-      </button>
-
-      {expanded ? (
         <div className="mt-2">
           <EvidencePanel
             detail={finding.detail}
@@ -80,7 +75,7 @@ export function FindingItem({
             deepLink={deepLink}
           />
         </div>
-      ) : null}
-    </li>
+      </Expander>
+    </div>
   );
 }

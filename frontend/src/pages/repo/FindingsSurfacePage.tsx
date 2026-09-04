@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import {
   CartesianGrid,
   ResponsiveContainer,
@@ -11,38 +11,49 @@ import {
   ZAxis,
 } from "recharts";
 import {
+  useBenchmark,
   useFindings,
   useHygiene,
   useRepoStatus,
+  useRisk,
   useSecrets,
   useVulnerabilities,
 } from "../../api/hooks";
 import type {
+  BenchmarkResponse,
   FindingCategory,
   FindingOut,
   HygieneEventKind,
   HygieneEventOut,
   HygieneFileOut,
+  RiskFileOut,
+  RiskResponse,
   SecretHitOut,
   Severity,
   VulnerabilityOut,
 } from "../../api/types";
 import { Alert } from "../../components/ui/Alert";
 import { Badge } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { ConfidenceMeter } from "../../components/ConfidenceMeter";
 import { EvidenceLink } from "../../components/EvidenceLink";
+import { Expander } from "../../components/motion/Expander";
 import { FindingItem } from "../../components/FindingItem";
 import { HonestyNote } from "../../components/HonestyNote";
+import { InfoTooltip } from "../../components/ui/InfoTooltip";
 import { LoadingState } from "../../components/LoadingState";
+import { MetricRow } from "../../components/MetricRow";
 import { PartialResultNotice } from "../../components/PartialResultNotice";
+import { AnimatedList } from "../../reactbits/AnimatedList";
+import { Reveal } from "../../components/motion/Reveal";
 import { ScoreExplainer } from "../../components/ScoreExplainer";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { StageGate } from "../../components/StageGate";
 import { HONESTY, TOOLTIPS } from "../../content/explainability";
+import { CORPUS_REPO_LIST_URL } from "../../content/methods";
 import { FINDING_CATEGORY_COPY, HYGIENE_KIND_COPY, HYGIENE_KIND_LABEL } from "../../lib/copy";
-import { SEVERITY_LABEL, formatScore } from "../../lib/format";
-import { CHROME, SEVERITY_COLOR, rechartsTheme } from "../../lib/chartTheme";
-import { RiskSurfacePage } from "./RiskSurfacePage";
+import { confidenceLabel, SEVERITY_LABEL, formatPercent, formatScore } from "../../lib/format";
+import { CHROME, CONFIDENCE_COLOR, SEVERITY_COLOR, rechartsTheme } from "../../lib/chartTheme";
 import type { RepoOutletContext } from "../RepoLayout";
 
 // THE governing constraint of this surface (section 5.2/RULES.md sec 12,
@@ -83,40 +94,77 @@ function hygieneFileRowId(path: string): string {
   return `hygiene-file-${encodeURIComponent(path)}`;
 }
 
+type FindingsView = "findings" | "risk" | "benchmark";
+
+function isFindingsView(v: string | null): v is FindingsView {
+  return v === "findings" || v === "risk" || v === "benchmark";
+}
+
 /**
- * `/repos/:id/findings` (UI rebuild session 4, Part A) -- merges the former
- * Findings, Security, and Hygiene pages into one ranked stream plus four
- * evidence sections (secrets, vulnerabilities, commit hygiene, test
- * maintenance), filtered by `?category=`.
+ * `/repos/:id/findings` (rebuild spec section 4.4) -- "what's wrong with
+ * it." The ranked findings stream plus Risk and Benchmark as views inside
+ * this one surface (`?view=findings|risk|benchmark`, findings is the
+ * default), and four evidence sections beneath the stream (secrets,
+ * vulnerabilities, commit hygiene), filtered by `?category=`.
  *
  * Two rules govern the ranked stream and are easy to break: it is
  * SUBTRACTIVE (`DEFAULT_VISIBLE` findings by default, an explicit "show
- * all" control, never quietly raised -- see `FindingsSurfacePage.test.tsx`),
- * and it never re-sorts client-side -- `FindingsRankEngine` already
- * computed one global, cross-category rank server-side; filtering removes
- * rows, it never reorders what remains.
+ * all" control, never quietly raised), and it never re-sorts client-side --
+ * `FindingsRankEngine` already computed one global, cross-category rank
+ * server-side; filtering removes rows, it never reorders what remains.
  *
- * Every section below gates on its OWN backend stage independently (section
- * 4.4) and must never block on the latest one -- the vulnerabilities
- * section in particular must render as a self-contained error card while
- * secrets (a different, earlier stage) renders normally when the optional
- * "security" stage failed (this is read directly off `useRepoStatus`, since
- * a failed optional stage's own `/vulnerabilities` response is an
- * honestly-empty 200, indistinguishable from "no vulnerabilities" without
- * that check).
- *
- * SCAFFOLDING: `?view=risk|benchmark` (rebuild spec section 4.4 -- Risk and
- * Benchmark are views inside Findings now, not their own surface) mount the
- * pre-existing `RiskSurfacePage` component rather than being rebuilt here;
- * session 3 folds them in for real.
+ * Every section below gates on its OWN backend stage independently and
+ * must never block on the latest one -- the vulnerabilities section in
+ * particular must render as a self-contained error card while secrets (a
+ * different, earlier stage) renders normally when the optional "security"
+ * stage failed (this is read directly off `useRepoStatus`, since a failed
+ * optional stage's own `/vulnerabilities` response is an honestly-empty
+ * 200, indistinguishable from "no vulnerabilities" without that check).
  */
 export function FindingsSurfacePage() {
-  const [searchParams] = useSearchParams();
-  const view = searchParams.get("view");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlView = searchParams.get("view");
+  const [view, setView] = useState<FindingsView>(isFindingsView(urlView) ? urlView : "findings");
 
-  if (view === "risk") return <RiskSurfacePage initialTab="hotspots" />;
-  if (view === "benchmark") return <RiskSurfacePage initialTab="benchmark" />;
-  return <FindingsStreamView />;
+  function changeView(next: string) {
+    setView(next as FindingsView);
+    setSearchParams(
+      (prev) => {
+        const merged = new URLSearchParams(prev);
+        merged.set("view", next);
+        return merged;
+      },
+      { replace: true },
+    );
+  }
+
+  const activeView = isFindingsView(urlView) ? urlView : view;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-text-muted">
+        Every flagged issue this analysis surfaced, ranked by severity, plus the hotspot ranking and
+        a comparison against similar repositories.
+      </p>
+      <SegmentedControl
+        aria-label="Findings view"
+        value={activeView}
+        onValueChange={changeView}
+        options={[
+          { value: "findings", label: "Findings" },
+          { value: "risk", label: "Risk" },
+          { value: "benchmark", label: "Benchmark" },
+        ]}
+      />
+      {activeView === "risk" ? (
+        <HotspotsTab />
+      ) : activeView === "benchmark" ? (
+        <BenchmarkTab />
+      ) : (
+        <FindingsStreamView />
+      )}
+    </div>
+  );
 }
 
 function FindingsStreamView() {
@@ -126,7 +174,6 @@ function FindingsStreamView() {
     (searchParams.get("category") as FindingCategory | "") ?? "",
   );
   const [severity, setSeverity] = useState<Severity | "">("");
-  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     const fromUrl = searchParams.get("category") as FindingCategory | "" | null;
@@ -141,7 +188,6 @@ function FindingsStreamView() {
 
   function changeCategory(next: FindingCategory | "") {
     setCategory(next);
-    setShowAll(false);
   }
 
   return (
@@ -167,10 +213,7 @@ function FindingsStreamView() {
             <select
               aria-label="Filter findings by severity"
               value={severity}
-              onChange={(e) => {
-                setSeverity(e.target.value as Severity | "");
-                setShowAll(false);
-              }}
+              onChange={(e) => setSeverity(e.target.value as Severity | "")}
               className="rounded-sm border border-border-interactive bg-bg-elevated px-2 py-1 text-xs text-text"
             >
               <option value="">All severities</option>
@@ -194,8 +237,6 @@ function FindingsStreamView() {
             <RankedFindingsList
               findings={data.findings}
               severity={severity}
-              showAll={showAll}
-              onToggleShowAll={() => setShowAll((v) => !v)}
               repoId={repo.id}
               repoUrl={repo.url}
             />
@@ -220,15 +261,11 @@ function FindingsStreamView() {
 function RankedFindingsList({
   findings,
   severity,
-  showAll,
-  onToggleShowAll,
   repoId,
   repoUrl,
 }: {
   findings: FindingOut[];
   severity: Severity | "";
-  showAll: boolean;
-  onToggleShowAll: () => void;
   repoId: string;
   repoUrl: string;
 }) {
@@ -236,7 +273,8 @@ function RankedFindingsList({
   // in the backend's one global cross-category rank; `.filter` preserves
   // that order exactly.
   const filtered = severity ? findings.filter((f) => f.severity === severity) : findings;
-  const visible = showAll ? filtered : filtered.slice(0, DEFAULT_VISIBLE);
+  const visible = filtered.slice(0, DEFAULT_VISIBLE);
+  const rest = filtered.slice(DEFAULT_VISIBLE);
   const lowConfidenceCount = filtered.filter((f) => f.confidence < LOW_CONFIDENCE_THRESHOLD).length;
 
   if (filtered.length === 0) {
@@ -256,21 +294,28 @@ function RankedFindingsList({
         />
       ) : null}
 
-      <ul>
-        {visible.map((f) => (
-          <FindingItem key={f.id} finding={f} repoId={repoId} repoUrl={repoUrl} />
-        ))}
-      </ul>
+      <AnimatedList
+        items={visible}
+        keyFor={(f) => f.id}
+        renderItem={(f) => <FindingItem finding={f} repoId={repoId} repoUrl={repoUrl} />}
+      />
 
-      {filtered.length > DEFAULT_VISIBLE ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onToggleShowAll}
-          className="w-fit self-center"
+      {rest.length > 0 ? (
+        // Keyed by severity so switching the filter starts collapsed again,
+        // rather than an Expander instance carrying its open state across
+        // an unrelated filter change.
+        <Expander
+          key={severity}
+          trigger={`${rest.length} more finding${rest.length === 1 ? "" : "s"}`}
         >
-          {showAll ? `Show top ${DEFAULT_VISIBLE} only` : `Show all ${filtered.length} findings`}
-        </Button>
+          <ul className="pt-1">
+            {rest.map((f) => (
+              <li key={f.id}>
+                <FindingItem finding={f} repoId={repoId} repoUrl={repoUrl} />
+              </li>
+            ))}
+          </ul>
+        </Expander>
       ) : null}
     </div>
   );
@@ -345,11 +390,12 @@ function SecretsSection({
                   None -- every detected secret is still present in the current tree (see below).
                 </p>
               ) : (
-                <ul className="mt-2 flex flex-col divide-y divide-border">
-                  {inHistoryOnly.map((h) => (
-                    <SecretRow key={secretRowId(h)} hit={h} repoUrl={repoUrl} />
-                  ))}
-                </ul>
+                <AnimatedList
+                  items={inHistoryOnly}
+                  keyFor={secretRowId}
+                  className="mt-2 flex flex-col divide-y divide-border"
+                  renderItem={(h) => <SecretRow hit={h} repoUrl={repoUrl} />}
+                />
               )}
             </Card>
 
@@ -364,11 +410,12 @@ function SecretsSection({
               {stillInHead.length === 0 ? (
                 <p className="text-sm text-text-muted">None currently in the checked-out tree.</p>
               ) : (
-                <ul className="flex flex-col divide-y divide-border">
-                  {stillInHead.map((h) => (
-                    <SecretRow key={secretRowId(h)} hit={h} repoUrl={repoUrl} />
-                  ))}
-                </ul>
+                <AnimatedList
+                  items={stillInHead}
+                  keyFor={secretRowId}
+                  className="flex flex-col divide-y divide-border"
+                  renderItem={(h) => <SecretRow hit={h} repoUrl={repoUrl} />}
+                />
               )}
             </Card>
           </div>
@@ -380,7 +427,7 @@ function SecretsSection({
 
 function SecretRow({ hit, repoUrl }: { hit: SecretHitOut; repoUrl: string }) {
   return (
-    <li data-sha={hit.commit_sha} className="flex flex-col gap-1.5 py-3">
+    <div data-sha={hit.commit_sha} className="flex flex-col gap-1.5 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-text">{hit.description}</span>
         {hit.redacted_preview ? (
@@ -399,7 +446,7 @@ function SecretRow({ hit, repoUrl }: { hit: SecretHitOut; repoUrl: string }) {
         ) : null}
       </div>
       <p className="text-xs text-danger">{ROTATE_NOTE}</p>
-    </li>
+    </div>
   );
 }
 
@@ -515,11 +562,12 @@ function VulnerabilitiesSection({
               {sev === "unknown" ? "Unknown severity" : SEVERITY_LABEL[sev]} (
               {bySeverity[sev]!.length})
             </h3>
-            <ul className="flex flex-col divide-y divide-border">
-              {bySeverity[sev]!.map((v) => (
-                <VulnRow key={vulnRowId(v)} vuln={v} />
-              ))}
-            </ul>
+            <AnimatedList
+              items={bySeverity[sev]!}
+              keyFor={vulnRowId}
+              className="flex flex-col divide-y divide-border"
+              renderItem={(v) => <VulnRow vuln={v} />}
+            />
           </div>
         ))}
       </div>
@@ -529,7 +577,7 @@ function VulnerabilitiesSection({
 
 function VulnRow({ vuln }: { vuln: VulnerabilityOut }) {
   return (
-    <li data-osv={vuln.osv_id} className="flex flex-col gap-1 py-2.5">
+    <div data-osv={vuln.osv_id} className="flex flex-col gap-1 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-sm font-medium text-text">
           {vuln.package_name}@{vuln.version}
@@ -573,7 +621,7 @@ function VulnRow({ vuln }: { vuln: VulnerabilityOut }) {
           ? `Fix available: upgrade to ${vuln.fixed_version}.`
           : "No fixed version has been published yet."}
       </p>
-    </li>
+    </div>
   );
 }
 
@@ -718,8 +766,8 @@ function InstabilityRanking({
         .sort((a, b) => (b.instability_score ?? 0) - (a.instability_score ?? 0)),
     [files],
   );
-  const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? ranked : ranked.slice(0, 15);
+  const visible = ranked.slice(0, 15);
+  const rest = ranked.slice(15);
 
   if (ranked.length === 0) return null;
 
@@ -738,48 +786,442 @@ function InstabilityRanking({
           },
         ]}
       />
-      <ul className="mt-3 flex flex-col divide-y divide-border">
-        {visible.map((f) => (
-          <li
-            key={f.file_path}
-            id={hygieneFileRowId(f.file_path)}
-            className={`flex flex-wrap items-center justify-between gap-2 py-2 text-sm ${
-              highlightPath === f.file_path ? "bg-accent-bg" : ""
-            }`}
-          >
-            <span
-              className="max-w-[320px] truncate font-mono text-xs text-text-muted"
-              title={f.file_path}
-            >
-              {f.file_path}
-            </span>
-            <span className="flex shrink-0 items-center gap-3 text-xs text-text-muted">
-              <span className="flex items-center gap-1.5">
-                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-inset">
-                  <div
-                    className="h-full rounded-full bg-warning"
-                    style={{ width: `${Math.round((f.instability_score ?? 0) * 100)}%` }}
-                  />
-                </div>
-                {formatScore(f.instability_score ?? 0, 2)}
-              </span>
-              <span>{f.oversized_commit_count ?? 0} oversized</span>
-              <span>{f.fixup_commit_count ?? 0} fixup</span>
-              <span>{f.revert_cycle_count ?? 0} reverts</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-      {ranked.length > 15 ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setShowAll((v) => !v)}
+      <AnimatedList
+        items={visible}
+        keyFor={(f) => f.file_path}
+        className="mt-3 flex flex-col divide-y divide-border"
+        renderItem={(f) => <InstabilityRow file={f} highlighted={highlightPath === f.file_path} />}
+      />
+      {rest.length > 0 ? (
+        <Expander
           className="mt-2"
+          trigger={`${rest.length} more file${rest.length === 1 ? "" : "s"}`}
         >
-          {showAll ? "Show top 15 only" : `Show all ${ranked.length} files`}
-        </Button>
+          <ul className="flex flex-col divide-y divide-border pt-1">
+            {rest.map((f) => (
+              <li key={f.file_path}>
+                <InstabilityRow file={f} highlighted={highlightPath === f.file_path} />
+              </li>
+            ))}
+          </ul>
+        </Expander>
       ) : null}
     </Card>
+  );
+}
+
+function InstabilityRow({ file: f, highlighted }: { file: HygieneFileOut; highlighted: boolean }) {
+  return (
+    <div
+      id={hygieneFileRowId(f.file_path)}
+      className={`flex flex-wrap items-center justify-between gap-2 py-2 text-sm ${
+        highlighted ? "bg-accent-bg" : ""
+      }`}
+    >
+      <span
+        className="max-w-[320px] truncate font-mono text-xs text-text-muted"
+        title={f.file_path}
+      >
+        {f.file_path}
+      </span>
+      <span className="flex shrink-0 items-center gap-3 text-xs text-text-muted">
+        <span className="flex items-center gap-1.5">
+          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-inset">
+            <div
+              className="h-full rounded-full bg-warning"
+              style={{ width: `${Math.round((f.instability_score ?? 0) * 100)}%` }}
+            />
+          </div>
+          {formatScore(f.instability_score ?? 0, 2)}
+        </span>
+        <span>{f.oversized_commit_count ?? 0} oversized</span>
+        <span>{f.fixup_commit_count ?? 0} fixup</span>
+        <span>{f.revert_cycle_count ?? 0} reverts</span>
+      </span>
+    </div>
+  );
+}
+
+// =============================================================================
+// Risk -- a view inside Findings now (rebuild spec section 4.4), not its own
+// surface. Hotspot list ranked by hotspot_rank, plus a risk-vs-confidence
+// scatter so the independence of the two axes is visually obvious before
+// anyone reads a row.
+// =============================================================================
+
+function riskRowId(path: string): string {
+  return `risk-row-${encodeURIComponent(path)}`;
+}
+
+function HotspotsTab() {
+  const { repo, share } = useOutletContext<RepoOutletContext>();
+  const risk = useRisk(repo.id, share);
+  const [searchParams] = useSearchParams();
+  const [expandedPath, setExpandedPath] = useState<string | null>(searchParams.get("file"));
+
+  useEffect(() => {
+    const target = searchParams.get("file");
+    if (!target) return;
+    setExpandedPath(target);
+    document
+      .getElementById(riskRowId(target))
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("file")]);
+
+  return (
+    <StageGate
+      query={risk}
+      loadingLabel="Loading risk data…"
+      emptyTitle="No scored files"
+      emptyMessage="This repo has no analyzed files yet."
+      isEmpty={(data: RiskResponse) => data.files.length === 0}
+    >
+      {(data) => (
+        <div className="flex flex-col gap-4">
+          <Reveal>
+            <RiskScatter files={data.files} />
+          </Reveal>
+
+          <Reveal delay={0.05}>
+            <Card
+              eyebrow="Ranked by risk_score, highest first"
+              title="Files by risk"
+              action={
+                <span className="cp-label text-text-muted">
+                  {data.files.length} {data.files.length === 1 ? "file" : "files"}
+                </span>
+              }
+            >
+              <HonestyNote
+                variant="confidence-caveat"
+                text={HONESTY.riskConfidenceNotAFourthTerm}
+              />
+              <AnimatedList
+                items={data.files}
+                keyFor={(f) => f.file_path}
+                className="mt-3 flex flex-col"
+                renderItem={(file) => (
+                  <RiskRow
+                    file={file}
+                    repoId={repo.id}
+                    calibration={data.calibration}
+                    expanded={expandedPath === file.file_path}
+                    onToggle={(open) => setExpandedPath(open ? file.file_path : null)}
+                  />
+                )}
+              />
+            </Card>
+          </Reveal>
+        </div>
+      )}
+    </StageGate>
+  );
+}
+
+/** The risk-vs-confidence scatter: plotting the two LOCKED-independent
+ * axes against each other is what makes "a file can be high-risk and
+ * low-confidence at once" immediately legible, rather than a claim the
+ * reader has to take on faith from two separate numbers in a table row. */
+function RiskScatter({ files }: { files: RiskFileOut[] }) {
+  const points = files.map((f) => ({
+    x: f.risk_confidence,
+    y: f.risk_score,
+    path: f.file_path,
+    tier: confidenceLabel(f.risk_confidence),
+  }));
+  const byTier = {
+    low: points.filter((p) => p.tier === "low"),
+    medium: points.filter((p) => p.tier === "medium"),
+    high: points.filter((p) => p.tier === "high"),
+  };
+
+  return (
+    <Card
+      title="Risk vs. confidence"
+      eyebrow="Two independent axes — a point in the top-left is high-risk AND low-confidence, not a contradiction"
+      action={<InfoTooltip label="What is risk confidence?" text={TOOLTIPS.riskConfidence} />}
+    >
+      <div className="h-72">
+        <ResponsiveContainer width="100%" height="100%">
+          <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+            <CartesianGrid {...rechartsTheme.grid} />
+            <XAxis
+              type="number"
+              dataKey="x"
+              name="confidence"
+              domain={[0, 1]}
+              tickFormatter={(v: number) => formatPercent(v)}
+              label={{
+                value: "risk_confidence",
+                position: "insideBottom",
+                offset: -4,
+                fontSize: 11,
+                fill: rechartsTheme.axis.tick.fill,
+              }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
+            />
+            <YAxis
+              type="number"
+              dataKey="y"
+              name="risk score"
+              domain={[0, 1]}
+              tickFormatter={(v: number) => formatScore(v, 1)}
+              label={{
+                value: "risk_score",
+                angle: -90,
+                position: "insideLeft",
+                fontSize: 11,
+                fill: rechartsTheme.axis.tick.fill,
+              }}
+              tick={rechartsTheme.axis.tick}
+              stroke={rechartsTheme.axis.stroke}
+            />
+            <ZAxis range={[40, 40]} />
+            <Tooltip
+              cursor={{ strokeDasharray: "3 3" }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as (typeof points)[number];
+                return (
+                  <div className="border border-border bg-bg-elevated px-2 py-1.5 text-xs">
+                    <p className="max-w-[220px] truncate font-mono text-text">{p.path}</p>
+                    <p className="text-text-muted">
+                      risk {formatScore(p.y, 2)} · confidence {formatPercent(p.x)} ({p.tier})
+                    </p>
+                  </div>
+                );
+              }}
+            />
+            <Scatter data={byTier.low} fill={CONFIDENCE_COLOR.low} />
+            <Scatter data={byTier.medium} fill={CONFIDENCE_COLOR.medium} />
+            <Scatter data={byTier.high} fill={CONFIDENCE_COLOR.high} />
+          </ScatterChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function RiskRow({
+  file,
+  repoId,
+  calibration,
+  expanded,
+  onToggle,
+}: {
+  file: RiskFileOut;
+  repoId: string;
+  calibration: string;
+  expanded: boolean;
+  onToggle: (open: boolean) => void;
+}) {
+  const isLowConfidence = confidenceLabel(file.risk_confidence) === "low";
+
+  return (
+    <div
+      id={riskRowId(file.file_path)}
+      // Low confidence gets a LEFT-BORDER treatment, not a background fill
+      // -- a full-row bg-warning-bg wash falls short of body-text contrast;
+      // a border keeps the row's background at the already-verified
+      // bg-elevated pairing.
+      className={`border-b border-border pl-2 last:border-0 ${
+        isLowConfidence ? "border-l-2 border-l-warning" : ""
+      }`}
+    >
+      <Expander
+        open={expanded}
+        onOpenChange={onToggle}
+        trigger={
+          <span className="flex w-full flex-wrap items-center gap-3">
+            <span
+              className="max-w-[280px] truncate font-mono text-xs text-text-muted"
+              title={file.file_path}
+            >
+              {file.file_path}
+            </span>
+            <span className="ml-auto flex shrink-0 items-center gap-4">
+              <span className="flex items-center gap-2">
+                <span className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-inset">
+                  <span
+                    className="block h-full rounded-full bg-accent"
+                    style={{ width: `${Math.round(file.risk_score * 100)}%` }}
+                  />
+                </span>
+                <span className="cp-stat text-xs text-text-muted">
+                  {formatScore(file.risk_score)}
+                </span>
+              </span>
+              {/* A SEPARATE visual dimension from the bar above -- never
+                  opacity, never folded into the score's own color/width. */}
+              <ConfidenceMeter confidence={file.risk_confidence} size="sm" />
+            </span>
+          </span>
+        }
+      >
+        <div className="pb-3">
+          <RiskEvidence file={file} repoId={repoId} calibration={calibration} />
+        </div>
+      </Expander>
+    </div>
+  );
+}
+
+function RiskEvidence({
+  file,
+  repoId,
+  calibration,
+}: {
+  file: RiskFileOut;
+  repoId: string;
+  calibration: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-l-2 border-border-strong bg-bg-inset p-3">
+      <MetricRow
+        items={[
+          {
+            label: "churn (recency-weighted)",
+            value: formatScore(file.churn_weighted, 0),
+            tooltip: "churnWeighted",
+          },
+          { label: "complexity", value: formatScore(file.complexity, 1), tooltip: "complexity" },
+          { label: "commits", value: file.commit_count },
+          {
+            label: "max coupling",
+            value: formatPercent(file.max_coupling_degree),
+            tooltip: "couplingDegree",
+          },
+        ]}
+      />
+
+      {/* The formula's own real weights (from GET /meta/formulas) plus every
+          signal Compass measures for this file but does NOT fold into
+          risk_score -- real, per-file values, not a generic description. */}
+      <ScoreExplainer
+        formulaKey="risk"
+        calibration={calibration}
+        contributions={[]}
+        alsoMeasured={[
+          {
+            label: "Churn (total, unweighted)",
+            value: String(file.churn_total),
+            tooltip: "churnTotal",
+          },
+          {
+            label: "Instability score",
+            value: file.instability_score != null ? formatScore(file.instability_score, 2) : "—",
+            tooltip: "instability",
+          },
+          {
+            label: "Revert cycle count",
+            value: String(file.revert_cycle_count ?? "—"),
+            tooltip: "revertCycleCount",
+          },
+          { label: "Expert count", value: String(file.expert_count), tooltip: "expert" },
+          {
+            label: "Orphaned knowledge",
+            value: file.is_orphaned_knowledge ? "yes" : "no",
+            tooltip: "orphanedKnowledge",
+          },
+        ]}
+      />
+
+      <Link
+        to={`/repos/${repoId}/explore?view=impact&path=${encodeURIComponent(file.file_path)}`}
+        className="w-fit text-xs font-medium text-accent hover:underline"
+      >
+        View blast radius →
+      </Link>
+    </div>
+  );
+}
+
+// =============================================================================
+// Benchmark -- a view inside Findings now (rebuild spec section 4.4): corpus
+// percentile bars, each showing the n_repos/n_files behind it and a
+// `widened` badge when the comparison broadened past the exact cell.
+// =============================================================================
+
+function MetricBar({ metric }: { metric: BenchmarkResponse["metrics"][number] }) {
+  const pct = Math.round(metric.percentile * 100);
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+        <span className="flex items-center gap-1 text-text-muted">
+          {metric.metric}
+          <InfoTooltip
+            label="What is a benchmark percentile?"
+            text={TOOLTIPS.benchmarkPercentile}
+          />
+        </span>
+        <span className="flex items-center gap-2 tabular-nums text-text-muted">
+          {formatScore(metric.value, 2)} · p{pct}
+          {metric.widened ? (
+            <span title={TOOLTIPS.widenedComparison}>
+              <Badge tone="med">widened</Badge>
+            </span>
+          ) : null}
+          <span>
+            n={metric.n_repos} repos / {metric.n_files} files
+          </span>
+        </span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-bg-inset">
+        <div className="h-2 rounded-full bg-accent" style={{ width: `${Math.max(2, pct)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function BenchmarkTab() {
+  const { repo, share } = useOutletContext<RepoOutletContext>();
+  const benchmark = useBenchmark(repo.id, share);
+
+  return (
+    <StageGate
+      query={benchmark}
+      loadingLabel="Comparing against the corpus…"
+      emptyTitle="No corpus data yet"
+      emptyMessage="No comparable repositories exist for this language/size combination yet."
+      isEmpty={(data: BenchmarkResponse) => data.metrics.every((m) => m.n_repos === 0)}
+    >
+      {(data) => (
+        <Reveal>
+          <Card
+            title="Compared against the curated corpus"
+            eyebrow={`${data.dominant_language} · ${data.size_bucket} repositories`}
+          >
+            <ScoreExplainer formulaKey="baseline" contributions={[]} />
+            <HonestyNote
+              variant="scope-limitation"
+              text={HONESTY.benchmarkVsPortfolioDistinct}
+              className="mb-3 mt-2"
+            />
+            <p className="mb-4 text-xs text-text-muted">{data.corpus_note}</p>
+            <div className="flex flex-col gap-3">
+              {data.metrics.map((m) => (
+                <MetricBar key={m.metric} metric={m} />
+              ))}
+            </div>
+            <a
+              href={CORPUS_REPO_LIST_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-block text-xs text-accent hover:underline"
+            >
+              See the exact repository list this corpus comes from →
+            </a>
+            <Link
+              to="/how-it-works#methods"
+              className="ml-4 inline-block text-xs text-accent hover:underline"
+            >
+              How calibration works →
+            </Link>
+          </Card>
+        </Reveal>
+      )}
+    </StageGate>
   );
 }

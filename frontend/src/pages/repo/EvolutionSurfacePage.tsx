@@ -30,11 +30,15 @@ import { Card } from "../../components/ui/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { HonestyNote } from "../../components/HonestyNote";
+import { InfoTooltip } from "../../components/ui/InfoTooltip";
 import { LoadingState } from "../../components/LoadingState";
+import { AnimatedList } from "../../reactbits/AnimatedList";
+import { CountUp } from "../../components/motion/CountUp";
+import { Reveal } from "../../components/motion/Reveal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { SeverityChip } from "../../components/SeverityChip";
 import { StageGate } from "../../components/StageGate";
-import { HONESTY } from "../../content/explainability";
+import { HONESTY, TOOLTIPS } from "../../content/explainability";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import {
   CONTRIBUTOR_CHANGE_COPY,
@@ -94,6 +98,10 @@ export function EvolutionSurfacePage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-sm text-text-muted">
+        How this repository got this way — a 24-point history scrubber, and a diff between any two
+        completed analysis runs.
+      </p>
       <SegmentedControl
         aria-label="Evolution view"
         value={tab}
@@ -177,21 +185,32 @@ function EvolutionView({
       {/* Rendered verbatim, unconditionally, above every chart -- never
           paraphrased into something that sounds more precise. */}
       <Card>
-        <p className="cp-label text-warning">History-derived only</p>
+        <p className="cp-label flex items-center gap-1 text-warning">
+          History-derived only
+          <InfoTooltip label="What does history-derived only mean?" text={TOOLTIPS.snapshot} />
+        </p>
         <p className="mt-1 text-sm text-text-muted">{notCovered}</p>
         <p className="mt-2 text-xs text-text-muted">
           Sampled at every point below: {covers.join(", ")}.
         </p>
       </Card>
 
-      <MetricLines snapshots={snapshots} bounds={bounds} position={position} />
+      <Reveal>
+        <MetricLines snapshots={snapshots} bounds={bounds} position={position} />
+      </Reveal>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <HotspotBars snapshot={current} bounds={bounds} animate={!reducedMotion} />
-        <ContributorBand snapshots={snapshots} position={position} />
+        <Reveal delay={0.05}>
+          <HotspotBars snapshot={current} bounds={bounds} animate={!reducedMotion} />
+        </Reveal>
+        <Reveal delay={0.05}>
+          <ContributorBand snapshots={snapshots} position={position} />
+        </Reveal>
       </div>
 
-      <WhatChangedPanel delta={delta} current={current} />
+      <Reveal delay={0.1}>
+        <WhatChangedPanel delta={delta} current={current} />
+      </Reveal>
 
       <Scrubber
         snapshots={snapshots}
@@ -284,7 +303,7 @@ function MetricLines({
               </ResponsiveContainer>
             </div>
             <span className="cp-stat text-sm font-semibold text-text">
-              {(snapshots[position][m.key] as number).toLocaleString()}
+              <CountUp to={snapshots[position][m.key] as number} duration={0.5} />
             </span>
           </div>
         ))}
@@ -311,6 +330,9 @@ function HotspotBars({
     <Card
       title="Churn-ranked hotspots"
       eyebrow="Top files by cumulative churn at this point -- NOT the full risk formula (complexity isn't sampled historically)"
+      action={
+        <InfoTooltip label="Why isn't this called risk?" text={TOOLTIPS.churnRankedHotspot} />
+      }
     >
       {rows.length === 0 ? (
         <p className="py-6 text-center text-sm text-text-muted">
@@ -672,7 +694,9 @@ function CompareView({ data }: { data: CompareResponse }) {
         />
       ) : null}
 
-      <HeadlineStrip data={data} />
+      <Reveal>
+        <HeadlineStrip data={data} />
+      </Reveal>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <FindingsColumn
@@ -750,9 +774,12 @@ function FindingsColumn({
       {findings.length === 0 ? (
         <p className="text-sm text-text-muted">None.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border">
-          {findings.map((f) => (
-            <li key={f.signature} className="flex flex-col gap-1 py-2">
+        <AnimatedList
+          items={findings}
+          keyFor={(f) => f.signature}
+          className="flex flex-col divide-y divide-border"
+          renderItem={(f) => (
+            <div className="flex flex-col gap-1 py-2">
               <div className="flex items-center gap-2">
                 <SeverityChip severity={f.severity} />
                 <span className="truncate text-sm text-text-muted">{f.title}</span>
@@ -760,9 +787,9 @@ function FindingsColumn({
               {f.file_path ? (
                 <span className="truncate font-mono text-xs text-text-muted">{f.file_path}</span>
               ) : null}
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        />
       )}
       {total > findings.length ? (
         <p className="mt-2 text-xs text-text-muted">
@@ -835,17 +862,20 @@ function SubsystemChanges({ changes }: { changes: SubsystemChangeOut[] }) {
           No subsystem appeared, disappeared, merged, or split.
         </p>
       ) : (
-        <ul className="mt-2 flex flex-col divide-y divide-border">
-          {changes.map((c, i) => (
-            <li key={`${c.kind}-${c.label}-${i}`} className="py-2 text-sm">
+        <AnimatedList
+          items={changes}
+          keyFor={(c, i) => `${c.kind}-${c.label}-${i}`}
+          className="mt-2 flex flex-col divide-y divide-border"
+          renderItem={(c) => (
+            <div className="py-2 text-sm">
               <span className="font-medium text-text-muted">
                 {SUBSYSTEM_CHANGE_COPY[c.kind]()}:
               </span>{" "}
               <span className="text-text-muted">{c.label}</span>
               <p className="mt-0.5 text-xs text-text-muted">{c.detail}</p>
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        />
       )}
     </Card>
   );
@@ -857,14 +887,17 @@ function ContributorChanges({ changes }: { changes: ContributorChangeOut[] }) {
       {changes.length === 0 ? (
         <p className="text-sm text-text-muted">No contributor joined, left, or went quiet.</p>
       ) : (
-        <ul className="flex flex-col gap-1">
-          {changes.map((c, i) => (
-            <li key={`${c.kind}-${c.name}-${i}`} className="text-sm text-text-muted">
+        <AnimatedList
+          items={changes}
+          keyFor={(c, i) => `${c.kind}-${c.name}-${i}`}
+          className="flex flex-col gap-1"
+          renderItem={(c) => (
+            <div className="text-sm text-text-muted">
               <span className="font-medium text-text-muted">{c.name}</span>{" "}
               {CONTRIBUTOR_CHANGE_COPY[c.kind]().toLowerCase()}
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        />
       )}
     </Card>
   );
@@ -878,12 +911,12 @@ function CouplingChanges({ changes }: { changes: CouplingChangeOut[] }) {
           No coupling pair appeared, strengthened, weakened, or vanished.
         </p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border">
-          {changes.map((c, i) => (
-            <li
-              key={`${c.kind}-${c.file_a_path}-${c.file_b_path}-${i}`}
-              className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
-            >
+        <AnimatedList
+          items={changes}
+          keyFor={(c, i) => `${c.kind}-${c.file_a_path}-${c.file_b_path}-${i}`}
+          className="flex flex-col divide-y divide-border"
+          renderItem={(c) => (
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
               <span className="font-mono text-xs text-text-muted">
                 {c.file_a_path} ↔ {c.file_b_path}
               </span>
@@ -893,9 +926,9 @@ function CouplingChanges({ changes }: { changes: CouplingChangeOut[] }) {
                   ? ` (${c.coupling_degree_before?.toFixed(2) ?? "—"} → ${c.coupling_degree_after?.toFixed(2) ?? "—"})`
                   : ""}
               </span>
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        />
       )}
     </Card>
   );

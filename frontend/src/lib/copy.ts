@@ -94,19 +94,20 @@ export const FIRST_PR_COPY: Record<FirstPrCode, (params: Record<string, unknown>
 };
 
 // Where "read more" for each first_pr code should point -- a route
-// fragment relative to /repos/:repoId/, joined by the caller. UI rebuild
-// session 3: repointed from the outgoing onboard/*|audit/* dual-mode paths
-// onto the eight consolidated surfaces (plan/UI_REBUILD_SESSIONS.md section
-// 4.1) -- lib/copy.test.ts only asserts each entry is a non-empty string,
-// never the literal path, so this rename doesn't touch that test.
+// fragment relative to /repos/:repoId/, joined by the caller. Rebuild
+// (plan/REBUILD.md section 4.6): repointed onto the five consolidated
+// surfaces -- Risk/Benchmark live inside Findings now, Coupling/Architecture
+// inside Explore's Structure view, People inside Guide.
+// lib/copy.test.ts only asserts each entry is a non-empty string, never the
+// literal path, so this rename doesn't touch that test.
 export const FIRST_PR_LINK: Record<FirstPrCode, string> = {
-  HIGH_CHURN_CONCENTRATION: "risk?tab=hotspots",
-  LOW_TRUCK_FACTOR: "people",
-  ORPHANED_HOTSPOT: "people",
-  HIDDEN_DEPENDENCIES: "structure?view=coupling",
-  CIRCULAR_DEPENDENCIES: "structure?view=architecture",
+  HIGH_CHURN_CONCENTRATION: "findings?view=risk",
+  LOW_TRUCK_FACTOR: "guide?view=people",
+  ORPHANED_HOTSPOT: "guide?view=people",
+  HIDDEN_DEPENDENCIES: "explore?view=structure",
+  CIRCULAR_DEPENDENCIES: "explore?view=structure",
   DORMANT: "overview",
-  NO_TESTS: "risk?tab=hotspots",
+  NO_TESTS: "findings?view=risk",
   LOW_COHESION_SUBSYSTEM: "overview",
 };
 
