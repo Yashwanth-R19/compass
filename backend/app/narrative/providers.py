@@ -31,7 +31,16 @@ from app.narrative.pool import FailureKind, ProviderKey
 # Session prompt, Part A: "Use httpx with a hard 20-second timeout."
 REQUEST_TIMEOUT_SECONDS = 20.0
 
-DEFAULT_MAX_TOKENS = 220
+# Raised from 220 (session 4): both currently-configured free-tier models
+# (Gemini's 2.0-flash retired outright; Groq's llama-3.1-8b-instant did too)
+# were replaced by newer generations that reserve part of the completion
+# budget for hidden reasoning before any visible text appears. At 220,
+# real generations against this repo's actual narrative prompt hit
+# MAX_TOKENS/`length` mid-sentence -- confirmed live, not theoretical (see
+# `generate.py::validate_output`'s new `looks_truncated` check, added
+# specifically because one such truncated response passed every other
+# check and got cached as a "successful" narrative).
+DEFAULT_MAX_TOKENS = 400
 
 
 class ProviderError(Exception):
@@ -124,7 +133,20 @@ def _generate_gemini(prompt: str, key: ProviderKey, max_tokens: int) -> str:
     )
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4},
+        # `thinkingBudget: 0` (fully off) is rejected outright by this
+        # model family (HTTP 400, invalid argument) -- confirmed live, this
+        # session. `1` is the smallest value it accepts and measurably cuts
+        # down how much of `max_tokens` hidden reasoning consumes before any
+        # visible text appears, though it does not eliminate the reasoning
+        # step entirely (a genuinely thinking-heavy model may still spend
+        # unpredictable wall-clock time here -- this is a mitigation, not a
+        # guarantee, which is why `PROVIDER_PRIORITY` below no longer puts
+        # this provider first).
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature": 0.4,
+            "thinkingConfig": {"thinkingBudget": 1},
+        },
     }
     data = _post_json(url, json_body=body)
     try:
@@ -143,12 +165,24 @@ def _generate_gemini(prompt: str, key: ProviderKey, max_tokens: int) -> str:
 
 def _generate_groq(prompt: str, key: ProviderKey, max_tokens: int) -> str:
     url = "https://api.groq.com/openai/v1/chat/completions"
-    body = {
+    body: dict[str, object] = {
         "model": settings.COMPASS_GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
         "temperature": 0.4,
     }
+    # The current default model (an open-weight "gpt-oss" reasoning model,
+    # since llama-3.1-8b-instant was retired) spends part of `max_tokens` on
+    # a hidden reasoning pass unless told otherwise -- "low" reliably left
+    # enough budget for a complete, on-topic answer in this session's own
+    # live testing (~2s, `finish_reason: "stop"`, never truncated).
+    # Deliberately gated on the model name, confirmed live this session:
+    # Groq's endpoint answers a hard 400 ("reasoning_effort is not
+    # supported with this model") for a model that doesn't recognize the
+    # field, rather than ignoring it -- sending it unconditionally would
+    # break every OTHER Groq model a deployer might configure.
+    if "gpt-oss" in settings.COMPASS_GROQ_MODEL.lower():
+        body["reasoning_effort"] = "low"
     headers = {"Authorization": f"Bearer {key.key}"}
     data = _post_json(url, json_body=body, headers=headers)
     try:

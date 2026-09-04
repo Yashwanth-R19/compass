@@ -34,20 +34,20 @@ def test_rotation_round_robins_within_a_provider():
     assert seen == ["k1", "k2", "k3", "k1", "k2", "k3"]
 
 
-def test_priority_order_prefers_gemini_before_groq():
+def test_priority_order_prefers_groq_before_gemini():
     pool = KeyPool({"gemini": ["g1"], "groq": ["q1"]})
-    assert pool.get_key().key == "g1"
-    assert pool.get_key().key == "g1"  # only one gemini key -- keeps rotating to itself
+    assert pool.get_key().key == "q1"
+    assert pool.get_key().key == "q1"  # only one groq key -- keeps rotating to itself
 
 
 def test_falls_through_to_next_provider_when_first_is_exhausted():
     pool = KeyPool({"gemini": ["g1"], "groq": ["q1"]})
     key = pool.get_key()
-    assert key.key == "g1"
+    assert key.key == "q1"
     pool.report_failure(key, "auth")
 
     fallback = pool.get_key()
-    assert fallback.key == "q1"
+    assert fallback.key == "g1"
 
 
 def test_rate_limited_key_enters_cooldown_and_is_skipped():

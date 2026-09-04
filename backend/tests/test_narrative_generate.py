@@ -154,6 +154,25 @@ def test_rejects_a_hallucinated_percentage_close_to_but_not_derived_from_any_fac
     assert reason == "ungrounded_number"
 
 
+def test_rejects_text_cut_off_mid_sentence():
+    # A real, observed failure mode: a provider hits its token ceiling
+    # before finishing (e.g. a "thinking" model's visible answer gets cut
+    # off after a few words) and the fragment can still be fully grounded
+    # and under the length cap -- no other check here would catch it.
+    text = "This repository has 248 files and 12"
+    ok, reason = validate_output(text, REPO_PACK)
+    assert not ok
+    assert reason == "looks_truncated"
+
+
+def test_accepts_a_sentence_ending_in_a_quoted_question_mark():
+    # The terminal-punctuation check must not be so strict it rejects a
+    # normal closing quotation mark or parenthesis after the punctuation.
+    text = 'Health scores 71 out of 100 here — is that "healthy enough?"'
+    ok, reason = validate_output(text, REPO_PACK)
+    assert ok, reason
+
+
 # ---------------------------------------------------------------------------
 # build_prompt: rule 4 -- only computed numbers ever reach the prompt text.
 # ---------------------------------------------------------------------------

@@ -52,15 +52,30 @@ export function FileDetailPanel({
         </p>
         <SubsystemBadge label={subsystemLabel} />
         {loc != null ? <p>{loc.toLocaleString()} LOC</p> : null}
-        {complexity != null ? <p>Complexity {complexity.toFixed(1)}</p> : null}
-        {riskScore != null ? <p>Risk score {formatPercent(riskScore)}</p> : null}
+        {complexity != null ? (
+          <p className="flex items-center gap-1">
+            Complexity {complexity.toFixed(1)}
+            <InfoTooltip label="What is complexity?" text={TOOLTIPS.complexity} />
+          </p>
+        ) : null}
+        {riskScore != null ? (
+          <p className="flex items-center gap-1">
+            Risk score {formatPercent(riskScore)}
+            <InfoTooltip label="What is risk score?" text={TOOLTIPS.riskScore} />
+          </p>
+        ) : null}
         {centrality != null ? (
           <p className="flex items-center gap-1">
             Centrality {formatScore(centrality, 3)}
             <InfoTooltip label="What is centrality?" text={TOOLTIPS.centrality} />
           </p>
         ) : null}
-        {expertName ? <p>Principal author: {expertName}</p> : null}
+        {expertName ? (
+          <p className="flex items-center gap-1">
+            Principal author: {expertName}
+            <InfoTooltip label="What is a principal author?" text={TOOLTIPS.principalAuthor} />
+          </p>
+        ) : null}
         <Link
           to={`/repos/${repoId}/guide?view=people&path=${encodeURIComponent(path)}`}
           className="w-fit font-medium text-accent hover:underline"

@@ -159,12 +159,14 @@ function CompactStrip({ merged }: { merged: Merged[] }) {
       </div>
       <div className="flex gap-0.5">
         {merged.map(({ pipeline: p, status: s }) => (
+          // No pulse on the running segment -- the accent fill colour plus
+          // the "Running <stage>…" label above it already say which stage
+          // is active; this strip is a secondary, compact presentation, not
+          // a second place for the app's one sanctioned loop to appear.
           <div
             key={p.name}
             title={STAGE_LABEL[p.name as StageName] ?? p.name}
-            className={`h-1.5 flex-1 rounded-full ${stageBarClass(s?.status)} ${
-              s?.status === "running" ? "animate-pulse motion-reduce:animate-none" : ""
-            }`}
+            className={`h-1.5 flex-1 rounded-full ${stageBarClass(s?.status)}`}
           />
         ))}
       </div>
@@ -211,10 +213,15 @@ function StageMarker({ status }: { status: StageStatus | undefined }) {
     );
   }
   if (status === "running") {
+    // No pulse/ping here -- the row's own indeterminate bar (StageRow,
+    // sourced from the single shared `pipeline-indeterminate` keyframe) is
+    // this app's one sanctioned looping animation. A second, independently
+    // animating ring on the marker right next to it would be the same
+    // "running" signal said twice, competing for attention instead of
+    // reinforcing it -- decorative motion, not communicative.
     return (
-      <span className={`${base} relative border-accent bg-accent-bg text-accent`}>
-        <span className="absolute inset-0 animate-ping rounded-full border-2 border-accent opacity-60 motion-reduce:animate-none" />
-        <span className="relative h-2 w-2 rounded-full bg-accent" />
+      <span className={`${base} border-accent bg-accent-bg text-accent`}>
+        <span className="h-2 w-2 rounded-full bg-accent" />
       </span>
     );
   }
@@ -262,9 +269,7 @@ function StageRow({
             </span>
           ) : null}
           {isRunning ? (
-            <span
-              className={`h-1 w-16 overflow-hidden rounded-full bg-bg-inset ${reducedMotion ? "" : ""}`}
-            >
+            <span className="h-1 w-16 overflow-hidden rounded-full bg-bg-inset">
               <span
                 className={`block h-full w-1/3 rounded-full bg-accent ${
                   reducedMotion ? "" : "animate-[pipeline-indeterminate_1.1s_ease-in-out_infinite]"

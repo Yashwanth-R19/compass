@@ -573,6 +573,11 @@ function ContributorRow({ contributor, share }: { contributor: ContributorOut; s
         active {new Date(contributor.first_commit_at).toLocaleDateString()}–
         {new Date(contributor.last_commit_at).toLocaleDateString()}
       </span>
+      {otherAliases.length > 0 ? (
+        <span className="cp-label rounded-full border border-border px-1.5 py-0.5 text-text-muted">
+          {otherAliases.length} more alias{otherAliases.length === 1 ? "" : "es"}
+        </span>
+      ) : null}
     </div>
   );
 

@@ -6,7 +6,9 @@ import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
+import { InfoTooltip } from "../components/ui/InfoTooltip";
 import { GetStartedChecklist } from "../components/GetStartedChecklist";
+import { TOOLTIPS } from "../content/explainability";
 import { formatScore, healthColor } from "../lib/format";
 
 const RUN_STATUS_LABEL: Record<string, string> = {
@@ -80,10 +82,11 @@ export function DashboardPage() {
                         ) : null}
                       </div>
                       {health ? (
-                        <span
-                          className={`shrink-0 text-sm font-semibold tabular-nums ${health.text}`}
-                        >
-                          {formatScore(repo.health_score ?? 0, 0)}
+                        <span className="flex shrink-0 items-center gap-1">
+                          <span className={`text-sm font-semibold tabular-nums ${health.text}`}>
+                            {formatScore(repo.health_score ?? 0, 0)}
+                          </span>
+                          <InfoTooltip label="What is health score?" text={TOOLTIPS.healthScore} />
                         </span>
                       ) : null}
                     </div>

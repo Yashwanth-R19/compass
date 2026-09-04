@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   Boxes,
+  ExternalLink,
   FolderTree,
   GitBranch,
   GitCommitHorizontal,
@@ -18,14 +19,28 @@ import {
 import { WordReveal } from "../components/motion/WordReveal";
 import { Reveal } from "../components/motion/Reveal";
 import { Alert } from "../components/ui/Alert";
-import { usePipeline, useWorkedExample } from "../api/hooks";
+import { InfoTooltip } from "../components/ui/InfoTooltip";
+import { usePipeline, useWorkedExample, useFormulas } from "../api/hooks";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
+import { EMPTY_MESSAGES, NOT_AI_WRAPPER_POINTS } from "../content/explainability";
+import { FORMULA_COPY, TOOLTIPS } from "../content/explainability";
 import {
-  EMPTY_MESSAGES,
-  NOT_AI_WRAPPER_POINTS,
-  WHAT_COMPASS_DOES_NOT_DO,
-} from "../content/explainability";
-import type { PipelineStageOut, WorkedExampleResponse } from "../api/types";
+  CELL_SIZE_GATE_NOTE,
+  CORPUS_DESCRIPTION,
+  CORPUS_REPO_LIST_PATH,
+  CORPUS_REPO_LIST_URL,
+  LIMITATIONS,
+  METHODS_INTRO,
+  METHODS_SECTIONS,
+  REPRODUCIBILITY_CHANGES,
+  REPRODUCIBILITY_GUARANTEE,
+} from "../content/methods";
+import type {
+  FormulaGroupOut,
+  FormulaStatus,
+  PipelineStageOut,
+  WorkedExampleResponse,
+} from "../api/types";
 
 const STAGE_ICON: Record<string, LucideIcon> = {
   clone: GitBranch,
@@ -42,6 +57,35 @@ const STAGE_ICON: Record<string, LucideIcon> = {
   security: ShieldAlert,
   rank: ListOrdered,
 };
+
+// Every FormulaGroup's honesty label gets its OWN three-tone treatment here
+// -- deliberately never Badge's severity tones (high/med/low), which would
+// imply a ranking between locked/heuristic/cited that doesn't exist. The
+// three statuses are different KINDS of claim, not different SEVERITIES.
+const STATUS_LABEL: Record<FormulaStatus, string> = {
+  locked: "Locked",
+  heuristic: "Heuristic",
+  cited: "Cited",
+};
+
+const STATUS_CLASS: Record<FormulaStatus, string> = {
+  locked: "border-text-heading text-text-heading",
+  heuristic: "border-warning text-warning",
+  cited: "border-info text-info",
+};
+
+const STATUS_EXPLAINER: Record<FormulaStatus, string> = {
+  locked:
+    "A fixed product decision — the same formula and weights on every repository, never tuned.",
+  heuristic:
+    "A documented, adjustable starting point Compass chose — a considered guess, not a proven model.",
+  cited:
+    "Taken directly from published research and implemented as specified, not adjusted by Compass.",
+};
+
+function section(id: string) {
+  return METHODS_SECTIONS.find((s) => s.id === id);
+}
 
 function formatScore(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -106,21 +150,29 @@ const STAGE_EXAMPLE_LINE: Record<string, (w: WorkedExampleResponse) => string | 
 };
 
 /**
- * A scrollytelling walkthrough of the REAL thirteen-stage pipeline
- * (`GET /meta/pipeline`), with one real repository's numbers
- * (`GET /meta/worked-example`) threaded through every stage. Both are
- * fetched live, never hardcoded — see plan/UI_REBUILD_SESSIONS.md section
- * 5.4's single-source-of-truth rule, applied here to the pipeline shape
- * itself as well as to formula constants.
+ * The merged explanation page (D12) — /how-it-works absorbs /methods
+ * entirely. One scroll-driven narrative, four movements: the argument for
+ * why this isn't an AI wrapper, the real thirteen-stage pipeline with one
+ * worked example's real numbers, the reference half (#methods — every
+ * formula's live constants and honesty label, plus calibration), and a
+ * closing, deliberately uncomfortable limitations list. `/methods` redirects
+ * here with `#methods` (see App.tsx); pages/MethodsPage.tsx no longer
+ * exists.
  *
- * Must render fully with the worked example unavailable (no showcase
- * repository has reached a ready run yet) — every stage still renders its
- * description; only the concrete example line is omitted, per-stage.
+ * Every number on this page comes from `GET /meta/pipeline`,
+ * `GET /meta/worked-example`, or `GET /meta/formulas` at request time. All
+ * three requests can independently fail — the page must still render a
+ * coherent, fully-worded result with no blank section and no literal
+ * "undefined" (verified against a dev server with no backend running at
+ * all): every section below degrades to a plain-English unavailable note
+ * rather than disappearing or rendering half of a sentence.
  */
 export function HowItWorksPage() {
   const pipeline = usePipeline();
   const workedExample = useWorkedExample();
+  const formulas = useFormulas();
   const reducedMotion = usePrefersReducedMotion();
+  const location = useLocation();
 
   // `pipeline.data?.stages` is a stable array reference from react-query
   // for as long as the underlying data hasn't changed -- depend on THAT,
@@ -130,6 +182,7 @@ export function HowItWorksPage() {
   const stages = stagesData ?? [];
   const [activeStage, setActiveStage] = useState<string | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const methodsRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!stagesData || stagesData.length === 0) return;
@@ -151,6 +204,39 @@ export function HowItWorksPage() {
     return () => observer.disconnect();
   }, [stagesData]);
 
+  // React Router's client-side navigation does not perform the browser's
+  // native hash-scroll (that only fires on a real, full-document
+  // navigation) -- without this, every `<Link to="/how-it-works#methods">`
+  // elsewhere in the app (HomePage, FindingsSurfacePage's benchmark teaser,
+  // the /methods legacy redirect) would land at the top of the page instead
+  // of the reference section it promises.
+  //
+  // Re-fires as each of the three independent requests settles (not just
+  // once, on mount) -- found necessary by this session's own end-to-end
+  // pass: scrolling to `#methods` immediately, while `pipeline`/
+  // `workedExample`/`formulas` are all still pending, targets the section's
+  // position when the page above it is still mostly empty loading text.
+  // Real content (pipeline stages, formula cards) then renders in and
+  // pushes `#methods` hundreds of pixels further down, leaving the already-
+  // finished scroll well short of the target. Re-running this effect on
+  // every pending -> settled transition re-issues `scrollIntoView` against
+  // the CURRENT layout each time, so the last run (once everything has
+  // loaded) always lands correctly regardless of load order/timing.
+  useEffect(() => {
+    if (location.hash === "#methods") {
+      methodsRef.current?.scrollIntoView({
+        behavior: reducedMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    }
+  }, [
+    location.hash,
+    reducedMotion,
+    pipeline.isPending,
+    workedExample.isPending,
+    formulas.isPending,
+  ]);
+
   function jumpTo(name: string) {
     sectionRefs.current[name]?.scrollIntoView({
       behavior: reducedMotion ? "auto" : "smooth",
@@ -159,98 +245,34 @@ export function HowItWorksPage() {
   }
 
   const example = workedExample.data;
+  const groups = formulas.data?.groups ?? [];
+  const activeProvider = formulas.data?.active_baseline_provider;
+  const alsoMeasuredGroups = groups
+    .map((g) => ({ group: g, copy: FORMULA_COPY[g.key] }))
+    .filter((x) => x.copy?.alsoMeasured?.length);
 
   return (
     <div className="py-10">
-      <p className="cp-label mb-2">Pipeline</p>
+      <p className="cp-label mb-2">How Compass works</p>
       <WordReveal
-        text="How Compass works"
+        text="Compass, explained"
         tag="h1"
         className="font-display text-4xl font-medium tracking-tight text-text-heading"
       />
       <Reveal delay={0.2}>
         <p className="mt-4 max-w-2xl text-lg leading-normal text-text-muted">
-          The actual thirteen stages Compass runs, in order, with real numbers from one real
-          analysis — not a description of what the pipeline is supposed to do, but what it actually
-          did the last time it ran on the repository below.
+          Compass computes intelligence about a repository from its own commit history —
+          deterministically, and without ever asking a language model what the code means. This page
+          is the full account: the argument for why that matters, the actual pipeline that produces
+          every number, the formulas behind them with their real live constants, and where the
+          product honestly falls short.
         </p>
       </Reveal>
 
-      {!workedExample.isPending && !example ? (
-        <Reveal delay={0.25}>
-          <Alert variant="neutral" className="mt-6">
-            {EMPTY_MESSAGES.workedExampleUnavailable}
-          </Alert>
-        </Reveal>
-      ) : null}
-
-      {example ? (
-        <Reveal delay={0.25}>
-          <p className="mt-6 text-sm text-text-muted">
-            Worked example:{" "}
-            <Link
-              to={`/repos/${example.repo.id}/overview`}
-              className="font-mono text-accent hover:underline"
-            >
-              {example.repo.owner}/{example.repo.name}
-            </Link>{" "}
-            — every figure below is real, and you can open the live analysis to verify it.
-          </p>
-        </Reveal>
-      ) : null}
-
-      <div className="mt-10 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
-        {/* Sticky scroll-spy stepper -- collapses to a horizontal scrolling
-            strip above the content on narrow viewports. */}
-        <nav
-          aria-label="Pipeline stages"
-          className="top-20 flex gap-1 overflow-x-auto pb-2 lg:sticky lg:w-48 lg:shrink-0 lg:flex-col lg:overflow-visible lg:pb-0"
-        >
-          {stages.map((stage, i) => {
-            const isActive = activeStage === stage.name;
-            return (
-              <button
-                key={stage.name}
-                type="button"
-                onClick={() => jumpTo(stage.name)}
-                className={`shrink-0 whitespace-nowrap rounded-sm px-2.5 py-1.5 text-left text-xs transition-colors lg:whitespace-normal ${
-                  isActive
-                    ? "bg-accent-bg font-medium text-accent"
-                    : "text-text-muted hover:bg-bg-inset hover:text-text"
-                }`}
-              >
-                <span className="tabular-nums text-text-muted">{i + 1}.</span> {stage.name}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="min-w-0 flex-1">
-          {pipeline.isPending ? (
-            <p className="text-sm text-text-muted">Loading the pipeline…</p>
-          ) : stages.length === 0 ? (
-            <Alert variant="neutral">{EMPTY_MESSAGES.pipelineUnavailable}</Alert>
-          ) : (
-            <div className="flex flex-col gap-10">
-              {stages.map((stage, i) => (
-                <StageSection
-                  key={stage.name}
-                  stage={stage}
-                  index={i}
-                  exampleLine={example ? (STAGE_EXAMPLE_LINE[stage.name]?.(example) ?? null) : null}
-                  registerRef={(el) => {
-                    sectionRefs.current[stage.name] = el;
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
+      {/* Movement 1 -- what Compass is, and why it isn't an AI wrapper. ---- */}
       <Reveal delay={0.1}>
-        <section className="mt-16 border-t border-border pt-10">
-          <p className="cp-label mb-2">Why this is not an AI wrapper</p>
+        <section className="mt-12">
+          <p className="cp-label mb-2">Not an AI wrapper</p>
           <h2 className="font-display text-2xl text-text-heading">
             The pipeline never asks a model what the code means
           </h2>
@@ -268,25 +290,273 @@ export function HowItWorksPage() {
         </section>
       </Reveal>
 
-      <Reveal delay={0.15}>
-        <section className="mt-10 border-t border-border pt-10">
-          <p className="cp-label mb-2">Honesty</p>
+      {/* Movement 2 -- the real thirteen-stage pipeline. ------------------ */}
+      <section className="mt-16 border-t border-border pt-10">
+        <p className="cp-label mb-2">The pipeline</p>
+        <h2 className="font-display text-2xl text-text-heading">
+          Thirteen stages, in the order they actually ran
+        </h2>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+          Not a description of what the pipeline is supposed to do — what it actually did the last
+          time it ran on the repository below.
+        </p>
+
+        {!workedExample.isPending && !example ? (
+          <Reveal delay={0.05}>
+            <Alert variant="neutral" className="mt-6">
+              {EMPTY_MESSAGES.workedExampleUnavailable}
+            </Alert>
+          </Reveal>
+        ) : null}
+
+        {example ? (
+          <Reveal delay={0.05}>
+            <p className="mt-6 text-sm text-text-muted">
+              Worked example:{" "}
+              <Link
+                to={`/repos/${example.repo.id}/overview`}
+                className="font-mono text-accent hover:underline"
+              >
+                {example.repo.owner}/{example.repo.name}
+              </Link>{" "}
+              — every figure below is real, and you can open the live analysis to verify it.
+            </p>
+          </Reveal>
+        ) : null}
+
+        <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
+          {/* Sticky scroll-spy stepper -- collapses to a horizontal scrolling
+              strip above the content on narrow viewports. */}
+          <nav
+            aria-label="Pipeline stages"
+            className="top-20 flex gap-1 overflow-x-auto pb-2 lg:sticky lg:w-48 lg:shrink-0 lg:flex-col lg:overflow-visible lg:pb-0"
+          >
+            {stages.map((stage, i) => {
+              const isActive = activeStage === stage.name;
+              return (
+                <button
+                  key={stage.name}
+                  type="button"
+                  onClick={() => jumpTo(stage.name)}
+                  className={`shrink-0 whitespace-nowrap rounded-sm px-2.5 py-1.5 text-left text-xs transition-colors lg:whitespace-normal ${
+                    isActive
+                      ? "bg-accent-bg font-medium text-accent"
+                      : "text-text-muted hover:bg-bg-inset hover:text-text"
+                  }`}
+                >
+                  <span className="tabular-nums text-text-muted">{i + 1}.</span> {stage.name}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="min-w-0 flex-1">
+            {pipeline.isPending ? (
+              <p className="text-sm text-text-muted">Loading the pipeline…</p>
+            ) : stages.length === 0 ? (
+              <Alert variant="neutral">{EMPTY_MESSAGES.pipelineUnavailable}</Alert>
+            ) : (
+              <div className="flex flex-col gap-10">
+                {stages.map((stage, i) => (
+                  <StageSection
+                    key={stage.name}
+                    stage={stage}
+                    index={i}
+                    exampleLine={
+                      example ? (STAGE_EXAMPLE_LINE[stage.name]?.(example) ?? null) : null
+                    }
+                    registerRef={(el) => {
+                      sectionRefs.current[stage.name] = el;
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Movement 3 -- #methods, the reference half. ---------------------- */}
+      <section
+        id="methods"
+        ref={methodsRef}
+        className="scroll-mt-20 mt-16 border-t border-border pt-10"
+      >
+        <p className="cp-label mb-2">Reference</p>
+        <h2 className="font-display text-2xl text-text-heading">Methods</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">{METHODS_INTRO}</p>
+
+        {/* 3.1 -- every formula, its live constants, its honesty label. */}
+        <div className="mt-10">
+          <p className="cp-label mb-1">{section("scores")?.eyebrow}</p>
+          <h3 className="font-display text-xl text-text-heading">{section("scores")?.title}</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+            {section("scores")?.body}
+          </p>
+
+          {formulas.isPending ? (
+            <p className="mt-6 text-sm text-text-muted">Loading the live formula values…</p>
+          ) : groups.length === 0 ? (
+            <Alert variant="neutral" className="mt-6">
+              {EMPTY_MESSAGES.formulasUnavailable}
+            </Alert>
+          ) : (
+            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+              {groups.map((group) => (
+                <FormulaGroupCard key={group.key} group={group} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 3.2 -- calibration: heuristic vs. corpus, active provider, the
+            cell-size gate, the checked-in corpus repo list. */}
+        <div className="mt-12">
+          <p className="cp-label mb-1">{section("calibration")?.eyebrow}</p>
+          <h3 className="font-display text-xl text-text-heading">
+            {section("calibration")?.title}
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+            {section("calibration")?.body}
+          </p>
+          {activeProvider ? (
+            <p className="mt-3 text-sm text-text">
+              This deployment is currently configured to use the{" "}
+              <span className="font-mono font-medium text-accent">{activeProvider}</span> provider.
+            </p>
+          ) : null}
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-text-muted">
+            {CORPUS_DESCRIPTION}
+          </p>
+          <a
+            href={CORPUS_REPO_LIST_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex w-fit items-center gap-1.5 font-mono text-sm text-accent hover:underline"
+          >
+            <ExternalLink size={13} aria-hidden="true" />
+            {CORPUS_REPO_LIST_PATH}
+          </a>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-text-muted">
+            {CELL_SIZE_GATE_NOTE}
+          </p>
+        </div>
+
+        {/* 3.3 -- measured but deliberately not scored. */}
+        {alsoMeasuredGroups.length > 0 ? (
+          <div className="mt-12">
+            <p className="cp-label mb-1">{section("also-measured")?.eyebrow}</p>
+            <h3 className="font-display text-xl text-text-heading">
+              {section("also-measured")?.title}
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+              {section("also-measured")?.body}
+            </p>
+            <div className="mt-6 flex flex-col gap-5">
+              {alsoMeasuredGroups.map(({ group, copy }) => (
+                <div key={group.key}>
+                  <h4 className="font-display text-base text-text-heading">{group.label}</h4>
+                  {copy?.alsoMeasuredNote ? (
+                    <p className="mt-1 text-xs text-text-muted">{copy.alsoMeasuredNote}</p>
+                  ) : null}
+                  <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+                    {copy?.alsoMeasured?.map((item) => (
+                      <li key={item.label} className="flex items-center gap-1 text-xs text-text">
+                        {item.label}
+                        {item.tooltip ? (
+                          <InfoTooltip
+                            label={`What is ${item.label}?`}
+                            text={TOOLTIPS[item.tooltip]}
+                          />
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* 3.4 -- reproducibility: the guarantee, and what legitimately
+            moves the numbers. */}
+        <div className="mt-12">
+          <p className="cp-label mb-1">{section("reproducibility")?.eyebrow}</p>
+          <h3 className="font-display text-xl text-text-heading">
+            {section("reproducibility")?.title}
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+            {section("reproducibility")?.body}
+          </p>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-text">
+            {REPRODUCIBILITY_GUARANTEE}
+          </p>
+          <dl className="mt-4 flex flex-col gap-3">
+            {REPRODUCIBILITY_CHANGES.map((c) => (
+              <div
+                key={c.cause}
+                className="grid grid-cols-1 gap-1 sm:grid-cols-[220px_1fr] sm:gap-4"
+              >
+                <dt className="text-xs font-medium text-text-heading">{c.cause}</dt>
+                <dd className="text-xs leading-relaxed text-text-muted">{c.effect}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      {/* Movement 4 -- what Compass deliberately does not do. ------------- */}
+      <Reveal delay={0.1}>
+        <section className="mt-16 border-t border-border pt-10">
+          <p className="cp-label mb-2">{section("limitations")?.eyebrow}</p>
           <h2 className="font-display text-2xl text-text-heading">
-            What Compass deliberately does not do
+            {section("limitations")?.title}
           </h2>
-          <ul className="mt-4 flex flex-col gap-3">
-            {WHAT_COMPASS_DOES_NOT_DO.map((point) => (
-              <li key={point} className="flex gap-2 text-sm leading-relaxed text-text-muted">
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+            {section("limitations")?.body}
+          </p>
+          <ul className="mt-6 flex flex-col gap-3">
+            {LIMITATIONS.map((item) => (
+              <li key={item} className="flex gap-2 text-sm leading-relaxed text-text-muted">
                 <span
-                  className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-border-strong"
+                  className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-warning"
                   aria-hidden="true"
                 />
-                <span>{point}</span>
+                <span>{item}</span>
               </li>
             ))}
           </ul>
         </section>
       </Reveal>
+    </div>
+  );
+}
+
+function FormulaGroupCard({ group }: { group: FormulaGroupOut }) {
+  return (
+    <div className="rounded-lg border border-border bg-bg-elevated p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-display text-lg text-text-heading">{group.label}</h4>
+        <span
+          className={`cp-label rounded-full border px-2 py-0.5 ${STATUS_CLASS[group.status]}`}
+          title={STATUS_EXPLAINER[group.status]}
+        >
+          {STATUS_LABEL[group.status]}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-text-muted">{STATUS_EXPLAINER[group.status]}</p>
+      <p className="mt-3 font-mono text-xs leading-relaxed text-text">{group.formula}</p>
+      {group.citation ? (
+        <p className="mt-2 text-xs italic text-text-muted">{group.citation}</p>
+      ) : null}
+      <dl className="mt-4 flex flex-col gap-1.5">
+        {group.constants.map((c) => (
+          <div key={c.name} className="flex items-baseline justify-between gap-3">
+            <dt className="font-mono text-xs text-text-muted">{c.name}</dt>
+            <dd className="tabular-nums font-mono text-xs text-text">{c.value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -318,11 +588,10 @@ function StageSection({
           <span className="tabular-nums text-xs text-text-muted">
             {String(index + 1).padStart(2, "0")}
           </span>
-          {/* h2, not h3 -- this is the only heading level between the
-              page's own h1 and this stage card; skipping straight to h3
-              was a real heading-order violation this session's own
-              accessibility sweep caught. */}
-          <h2 className="font-display text-xl text-text-heading">{stage.name}</h2>
+          {/* h3, not h2 -- this section nests under Movement 2's own h2
+              ("Thirteen stages..."); a stage card is a subsection of the
+              pipeline, not a sibling of it. */}
+          <h3 className="font-display text-xl text-text-heading">{stage.name}</h3>
           <span
             className={`cp-label rounded-full border px-2 py-0.5 ${
               stage.kind === "fact"

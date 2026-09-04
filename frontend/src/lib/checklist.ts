@@ -28,7 +28,16 @@ function notify(): void {
   for (const l of listeners) l();
 }
 
-function readFlags(): Set<ChecklistFlag> {
+// `useSyncExternalStore` requires `getSnapshot` to return a REFERENCE-STABLE
+// value when nothing has changed -- `new Set(...)` on every call fails that
+// contract (every render sees "a different object", so React concludes the
+// store changed on every single render), which is a real, confirmed
+// infinite-render loop this session's own end-to-end verification caught
+// (`Maximum update depth exceeded` on /dashboard). Cache the snapshot and
+// only recompute it when the underlying flags actually change.
+let flagsSnapshot: Set<ChecklistFlag> | null = null;
+
+function computeFlags(): Set<ChecklistFlag> {
   try {
     const raw = window.localStorage.getItem(FLAGS_KEY);
     return new Set(raw ? (JSON.parse(raw) as ChecklistFlag[]) : []);
@@ -37,15 +46,22 @@ function readFlags(): Set<ChecklistFlag> {
   }
 }
 
+function readFlags(): Set<ChecklistFlag> {
+  flagsSnapshot ??= computeFlags();
+  return flagsSnapshot;
+}
+
 export function markChecklistFlag(flag: ChecklistFlag): void {
   const flags = readFlags();
   if (flags.has(flag)) return;
-  flags.add(flag);
+  const next = new Set(flags);
+  next.add(flag);
   try {
-    window.localStorage.setItem(FLAGS_KEY, JSON.stringify([...flags]));
+    window.localStorage.setItem(FLAGS_KEY, JSON.stringify([...next]));
   } catch {
     // Still marked for this visit -- just not remembered next time.
   }
+  flagsSnapshot = next;
   notify();
 }
 

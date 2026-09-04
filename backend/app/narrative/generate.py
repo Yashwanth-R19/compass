@@ -35,19 +35,24 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are given already-computed metrics about a code repository, listed "
-    "below as plain key/value facts. Write 3-5 sentences of plain prose "
-    "explaining what these metrics mean for someone joining this codebase -- "
-    "its overall health, how risky and how well-distributed the knowledge of "
-    "it is, and whether it has any outstanding security concerns.\n\n"
+    "below as plain key/value facts. Write 3-4 SHORT sentences of plain "
+    "prose explaining what these metrics mean for someone joining this "
+    "codebase -- its overall health, how risky and how well-distributed the "
+    "knowledge of it is, and whether it has any outstanding security "
+    "concerns. Not every fact needs a sentence -- pick the handful that "
+    "matter most and leave the rest out.\n\n"
     "Rules, followed exactly:\n"
     "- Do NOT introduce any number, percentage, filename, or person's name "
-    "that is not present in the facts given below.\n"
+    "that is not present in the facts given below. Only cite a number that "
+    "appears directly as a fact value (rounded is fine) -- never calculate, "
+    "combine, or derive a new number from two or more facts.\n"
     "- Do NOT make recommendations, predictions, or judgements about code "
     "quality beyond what the metrics state.\n"
     "- Do NOT speculate about what the code does, what language features it "
     "uses, or its purpose.\n"
     "- Do not repeat every fact verbatim as a list -- write connected prose.\n"
-    "- Keep it under 600 characters."
+    "- The hard limit is 600 characters, but aim for well under that --"
+    " around 400 -- so there's no risk of running over."
 )
 
 # How many DISTINCT keys this process will try before giving up as
@@ -228,6 +233,18 @@ def validate_output(text: str, fact_pack: BaseModel) -> tuple[bool, RejectionRea
     failed (never the text itself -- callers must log only ``reason``)."""
     if len(text) > MAX_OUTPUT_CHARS:
         return False, "too_long"
+
+    # A response that hit its provider's token ceiling mid-sentence is a
+    # real, observed failure mode (session 4's own end-to-end verification:
+    # a "thinking" model spent its whole token budget on hidden reasoning
+    # and the visible text cut off after a few words, e.g. "17746\n    *")
+    # -- every other check here is about CONTENT (grounding), and none of
+    # them would catch a short, technically-grounded fragment that never
+    # finishes a sentence. This is deliberately the loosest possible shape
+    # check, not a grammar/coherence judge: real prose almost always ends in
+    # terminal punctuation, optionally followed by a closing quote/paren.
+    if not text.strip().rstrip("\"')").endswith((".", "!", "?")):
+        return False, "looks_truncated"
 
     acceptable_numbers = _acceptable_numbers(fact_pack)
     for value in _extract_numbers(text):

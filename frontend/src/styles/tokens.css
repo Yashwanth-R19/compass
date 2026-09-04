@@ -289,19 +289,45 @@
   --cp-border: #ded5c3;
   --cp-border-strong: #c9bca1;
   --cp-text: #3d4761;
-  --cp-text-muted: #7c8398;
+  /* Deviates from Aporia's shipped #7c8398 (session 4, not part of the
+     original "copy Aporia exactly" port) -- #7c8398 measures ~3.56:1
+     against --cp-bg-elevated, short of WCAG AA's 4.5:1 for normal text,
+     confirmed by this session's own axe-core accessibility pass (every
+     `.cp-label` element in this theme -- nav links, eyebrows, table
+     headers -- failed `color-contrast`). #556077 keeps the same blue-grey
+     hue family, darkened enough to clear 4.5:1 against every background
+     this token is actually used on, including --cp-bg-subtle (#ece5d6),
+     the tightest constraint (an intermediate #5f6980 cleared
+     --cp-bg-elevated/--cp-bg but still measured 4.38:1, just under the
+     bar, against --cp-bg-subtle specifically -- verified with axe-core
+     directly rather than by hand after that first attempt). Dark mode's
+     --cp-text-muted is unchanged -- only light mode measured under the bar. */
+  --cp-text-muted: #556077;
   --cp-text-heading: #1a2436;
 
-  --cp-accent: #9a6b1e;
-  --cp-accent-strong: #7e5410;
-  --cp-accent-bg: rgb(154 107 30 / 10%);
-  --cp-accent-border: rgb(154 107 30 / 35%);
+  /* Also deviates from Aporia's shipped values, same session-4 axe-core
+     pass as --cp-text-muted above: #9a6b1e measured 4.4:1 as text against
+     --cp-bg-elevated and 3.72:1 against --cp-bg-subtle (both under the
+     4.5:1 text bar -- accent is used as TEXT throughout this app, active
+     nav/tabs, links, badges, not only as a border/background, where the
+     looser 3:1 UI-component threshold would have already been fine).
+     #7f5c14 clears 4.5:1 against both. --cp-accent-strong darkened by the
+     same proportion to keep its own gap below the new base -- both are one
+     step darker than Aporia's originals, not a different hue. Dark mode's
+     accent (#d6ac4d) already passes and is unchanged. */
+  --cp-accent: #7f5c14;
+  --cp-accent-strong: #6b4a10;
+  --cp-accent-bg: rgb(127 92 20 / 10%); /* = --cp-accent (#7f5c14) at 10% */
+  --cp-accent-border: rgb(127 92 20 / 35%); /* = --cp-accent at 35% */
   --cp-accent-contrast: #fbf8f1;
 
   --cp-success: #3d6b57;
   --cp-success-bg: rgb(61 107 87 / 12%);
-  --cp-warning: #9a5b2a;
-  --cp-warning-bg: rgb(154 91 42 / 12%);
+  /* #9a5b2a measured 4.28:1 as text against --cp-bg-subtle -- same
+     session-4 axe-core finding and fix pattern as --cp-accent above.
+     #855025 clears 4.5:1 against every background this token is used on. */
+  --cp-warning: #855025;
+  --cp-warning-bg: rgb(133 80 37 / 12%);
   --cp-danger: #a03e4c;
   --cp-danger-bg: rgb(160 62 76 / 10%);
   --cp-info: #2e5d8a;
@@ -316,7 +342,7 @@
 
   /* Heat ramp, light-mode values -- same interpolation as the dark :root
      block above, across THIS scheme's own success/warning/danger. */
-  --scale-0: #7c8398; /* = --cp-text-muted */
+  --scale-0: #556077; /* = --cp-text-muted */
   --scale-1: #546753; /* lerp(success, warning, 0.25) */
   --scale-2: #79613a; /* lerp(success, warning, 0.65) */
   --scale-3: #9a5b2a; /* = --cp-warning */

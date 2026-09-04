@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { ReactNode } from "react";
+import { InfoTooltip } from "./InfoTooltip";
 
 /**
  * A dense data table -- sticky header, tabular numerals on every numeric
@@ -26,6 +27,10 @@ export function Table<T>({
   columns: {
     key: string;
     header: string;
+    /** When set, an `InfoTooltip` renders beside the header text -- a
+     * separate element from the sort button, never nested inside it, so
+     * opening the tooltip never also toggles the column's sort. */
+    tooltip?: string;
     align?: "left" | "right";
     numeric?: boolean;
     sortable?: boolean;
@@ -48,31 +53,48 @@ export function Table<T>({
                 <th
                   key={col.key}
                   scope="col"
+                  // `aria-sort` belongs on the header cell itself (the only
+                  // element ARIA allows it on) -- a pre-existing bug this
+                  // session's own axe-core pass caught had it on the nested
+                  // `<button>` instead, an `aria-allowed-attr` violation.
+                  aria-sort={
+                    col.sortable
+                      ? isSorted
+                        ? sort!.direction === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                      : undefined
+                  }
                   className={`cp-label border-b border-border px-3 py-2 font-normal ${
                     col.align === "right" ? "text-right" : "text-left"
                   }`}
                 >
-                  {col.sortable && onSortChange ? (
-                    <button
-                      type="button"
-                      onClick={() => onSortChange(col.key)}
-                      className="inline-flex items-center gap-1 hover:text-text"
-                      aria-sort={
-                        isSorted ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
-                      }
-                    >
-                      {col.header}
-                      {isSorted ? (
-                        sort.direction === "asc" ? (
-                          <ArrowUp size={10} aria-hidden="true" />
-                        ) : (
-                          <ArrowDown size={10} aria-hidden="true" />
-                        )
-                      ) : null}
-                    </button>
-                  ) : (
-                    col.header
-                  )}
+                  <span
+                    className={`inline-flex items-center gap-1 ${col.align === "right" ? "flex-row-reverse" : ""}`}
+                  >
+                    {col.sortable && onSortChange ? (
+                      <button
+                        type="button"
+                        onClick={() => onSortChange(col.key)}
+                        className="inline-flex items-center gap-1 hover:text-text"
+                      >
+                        {col.header}
+                        {isSorted ? (
+                          sort.direction === "asc" ? (
+                            <ArrowUp size={10} aria-hidden="true" />
+                          ) : (
+                            <ArrowDown size={10} aria-hidden="true" />
+                          )
+                        ) : null}
+                      </button>
+                    ) : (
+                      col.header
+                    )}
+                    {col.tooltip ? (
+                      <InfoTooltip label={`What is ${col.header}?`} text={col.tooltip} />
+                    ) : null}
+                  </span>
                 </th>
               );
             })}

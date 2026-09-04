@@ -495,13 +495,11 @@ export const NOT_AI_WRAPPER_POINTS: string[] = [
   "The narrative layer is optional, off by default, and may only rephrase numbers that are already computed and already on screen — it never introduces a score, a rank, a file list, or a recommendation of its own.",
 ];
 
-export const WHAT_COMPASS_DOES_NOT_DO: string[] = [
-  "Renames are not tracked as continuity — a rename is recorded as the old path being deleted and a new one added, since git's own history doesn't reliably mark an arbitrary diff as a single rename event.",
-  "Java same-package references are not inferred — only explicit import statements are modeled, because guessing at same-package usage would require real type resolution Compass doesn't attempt.",
-  "Complexity is measured on the current checked-out tree only, never at a historical revision — sampling it historically would require checking the repository out at every point, which this product deliberately doesn't do.",
-  "The domain glossary extracts vocabulary, not definitions — Compass has no access to what a term actually means, only how often it appears and how widely it's used across the codebase.",
-  "Unreferenced-file detection is not dead-code detection — a file with no detected structural edge can still be reached through a dynamic import, reflection, or a build-config reference Compass doesn't parse.",
-];
+// The former, shorter WHAT_COMPASS_DOES_NOT_DO list (five items) was folded
+// into methods.ts's fuller LIMITATIONS list (ten-plus items, including this
+// rebuild's own deletions) when /methods merged into /how-it-works (D12) --
+// see HowItWorksPage.tsx's closing "What Compass deliberately does not do"
+// section, which now renders LIMITATIONS instead.
 
 export const HONESTY = {
   secretHistoryStillRecoverable:

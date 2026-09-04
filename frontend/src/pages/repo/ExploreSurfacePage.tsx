@@ -190,6 +190,7 @@ function FilesView() {
               query={city}
               loadingLabel="Loading file metrics…"
               emptyTitle="No files"
+              emptyMessage="This repository has no non-deleted files to show at HEAD."
               isEmpty={(data) => data.files.rows.length === 0}
             >
               {(cityData) => {
@@ -242,6 +243,7 @@ function FilesView() {
                           {
                             key: "complexity",
                             header: "Complexity",
+                            tooltip: TOOLTIPS.complexity,
                             numeric: true,
                             align: "right",
                             sortable: true,
@@ -250,6 +252,7 @@ function FilesView() {
                           {
                             key: "risk",
                             header: "Risk",
+                            tooltip: TOOLTIPS.riskScore,
                             numeric: true,
                             align: "right",
                             sortable: true,
@@ -258,6 +261,7 @@ function FilesView() {
                           {
                             key: "churn",
                             header: "Churn",
+                            tooltip: TOOLTIPS.churnWeighted,
                             numeric: true,
                             align: "right",
                             sortable: true,
@@ -274,6 +278,7 @@ function FilesView() {
                           {
                             key: "modified",
                             header: "Last modified",
+                            tooltip: TOOLTIPS.recency,
                             align: "right",
                             sortable: true,
                             render: (f) => new Date(f.lastModifiedAt * 1000).toLocaleDateString(),
@@ -775,6 +780,12 @@ function CouplingPairsCard() {
             No import only
           </label>
           <InfoTooltip label="What is coupling degree?" text={TOOLTIPS.couplingDegree} />
+          {granularity !== "file" ? (
+            <InfoTooltip
+              label={`What is ${granularity} coupling?`}
+              text={TOOLTIPS.moduleCoupling}
+            />
+          ) : null}
         </div>
       }
     >

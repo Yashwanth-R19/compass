@@ -39,11 +39,19 @@ from app.jobs.log_redaction import add_secret_values
 
 FailureKind = Literal["rate_limit", "auth", "server", "timeout"]
 
-# Priority order: try every Gemini key before falling to Groq. This is a
-# plain infra choice (not a locked/heuristic PRODUCT number in the
-# RULES.md sec 3 sense) -- Gemini is tried first only because it was the
-# first provider named in the session prompt; there is no formula here.
-PROVIDER_PRIORITY: tuple[str, ...] = ("gemini", "groq")
+# Priority order: try every Groq key before falling to Gemini. A plain
+# infra choice (not a locked/heuristic PRODUCT number, RULES.md sec 3), and
+# NOT the original order -- Gemini was tried first through session 12, on
+# no stronger basis than being named first in that session's prompt.
+# Session 4 flipped it after live-testing both against this app's actual
+# narrative prompt: `get_key()` returns the FIRST provider in this tuple
+# that has any non-cooling key, every single call, and tries every one of
+# that provider's keys (round-robin) before ever reaching the next provider
+# -- so with ~10 Gemini keys configured, Gemini being first meant a whole
+# generation's `MAX_KEY_ATTEMPTS` budget could be spent on a single flaky
+# provider before Groq (confirmed reliable once properly configured, see
+# providers.py) ever got a turn.
+PROVIDER_PRIORITY: tuple[str, ...] = ("groq", "gemini")
 
 # Cooldown policy (Part A):
 #   rate_limit -> exponential backoff from 60s, doubling per consecutive

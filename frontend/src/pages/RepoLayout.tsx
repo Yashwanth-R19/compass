@@ -336,13 +336,13 @@ function ArchivedBanner({ repoUrl }: { repoUrl: string }) {
 function StagePill({ stage }: { stage: StageOut }) {
   const summaryValue = stageSummaryValue(stage);
   return (
+    // This row only ever renders once `run_status !== "running"` (see the
+    // call site above) -- PipelineSequence's compact strip, with the app's
+    // one sanctioned looping animation, covers the in-progress case. No
+    // stage reaching this component can itself still be "running", so this
+    // pill never needs its own motion.
     <span
-      className={`inline-flex items-center gap-1.5 rounded-xs border px-2 py-0.5 text-xs font-medium ${STAGE_STATUS_CLASSES[stage.status]} ${
-        // The only permitted looping animation in the app (rule M2): the
-        // in-flight leg of the live analysis stage pill, only while a run
-        // is actually running.
-        stage.status === "running" ? "animate-pulse motion-reduce:animate-none" : ""
-      }`}
+      className={`inline-flex items-center gap-1.5 rounded-xs border px-2 py-0.5 text-xs font-medium ${STAGE_STATUS_CLASSES[stage.status]}`}
       title={stage.error ?? undefined}
     >
       {STAGE_LABEL[stage.name]}

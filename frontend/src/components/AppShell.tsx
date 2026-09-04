@@ -1,13 +1,69 @@
 import { Compass, LogOut } from "lucide-react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "motion/react";
+import { Link, NavLink, useLocation, useNavigate, useOutlet } from "react-router-dom";
 import { githubLoginUrl } from "../api/client";
 import { useLogout, useMe } from "../api/hooks";
+import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { reopenOnboardingPanel } from "../lib/onboardingPanelPref";
 import { TooltipProvider } from "./ui/Tooltip";
 import { ToastProvider } from "./ui/Toast";
 import { ThemeToggle } from "./ThemeToggle";
 import { GlossaryDialog } from "./GlossaryDialog";
 import { CommandPalette } from "./CommandPalette";
+
+/** The route branch a pathname belongs to, for `RouteTransition`'s key --
+ * every `/repos/:repoId/...` path collapses to `/repos/:repoId` regardless
+ * of which surface or `?view=` it's on, so switching tabs inside ONE repo
+ * never remounts `RepoLayout`. A first, broken version of this keyed on
+ * the raw pathname directly: since `/repos/<id>/overview` and
+ * `/repos/<id>/guide` are different strings, every single surface-tab click
+ * force-remounted RepoLayout (and every query it owns -- `useMe`, `useRepo`,
+ * `useRepoStatus`, `useRuns` all refired), which is both the exact
+ * "feel immediate" regression the comment below warns against AND was
+ * caught only by this session's own end-to-end pass, not by typecheck/lint/
+ * build. Navigating to a genuinely different repo (a different `:repoId`)
+ * still gets a fresh key, correctly. */
+function routeBranch(pathname: string): string {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments[0] === "repos" && segments[1]) return `/repos/${segments[1]}`;
+  return pathname;
+}
+
+/** The one route-change transition in the app (rebuild spec section 6.2's
+ * table, added session 4): a brief opacity + 8px settle, never a slide --
+ * keyed on the route branch (see `routeBranch` above), never the full
+ * location, so neither a query-param-only change (a surface's own
+ * `?view=`) nor a surface-to-surface tab switch within the same repo
+ * retriggers it. Scoped to this top-level Outlet only: RepoLayout's OWN
+ * nested Outlet does not get a second, independent instance of this --
+ * tab-to-tab switching inside a repo should feel immediate, not gain a
+ * fade on every click. */
+function RouteTransition() {
+  const location = useLocation();
+  const reducedMotion = usePrefersReducedMotion();
+  // `useOutlet()` resolves to a concrete element AT THIS RENDER, unlike a
+  // bare `<Outlet/>` (which re-reads the router's current match live) --
+  // capturing it here is what lets AnimatePresence keep rendering the
+  // OUTGOING page's real content while it exits, instead of the new page
+  // flashing into both the entering AND "exiting" copies at once.
+  const element = useOutlet();
+
+  if (reducedMotion) return element;
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={routeBranch(location.pathname)}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+      >
+        {element}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
 
 const PRIMARY_NAV = [
   { to: "/dashboard", label: "Dashboard" },
@@ -127,7 +183,7 @@ export function AppShell() {
           </header>
 
           <main className="mx-auto w-full min-w-0 max-w-[var(--layout-max-width)] flex-1 px-4 py-6 sm:px-6">
-            <Outlet />
+            <RouteTransition />
           </main>
         </div>
       </ToastProvider>

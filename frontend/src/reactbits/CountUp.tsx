@@ -8,7 +8,7 @@
 // component's `separator`/`direction` props, which nothing in this app
 // needs. Retinted is not applicable -- this component renders no colour of
 // its own, only a `className` the caller supplies.
-import { useInView, useMotionValue, useSpring } from "motion/react";
+import { animate, useInView, useMotionValue } from "motion/react";
 import { useCallback, useEffect, useRef } from "react";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 
@@ -37,10 +37,6 @@ export function CountUp({
   const reducedMotion = usePrefersReducedMotion();
 
   const motionValue = useMotionValue(from);
-  const springValue = useSpring(motionValue, {
-    damping: 20 + 40 / duration,
-    stiffness: 100 / duration,
-  });
 
   const format = useCallback(
     (value: number): string =>
@@ -63,15 +59,26 @@ export function CountUp({
       if (ref.current) ref.current.textContent = format(to);
       return;
     }
-    motionValue.set(to);
-  }, [inView, reducedMotion, to, motionValue, format]);
+    // A fixed-duration tween, not a physics spring -- a spring's time to
+    // VISUALLY settle (once its output is rounded/formatted, as every
+    // caller here does) grows with the distance travelled, so the same
+    // spring constants that read as a brisk ~1s for a small score take
+    // 5-8+ seconds to finish counting up a repository's real commit count
+    // (thousands). Found via this session's own end-to-end verification --
+    // the showcase cards' CountUp numbers were still visibly climbing long
+    // after the "one-shot, on enter-view" motion budget (rebuild spec
+    // section 6.2) implies they should have settled. `animate()` on the
+    // same MotionValue honors `duration` regardless of magnitude.
+    const controls = animate(motionValue, to, { duration, ease: "easeOut" });
+    return () => controls.stop();
+  }, [inView, reducedMotion, to, motionValue, duration, format]);
 
   useEffect(() => {
-    const unsubscribe = springValue.on("change", (latest) => {
+    const unsubscribe = motionValue.on("change", (latest) => {
       if (ref.current) ref.current.textContent = format(latest);
     });
     return unsubscribe;
-  }, [springValue, format]);
+  }, [motionValue, format]);
 
   return <span ref={ref} className={className} />;
 }

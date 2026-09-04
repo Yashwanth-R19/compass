@@ -122,7 +122,7 @@ def cmd_add(url: str, rank: int | None, *, confirm_no_live_secrets: bool) -> int
         result = pregenerate_narratives(run_id=repo.current_run_id, db=session, _admin=None)
         print(f"  generated: {len(result['generated'])}, skipped: {len(result['skipped'])}")
         for skipped in result["skipped"]:
-            print(f"    skipped {skipped['surface']} {skipped['subject']}: {skipped['reason']}")
+            print(f"    skipped {skipped['surface']}: {skipped['reason']}")
 
         return 0
     finally:

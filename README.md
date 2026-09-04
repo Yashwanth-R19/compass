@@ -1,186 +1,256 @@
 # Compass
 
-**Compass mines a Git repository's full commit history and computes deterministic, reproducible intelligence about it — hidden change-coupling, calibrated risk, architecture, and security — the kind of signal that only exists in *how the code was written over time*, not in the current file tree an AI assistant reads.**
+**Compass mines a Git repository's full commit history and computes deterministic, reproducible intelligence about it: hidden change-coupling, calibrated risk, architectural structure, and security findings.** It is a measurement tool, not a code assistant — every number it reports is computed from real commit data with a fixed formula, not generated or inferred by a language model.
 
-> *An AI chat tells you a plausible story about a repo. Compass computes the verifiable truth of it — who owns which file, what actually breaks when you touch something, which files secretly change together, and what was in the commits that got deleted — the same numbers every time.*
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white)
 
-![Hidden dependencies detected in psf/requests — 223 file pairs that change together in commit history with no import between them, ranked and evidence-linked](docs/hidden-dependencies.png)
+**Live demo:** [compass-seven-flame.vercel.app](https://compass-seven-flame.vercel.app/) — four repositories are pre-analysed and load instantly; submitting a new one runs on a free-tier host, so it may take a few minutes and the API can take up to a minute to wake from a cold start on the first request.
 
-*That screenshot is real, unedited output — `requests`, one of the most widely used libraries in the Python ecosystem, has 223 pairs of files that reliably change together with no import connecting them, and 50 detected dependency cycles. Every ranked pair links to the actual shared commits.*
-
-**[Live demo →](https://compass.example/repos/REPLACE_WITH_REAL_DEPLOYED_REPO_ID/overview)** — a pre-analysed, pinned repository. No waiting, no submission form. *(Placeholder — fill in once deployed; see [Deployment](#deployment) below. Four real showcase repositories are already analysed and pinned in the database — see [`SHOWCASE.md`](SHOWCASE.md).)*
-
----
-
-## Why not just ask an AI?
-
-This is the first question anyone asks, and it deserves a direct answer, not a defensive one.
-
-**Concede what AI is good at first:** Cursor, Copilot, and Claude can read your current code, explain a function, and suggest a refactor. Compass does not compete on that — narrating what code does from the code itself is a solved problem.
-
-**What an AI reading the current tree structurally cannot do:**
-
-1. **It's blind to history.** The most valuable signal — which files secretly depend on each other, where bugs cluster, what secrets were committed and then deleted — lives only in the commit history and is erased from the final tree. An LLM reading today's snapshot has no way to reconstruct any of it.
-2. **It's non-deterministic.** Ask it to rate a file's risk twice, get two different answers. A risk score has to be the same number every time to be defensible. Compass's analysis layer is pure functions over mined facts — deterministic by construction, not by discipline.
-3. **It has no reference corpus.** An LLM can't tell you "your coupling is in the 90th percentile of Python projects this size" — it has no calibrated population to compare against. Compass builds and ships one (~30 curated repositories, percentile breakpoints, [`corpus_repos.yaml`](backend/app/baseline/corpus_repos.yaml)).
-4. **Its context is bounded.** A real codebase doesn't fit in a context window, and retrieval over it is lossy. Compass computes over the *whole* graph — every file, every commit — with exact algorithms, not pattern-matching over a fragment.
-
-**A concrete worked example, not a hypothetical:** the screenshot above. Ask an AI assistant to review `requests` and it will read `sessions.py`, `models.py`, `adapters.py` and describe each one competently. It has no way to tell you that `connectionpool.py` and `six.py` have changed together in 5 of the same commits with zero import between them — that fact isn't *in* any file; it only exists in the relationship between commits over time. Compass mines it in seconds and ranks it above 222 other pairs like it.
-
-A second one: Compass's secret scanner diffs the *entire* commit history, not the current tree — a credential someone committed and then deleted in a later commit is gone from what an AI would read, but it's still fully recoverable from git history, and Compass finds it and tells you exactly which commit to rotate the key over.
-
-> *The deeper point: Compass isn't "AI that reads code." It's a measurement instrument. You'd never ask a chatbot to be your thermometer.*
+![Compass landing page](docs/screenshot-home.png)
 
 ---
 
-## What it actually does
+## Table of contents
 
-One shared engine layer, the same mined facts, aimed at two different moments — getting oriented in a codebase, and hardening one you already own. The UI presents these as eight flat repository surfaces (Overview, Map, Tour, People, Findings, Risk, Structure, Evolution) rather than two separate application modes, but the underlying capability split is still real:
+1. [Overview](#overview)
+2. [Motivation](#motivation)
+3. [Features](#features)
+4. [Screenshots](#screenshots)
+5. [System architecture](#system-architecture)
+6. [Core algorithms](#core-algorithms)
+7. [Calibration and benchmarking](#calibration-and-benchmarking)
+8. [Tech stack](#tech-stack)
+9. [Repository structure](#repository-structure)
+10. [Getting started](#getting-started)
+11. [Limitations](#limitations)
+12. [Author](#author)
 
-### Getting oriented — productive in hours, not weeks
+---
+
+## Overview
+
+Most tools that "explain" a codebase — including AI coding assistants — read the current state of the files on disk. That view is missing an entire dimension of information: the *history* of how the code was written, which is where questions like "which files secretly depend on each other," "who actually understands this file," and "where did this vulnerability come from" are actually answered.
+
+Compass clones a repository, streams its full commit log, and runs a fixed pipeline of graph and statistical algorithms over the result. It surfaces:
+
+- **Hidden dependencies** — pairs of files that change together in commit history with no import connecting them.
+- **Calibrated risk** — a hotspot score combining churn, complexity, coupling, and change frequency, benchmarked against a curated corpus of real repositories.
+- **Architecture** — dependency cycles, layering violations, and a computed subsystem partition (community detection, not folder names).
+- **Knowledge distribution** — who has effective ownership of each file (Degree-of-Authorship, a published formula) and the project's truck factor.
+- **Security findings** — credentials committed and later deleted from the working tree but still present in history, and known vulnerabilities in declared dependencies.
+
+Every score is deterministic: the same repository at the same commit produces the same output every time.
+
+## Motivation
+
+An AI assistant reading a repository's current file tree is genuinely useful for explaining what a function does or suggesting a refactor. It is structurally unable to do a few specific things, because the information simply is not present in a single snapshot of the code:
+
+1. **History is not in the tree.** Which files are coupled by how they're edited together, where defects have historically clustered, and what secrets were committed and later removed are all facts about *changes over time*, not about the current files.
+2. **A snapshot has no notion of confidence or determinism.** Asking a language model to score the same file's risk twice can produce two different answers. A score used to prioritize real engineering work needs to be reproducible.
+3. **A snapshot has no comparison population.** Saying a repository's coupling density is unusually high requires a distribution of *other* repositories to compare against, not just the one file tree in front of you.
+
+Compass exists to compute the specific set of facts that require history and a fixed formula, and to say so plainly where a claim is a measured fact versus a documented heuristic. It does not attempt to compete with AI assistants on code explanation, and it optionally uses an LLM for exactly one thing — rephrasing already-computed numbers into a sentence, on request, never as a source of the numbers themselves (see [Core algorithms](#core-algorithms)).
+
+## Features
+
+### Getting oriented in an unfamiliar codebase
 
 | Feature | What it answers |
 |---|---|
-| **Guided reading order** | Where do I even start reading this codebase? |
-| **Subsystem map** | What are the real architectural boundaries here (Louvain clustering over the coupling + dependency graph, not folder names)? |
-| **Who-do-I-ask / expertise** | Who actually understands this file (Degree-of-Authorship, cited literature formula)? |
-| **Truck factor** | How many people leaving would leave this codebase orphaned? |
-| **Domain glossary** | What does this project's own vocabulary mean, mined from real identifiers? |
-| **Blast radius** | If I change this file, what breaks — both what imports it *and* what historically changes with it but doesn't import it? |
-| **The 3D code city** | A literal Wettel & Lanza CodeCity — buildings are files, height is complexity, colour is risk/owner/age. |
-| **Evolution scrubber** | Watch the repository's shape, hotspots, and contributor mix change over 24 points in its history. |
-| **Repo passport** | A one-page computed summary: identity, cadence, team shape, health, and a heuristic onboarding-difficulty score. |
+| Guided reading order | Where should a new contributor start reading? |
+| Subsystem map | What are the actual architectural boundaries (computed via Louvain clustering over the coupling + dependency graph)? |
+| Expertise / who-to-ask | Who has effective ownership of a given file? |
+| Truck factor | How many people leaving would leave the codebase without an expert on some part of it? |
+| Domain glossary | What vocabulary does this codebase's own identifiers and structure define? |
+| Blast radius | If this file changes, what else is affected — both by imports and by historical co-change? |
+| File browser | Every file's LOC, complexity, risk, churn, commit count, and subsystem, sortable in one table. |
+| Evolution timeline | How the repository's shape, hotspots, and contributor mix changed over its history. |
+| Repository passport | A one-page computed summary: identity, cadence, team shape, and an onboarding-difficulty score. |
 
-### Hardening — measure and harden the repo you already own
+### Hardening a codebase already in production
 
 | Feature | What it answers |
 |---|---|
-| **Hidden dependencies** | Which files secretly change together with no import connecting them (the flagship — see above)? |
-| **Architecture** | Dependency cycles, layering violations, unreferenced files — honestly caveated, never presented as confirmed dead code. |
-| **Calibrated risk** | Which files are landmines — `0.60·norm(churn·complexity) + 0.25·norm(max coupling) + 0.15·norm(commit_count)` — with an *independent* confidence score, never folded into the number itself. |
-| **Secrets in history** | Credentials committed and later deleted — still fully recoverable from git history, which is exactly why they still need rotating. |
-| **Dependency vulnerabilities** | Declared dependencies (`requirements.txt`/`pyproject.toml`/`package-lock.json`/`pom.xml`) checked against OSV.dev. |
-| **Commit hygiene** | Oversized commits, fixup-churn clusters, and a heuristic risky-commit detector — evidence-based, deliberately excludes folklore like "late-night commits are risky." |
-| **Test maintenance gaps** | Files whose mapped tests haven't changed alongside them in a long time — maintenance signal, never a coverage claim. |
-| **Benchmark** | This repo's metrics as percentiles against the curated corpus, with the exact repository list linked. |
-| **A single ranked findings stream** | Every finding across every category above, ranked, confidence-scored, evidence-linked — never a wall of warnings. |
+| Hidden dependencies | Which files change together with no import connecting them? |
+| Architecture findings | Dependency cycles, layering violations, and unreferenced files (caveated, never presented as confirmed dead code). |
+| Calibrated risk | Which files are the highest-risk to change, and how confident is that score? |
+| Secrets in history | Credentials committed and later removed — still recoverable from git history, and still in need of rotation. |
+| Dependency vulnerabilities | Declared dependencies checked against the OSV.dev advisory database. |
+| Commit hygiene | Oversized commits, fixup-churn clusters, and a heuristic risky-commit detector. |
+| Benchmark | This repository's metrics as percentiles against a curated corpus of comparable projects. |
+| Ranked findings stream | Every finding across every category, ranked by severity and confidence, evidence-linked. |
 
-Every finding in both modes is ranked, confidence-scored, and links to the specific commits that produced it. That's a structural discipline (one `findings` table, one ranking pass), not a style choice — it's the direct answer to the alert fatigue that kills every other tool in this space.
+## Screenshots
 
----
+**Repository passport** — a one-page computed summary of identity, health, and onboarding difficulty.
 
-## Architecture
+![Repository overview](docs/screenshot-overview.png)
+
+**Hidden dependencies** — file pairs that reliably change together in commit history with no import connecting them.
+
+![Hidden dependency evidence](docs/hidden-dependencies.png)
+
+**Ranked findings** — every issue detected across every category, in one severity- and confidence-ranked stream.
+
+![Findings stream](docs/screenshot-findings.png)
+
+**Evolution timeline** — repository shape, churn, and contributor activity sampled at 24 points across its full history, on a fixed scale.
+
+![Evolution timeline](docs/screenshot-evolution.png)
+
+## System architecture
+
+### Analysis pipeline
+
+Every submitted repository moves through a fixed, ordered sequence of stages. The first five require the cloned repository ("Facts"); the remaining eight are pure database computation with no filesystem or network access ("Insight"), which is what makes re-running the analysis on a repository cheap once the facts are already stored.
 
 ```mermaid
 flowchart TB
     subgraph submit["POST /repos"]
-        A[Repo URL] --> B[SSRF / size guardrails]
+        A[Repository URL] --> B[SSRF and size guardrails]
     end
 
-    subgraph facts["FACT stages — need the clone"]
-        C[Clone] --> D["Mine<br/>(streaming git log --numstat)"]
-        D --> E["Structure<br/>(tree-sitter, one plugin per language)"]
+    subgraph facts["Fact stages — require the clone"]
+        C[Clone] --> D["Mine history<br/>(streaming git log --numstat)"]
+        D --> E["Parse structure<br/>(tree-sitter, one plugin per language)"]
         E --> F[Persist facts]
-        F --> G["Secrets<br/>(full-history diff scan)"]
+        F --> G["Scan secrets<br/>(full-history diff scan)"]
     end
 
-    subgraph insight["INSIGHT stages — pure DB, no filesystem"]
+    subgraph insight["Insight stages — pure database computation"]
         H[Coupling] --> I[Subsystems] --> J[Architecture] --> K[Risk]
-        K --> L[Knowledge] --> M[Onboarding] --> N["Security<br/>(OSV.dev)"] --> O[Findings rank]
+        K --> L[Knowledge] --> M[Onboarding] --> N["Security<br/>(OSV.dev lookup)"] --> O[Findings ranking]
     end
 
     B --> facts
     facts -->|clone deleted here| insight
-    insight --> P[(Postgres — Neon)]
-    P --> Q[FastAPI REST]
-    Q --> R[React frontend]
-
-    S[BaselineProvider seam] -.injected into.-> K
-    S -.injected into.-> M
-
-    W["GitHub Actions worker<br/>(repository_dispatch: repo_id, run_id only)"] -.heavy mining, when deployed.-> facts
+    insight --> P[(PostgreSQL)]
 ```
 
-**The Facts/Insight split is the load-bearing architectural decision.** Facts (commits, files, dependencies, raw secret hits) require the clone and are keyed by `repo_id` — replaced wholesale only when the remote `head_sha` actually changes, which is what makes re-analysing an unchanged repository nearly instant. Insight (coupling, risk, findings, health, ...) requires only the database and is keyed by `analysis_run_id` — a re-analysis creates a *new* run rather than overwriting the old one, which is what makes run-vs-run compare, time-travel, and LRU storage eviction all fall out of the same design instead of needing separate machinery.
+The split matters for correctness, not just performance: Facts are keyed by repository and replaced wholesale only when the remote commit hash actually changes; Insight is keyed by an individual analysis run, so re-analysing a repository creates a new, independently queryable run rather than overwriting the last one. That is what makes run-to-run comparison possible without any extra bookkeeping.
 
-**Every insight stage is a pure function over already-mined facts** — no git, no network, no filesystem, with exactly one documented exception (the security stage's OSV.dev lookup, which is `optional=True` so a third-party outage fails only that one stage, never the whole run). That purity is the literal code-level embodiment of "why not AI": determinism by construction, not by convention.
+### Deployment topology
 
-**The GitHub Actions worker is the whole point of the deploy shape.** Heavy mining is dispatched via `repository_dispatch` carrying only `repo_id`/`run_id` — no clone URL, no token, no credential of any kind — so the free web tier stays featherweight and survives cold starts, and a GitHub Actions outage falls back to running inline rather than taking Compass down.
-
----
-
-## Explainability
-
-Every number Compass shows is traceable to its own derivation, in the
-product itself, not just in this document. Three small, public, read-only
-API endpoints back that:
-
-- **`GET /meta/formulas`** — every formula's real weights and thresholds,
-  read live from the engine source (never re-typed), each tagged `locked`,
-  `heuristic`, or `cited`.
-- **`GET /meta/pipeline`** — the real thirteen-stage pipeline, in real
-  execution order, read directly from the code that drives it.
-- **`GET /meta/worked-example`** — one real, pinned showcase repository's
-  actual per-stage output, so every claim on the pipeline walkthrough is
-  independently checkable against a live analysis.
-
-**[`/how-it-works`](https://compass.example/how-it-works)** is a
-stage-by-stage walkthrough of the real pipeline built on the first two;
-**[`/methods`](https://compass.example/methods)** is the formulas,
-calibration, and limitations page built on the third — including the
-limitations that look bad, since a limitations list with nothing
-inconvenient in it isn't one. *(Replace with the real deployed URLs once
-hosted — same placeholder convention as the live-demo link above.)*
-
----
-
-## The locked formulas
-
-Two numbers in this codebase are locked — never re-weighted, never varied per module, changed in exactly zero of the sixteen build sessions:
-
-```
-coupling_degree(A, B) = shared_revs(A, B) / min(revs(A), revs(B))
+```mermaid
+flowchart LR
+    U([Browser]) -->|HTTPS| FE["React SPA<br/>(Vercel)"]
+    FE -->|REST, polled during analysis| API["FastAPI backend<br/>(Render)"]
+    API <-->|SQLAlchemy| DB[(PostgreSQL<br/>Neon)]
+    API -->|repository_dispatch:<br/>repo_id, run_id only| GH["GitHub Actions<br/>mining worker"]
+    GH -->|clones and mines| SRC([Target Git repository])
+    GH -->|writes results| DB
+    API -.optional lookup.-> OSV[OSV.dev]
+    API -.on-demand only.-> LLM["Gemini / Groq<br/>(narrative phrasing)"]
 ```
 
-Dividing by the **less**-active file (never max, average, or one side alone) is what surfaces the case that actually matters: a rarely-touched file that is nonetheless *almost always* changed alongside a much busier one. That asymmetry is the entire signal — dividing by the busier file's count would crush the ratio and hide exactly the pattern this formula exists to catch.
+Heavy mining work is dispatched to a GitHub Actions worker carrying only two identifiers — no clone URL, no credential of any kind — which keeps the always-on web service lightweight enough to run on a free tier. If the dispatch fails for any reason, the job falls back to running inline rather than the analysis silently failing.
+
+## Core algorithms
+
+Two formulas in this codebase are locked: fixed at design time and never re-weighted or varied per module.
+
+**Change coupling** — the probability that two files change together, relative to how active the less-active one is:
 
 ```
-risk_score = 0.60 · norm(churn_weighted · complexity)
-           + 0.25 · norm(max coupling_degree across that file's pairs)
+coupling_degree(A, B) = shared_revisions(A, B) / min(revisions(A), revisions(B))
+```
+
+A pair qualifies as a finding only above a minimum shared-revision count and coupling degree, with a documented fallback threshold for repositories too small to meet the normal floor.
+
+**Calibrated risk** — a weighted composite, each term independently normalized against a reference distribution:
+
+```
+risk_score = 0.60 · norm(churn_weighted × complexity)
+           + 0.25 · norm(max_coupling_degree)
            + 0.15 · norm(commit_count)
-
-risk_confidence = min(1.0, commit_count / 10)   # independent of risk_score
 ```
 
-`risk_confidence` is never multiplied into or visually merged with `risk_score` — a file can be high-risk *and* low-confidence at once, and the UI always shows both, never one number that quietly averages the two. `norm()` is never hardcoded; it comes from an injected `BaselineProvider`, which is what lets the corpus calibration below plug in with zero change to either formula.
+`risk_confidence` is reported as a separate, independent value — a file can be high-risk and low-confidence at the same time, and the two are never folded into a single number.
 
-Everything else this project computes (health score weights, onboarding-difficulty score, subsystem edge weights, hygiene scoring, entry-point confidences) is explicitly labelled **heuristic** — a named, documented, tunable constant, never presented with the same certainty as the two formulas above.
+A third computation, **Degree of Authorship**, follows a published formula (Fernandez-Ramil, Izquierdo-Cortazar & Mens; as used in Avelino et al.'s truck-factor estimation method) rather than an invented one, used to determine who has effective expertise over a given file.
 
----
+Every other scored feature (onboarding difficulty, commit hygiene, glossary ranking) is explicitly documented as a heuristic rather than a locked or cited formula, and the distinction is surfaced in the product itself, not just in this document.
 
-## Calibration — what the corpus honestly is
+## Calibration and benchmarking
 
-Risk and health scores are normalized against a **percentile corpus**: ~30 hand-curated, real repositories ([`corpus_repos.yaml`](backend/app/baseline/corpus_repos.yaml), checked into the repository so every percentile is traceable to a named list, not a black box), run through the identical analysis pipeline every submitted repository goes through, reduced to plain percentile breakpoints (p10/p25/p50/p75/p90) per `(metric, language, size_bucket)` cell.
+Risk and difficulty scores are normalized against a percentile corpus of roughly thirty hand-curated, real repositories (listed in [`backend/app/baseline/corpus_repos.yaml`](backend/app/baseline/corpus_repos.yaml)), run through the identical analysis pipeline every submitted repository goes through and reduced to percentile breakpoints per metric, language, and size bucket.
 
-**What this is not:** a trained classifier, a defect-prediction model, SZZ-derived labels, or transfer learning. None of those exist in this codebase. "Your complexity is in the 80th percentile of Python repositories this size" needs a distribution to compare against, not a model — and a distribution is exactly, and only, what's built here. A cell backed by fewer than 5 contributing repositories widens the comparison (broader language, then broader size bucket) or falls back to an uncalibrated per-repo heuristic, rather than presenting a three-repository answer with the confidence of thirty.
+This is not a trained model, a defect classifier, or transfer learning — it is a measured distribution, openly built from a named, inspectable list of repositories. A metric backed by too few contributing repositories widens its comparison population (broader language, then broader size bucket) rather than presenting a low-sample result with false confidence.
 
-`COMPASS_BASELINE_PROVIDER` defaults to `corpus` — the human running this project compared risk rankings under both the heuristic and corpus providers by hand and judged the corpus genuinely better calibrated, so it's the deployed default, not just an available option.
+## Tech stack
 
----
+| Layer | Choice | Rationale |
+|---|---|---|
+| Backend | Python 3.11, FastAPI | The analysis layer (git mining, graph algorithms, calibration) is Python-native throughout. |
+| Git mining | Streaming `git log --numstat` | A single subprocess read in fixed-size chunks — never buffers a large repository's full history into memory. |
+| Multi-language parsing | tree-sitter | One grammar per language behind a single plugin interface (Python, JavaScript/TypeScript, Java). |
+| Complexity analysis | lizard | Multi-language cyclomatic complexity with no compilation step. |
+| Graph algorithms | NetworkX | Dependency graph construction, cycle detection, Louvain community detection, PageRank. |
+| Secret detection | A trimmed, self-written gitleaks-pattern port | Scans full commit history diffs, not just the current working tree. |
+| Vulnerability data | OSV.dev | Free, keyless batch API for dependency advisory lookups. |
+| Database | PostgreSQL (Neon), SQLAlchemy, Alembic | Managed Postgres with clean, reversible schema migrations. |
+| Background jobs | FastAPI `BackgroundTasks` locally, GitHub Actions worker in production | The same job function runs in both transports — no duplicated pipeline logic. |
+| Authentication | GitHub OAuth | Enables private-repository analysis and per-user rate limiting. |
+| Frontend | React 19, TypeScript, Vite | A single-page app that polls and progressively renders results as each analysis stage completes. |
+| Charts | Recharts | The only visualization library in the frontend — no canvas-based or WebGL rendering. |
+| Deployment | Render (API), Vercel (frontend), Neon (database), GitHub Actions (worker) | Runs entirely on free tiers. |
 
-## Local setup
+## Repository structure
 
-Requires a Postgres database (a free [Neon](https://neon.tech) project works well) and, for the backend test suite, Docker running locally.
+```
+compass/
+├── backend/
+│   ├── app/
+│   │   ├── analysis/     # pure computation helpers shared across engines (blast radius, compare, staleness)
+│   │   ├── api/          # FastAPI routers — one module per resource area
+│   │   ├── auth/         # GitHub OAuth, session handling, token encryption
+│   │   ├── baseline/     # the corpus-calibration provider seam and its build/seed scripts
+│   │   ├── db/           # SQLAlchemy models, migrations support, path interning
+│   │   ├── engines/      # the analysis engines — coupling, risk, architecture, security, and more
+│   │   ├── ingestion/    # cloning, git-log mining, manifest and dependency extraction
+│   │   ├── jobs/         # the ingestion pipeline runner, stage tracking, the reaper, eviction
+│   │   ├── languages/    # tree-sitter based per-language import/symbol extraction
+│   │   ├── narrative/    # the optional, on-demand LLM phrasing layer
+│   │   ├── schemas/      # Pydantic request/response models
+│   │   ├── scripts/      # operational console scripts (showcase pinning, corpus building)
+│   │   └── security/     # secret scanning rules and the OSV.dev client
+│   ├── alembic/          # database migrations
+│   └── tests/
+├── frontend/
+│   └── src/
+│       ├── api/          # typed API client and React Query hooks
+│       ├── components/   # shared UI components
+│       ├── content/      # copy and explanatory text, kept out of components
+│       ├── hooks/        # non-API React hooks
+│       ├── lib/          # formatting, color, and other pure helpers
+│       ├── pages/        # route-level page components, including the five repository surfaces
+│       ├── reactbits/    # hand-placed, retinted visual components
+│       ├── styles/       # design tokens
+│       └── theme/        # light/dark theme provider
+└── docs/                 # README assets
+```
+
+## Getting started
+
+Requires a PostgreSQL database (a free [Neon](https://neon.tech) project works) and Docker running locally if you want to run the backend test suite.
+
+**Backend:**
 
 ```bash
 cd backend
 python -m venv .venv
-.venv/Scripts/activate            # Windows; source .venv/bin/activate on Unix
+.venv/Scripts/activate            # Windows; use `source .venv/bin/activate` on macOS/Linux
 pip install -e ".[dev]"
 cp .env.example .env              # fill in DATABASE_URL
 alembic upgrade head
 uvicorn app.main:app --reload     # http://localhost:8000
 ```
+
+**Frontend:**
 
 ```bash
 cd frontend
@@ -189,64 +259,29 @@ cp .env.example .env              # VITE_API_URL, defaults to http://localhost:8
 npm run dev                       # http://localhost:5173
 ```
 
-Submit a `github.com`/`gitlab.com` repository URL on the home page — the page navigates immediately and polls the ingestion job, so you see stage pills fill in progressively rather than staring at a spinner until the whole pipeline finishes.
+Submit a `github.com` or `gitlab.com` repository URL on the home page. The page navigates immediately and polls the analysis job, so each pipeline stage's result appears as soon as it finishes rather than all at once at the end.
+
+**Running the test suites:**
 
 ```bash
-cd backend && pytest -q -rs                                    # full backend suite
+cd backend && pytest -q -rs
 cd frontend && npm run typecheck && npm run lint && npx vitest run
 ```
 
-See [`backend/CLAUDE.md`](backend/CLAUDE.md) for the full command reference (linting, one-file test invocation, how the ephemeral test database works) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contribution workflow.
+## Limitations
 
-## Self-hosting a showcase
+A limitations section is here because every one of these is a real, known trade-off worth stating plainly, not because the project is incomplete.
 
-```bash
-cd backend
-python -m app.scripts.showcase add https://github.com/owner/name --rank 1
-python -m app.scripts.showcase list
-python -m app.scripts.showcase remove https://github.com/owner/name
-```
+- **Change coupling is weak on a single repository with sparse history.** A directory/subsystem-level coupling computation mitigates this somewhat, but a handful of commits is still honestly low-confidence at any granularity.
+- **Java same-package references are not captured.** Java frequently references another class in the same package with no explicit `import`; only explicit imports are resolved.
+- **JavaScript/TypeScript dynamic imports need a literal string argument.** A dynamically computed import target is invisible to static analysis.
+- **Dependency scanning covers four manifest formats**: `requirements.txt`, `pyproject.toml`, `package-lock.json`, and `pom.xml`. Anything else reports an explicit "no supported manifest found" rather than a partial scan.
+- **File renames are not tracked as continuity.** A rename is recorded as a deletion plus an addition, which can understate a file's true churn history across the rename.
+- **The secret-detection rule set is a deliberately trimmed subset** of common credential patterns, and the full-history scan is budget-guarded by size and time — a repository large enough to hit either limit gets an explicit "scanned the most recent N commits" result, never a silent partial one presented as complete.
+- **Subsystem discovery is a computed partition, not verified ground truth.** It is deterministic and reproducible, but it is a community-detection heuristic, not a human-confirmed architectural boundary.
+- **Free-tier hosting has real latency cost.** The API cold-starts after a period of inactivity, and the database has a storage cap enforced by an automatic LRU eviction policy.
+- **This is not a replacement for SAST/DAST tooling.** Secret-in-history detection and basic dependency scanning are useful, but Compass does not claim to be a complete security product.
 
-`add` runs the full real pipeline, then pins the repository (publicly readable regardless of authentication, exempt from storage eviction) and pre-generates every narrative surface if LLM keys are configured — see [`SHOWCASE.md`](SHOWCASE.md) for the four repositories already pinned and, importantly, exactly how each one's secret-scan output was reviewed by hand before pinning.
+## Author
 
-## Deployment
-
-Render (API, free tier) + Vercel (frontend) + Neon (Postgres) + a GitHub Actions worker for heavy mining — the complete, step-by-step guide with every environment variable is [`DEPLOY.md`](DEPLOY.md). The short version: it costs nothing to run, and it's built to survive Render's free-tier cold starts (a keep-alive ping) and stay under Neon's 0.5 GB cap indefinitely (LRU storage eviction, `backend/app/jobs/eviction.py` — never touches a showcase repository or a repo's current run).
-
----
-
-## Honest limitations
-
-A limitations section is a credibility signal, not a weakness — every one of these is a real, known trade-off, not something to discover the hard way.
-
-- **Change coupling is genuinely weak on a single, sparse-history repository.** Module-level coupling (coarser directory/subsystem granularity, same locked formula) substantially mitigates this, and portfolio pooling helps further, but a 3-commit repo is still honestly low-confidence at any granularity.
-- **Java same-package references aren't captured.** Java code frequently references another class in the same package with no explicit `import` — the Java analyzer only resolves explicit imports, the same "a missed edge is fine, a fabricated one isn't" conservatism as every other language analyzer.
-- **JS/TS dynamic imports need a literal string argument.** `import(`./${name}`)` or `import(someVariable)` compute their target at runtime and are invisible to the structural graph — a real gap for route-based code-splitting, deliberately not guessed at.
-- **Dependency scanning covers exactly four manifest formats**: `requirements.txt`, `pyproject.toml`'s `[project.dependencies]`, `package-lock.json`, and `pom.xml`'s top-level dependencies. Anything else gets an honest "no supported manifest found," never a partial or guessed scan.
-- **File renames aren't tracked as continuity.** A rename is old-path-deleted + new-path-added on the next re-analysis, which can understate a file's true churn/coupling history across the rename — a documented simplification, not a bug to report.
-- **The secret-detection rule set is a deliberately trimmed ~25-rule port of gitleaks**, not its full 150+ rule set, and the full-history scan is budget-guarded (2 GB / 60 seconds) — a repository large enough to hit either cap gets an honest "scanned the most recent N commits," never a silent partial result presented as complete.
-- **Subsystem discovery is a computed partition, not verified ground truth.** Louvain clustering over the coupling + dependency graph is deterministic and reproducible, but it's a heuristic community detection, not a confirmed architectural boundary a human signed off on.
-- **Free-tier hosting has real UX cost.** Render's free tier cold-starts after 15 minutes idle (mitigated by a keep-alive ping, not eliminated) and Neon's 0.5 GB cap is real (mitigated by LRU eviction, not infinite).
-- **This is not a SAST/DAST replacement.** Secrets-in-history and basic dependency scanning are real and useful; Compass doesn't claim to be a full security product.
-
-## Tech stack
-
-| Piece | Choice | Why |
-|---|---|---|
-| Backend | Python 3.11 + FastAPI | The whole value layer (git mining, graph algorithms, calibration) is Python-native |
-| Git mining | Streaming `git log --numstat` | One subprocess, fixed-size chunks — never buffers a large repo's full history into memory |
-| Multi-language parsing | tree-sitter | One framework, one grammar per language, behind a single `LanguageAnalyzer` plugin seam |
-| Complexity | lizard | Multi-language cyclomatic complexity with no compilation step |
-| Graphs | NetworkX | Dependency graph, coupling network, blast-radius traversal, cycle/layer detection, Louvain clustering |
-| Secrets | A trimmed gitleaks-pattern port over full-history diffs | Catches secrets in *deleted* history, not just the current tree |
-| Vulnerabilities | OSV.dev | Free, keyless batch API — no key management burden for a self-hosted product |
-| DB | Postgres via Neon + SQLAlchemy + Alembic | Free, persistent, and clean forward/backward migrations |
-| Jobs | FastAPI `BackgroundTasks` locally → GitHub Actions worker when deployed | Same transport-agnostic `run_ingestion_job` function either way — no duplicated pipeline logic |
-| Auth | GitHub OAuth | Private-repo analysis, portfolio view, identity-scoped rate limiting |
-| Frontend | React + TypeScript + Vite | The rich-visualization requirement (graphs, 3D, charts) forces a real SPA |
-| Visualization | react-force-graph-2d (graphs) · react-three-fiber (3D code city) · Recharts (charts) | Heavy rendering runs client-side — free compute, capped node counts so it never freezes a large repo's tab |
-| Deploy | Render + Vercel + Neon, no paid services | Free-tier-survivable; showcase mode gives an instant public demo with zero live mining |
-
----
-
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for a deeper technical walkthrough (the full stage-by-stage pipeline, the engine contract, the Facts/Insight schema), [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to work on this codebase, and [`master-context.md`](master-context.md) *(gitignored, local-only)* for the complete design rationale this README summarizes.
+Built by [Yashwanth R](https://github.com/Yashwanth-R19) as an independent project.

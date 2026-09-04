@@ -50,6 +50,7 @@ import { ScoreExplainer } from "../../components/ScoreExplainer";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { StageGate } from "../../components/StageGate";
 import { HONESTY, TOOLTIPS } from "../../content/explainability";
+import type { TooltipKey } from "../../content/explainability";
 import { CORPUS_REPO_LIST_URL } from "../../content/methods";
 import { FINDING_CATEGORY_COPY, HYGIENE_KIND_COPY, HYGIENE_KIND_LABEL } from "../../lib/copy";
 import { confidenceLabel, SEVERITY_LABEL, formatPercent, formatScore } from "../../lib/format";
@@ -82,6 +83,11 @@ const HYGIENE_KIND_COLOR: Record<HygieneEventKind, string> = {
   oversized: CHROME.inkMuted,
   fixup_churn: SEVERITY_COLOR.med,
   risky_commit: SEVERITY_COLOR.high,
+};
+const HYGIENE_KIND_TOOLTIP: Record<HygieneEventKind, TooltipKey> = {
+  oversized: "oversizedCommit",
+  fixup_churn: "fixupChurn",
+  risky_commit: "riskyCommit",
 };
 
 function secretRowId(hit: SecretHitOut): string {
@@ -402,8 +408,11 @@ function SecretsSection({
             <Card
               title="Still present in the current codebase"
               action={
-                <span className="cp-label text-text-muted">
-                  {stillInHead.length} credential{stillInHead.length === 1 ? "" : "s"}
+                <span className="flex items-center gap-1.5">
+                  <span className="cp-label text-text-muted">
+                    {stillInHead.length} credential{stillInHead.length === 1 ? "" : "s"}
+                  </span>
+                  <InfoTooltip label="How is this determined?" text={TOOLTIPS.stillInHead} />
                 </span>
               }
             >
@@ -431,8 +440,11 @@ function SecretRow({ hit, repoUrl }: { hit: SecretHitOut; repoUrl: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-text">{hit.description}</span>
         {hit.redacted_preview ? (
-          <span className="cp-stat rounded-xs bg-bg-inset px-1.5 py-0.5 text-xs text-text-muted">
-            {hit.redacted_preview}
+          <span className="flex items-center gap-1">
+            <span className="cp-stat rounded-xs bg-bg-inset px-1.5 py-0.5 text-xs text-text-muted">
+              {hit.redacted_preview}
+            </span>
+            <InfoTooltip label="Why is only a preview shown?" text={TOOLTIPS.secretFingerprint} />
           </span>
         ) : null}
       </div>
@@ -554,6 +566,9 @@ function VulnerabilitiesSection({
     <Card
       title="Dependency vulnerabilities"
       eyebrow={`${vulnerabilities.length} match${vulnerabilities.length === 1 ? "" : "es"} against OSV.dev`}
+      action={
+        <InfoTooltip label="How is severity determined?" text={TOOLTIPS.vulnerabilitySeverity} />
+      }
     >
       <div className="flex flex-col gap-4">
         {VULN_SEVERITY_ORDER.filter((s) => bySeverity[s]?.length).map((sev) => (
@@ -645,6 +660,7 @@ function HygieneSection({ repoId, share }: { repoId: string; share?: string }) {
       query={hygiene}
       loadingLabel="Loading commit hygiene…"
       emptyTitle="No hygiene signal yet"
+      emptyMessage="No oversized commits, fixup clusters, or risky commits were detected in this repository's history."
       isEmpty={(data) => Object.values(data.events_by_kind).every((v) => !v || v.length === 0)}
     >
       {(data) => (
@@ -742,6 +758,22 @@ function EventTimeline({
             ))}
           </ScatterChart>
         </ResponsiveContainer>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        {HYGIENE_KIND_ORDER.map((kind) => (
+          <span key={kind} className="flex items-center gap-1 text-xs text-text-muted">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: HYGIENE_KIND_COLOR[kind] }}
+              aria-hidden="true"
+            />
+            {HYGIENE_KIND_LABEL[kind]()}
+            <InfoTooltip
+              label={`What is a ${HYGIENE_KIND_LABEL[kind]().toLowerCase()}?`}
+              text={TOOLTIPS[HYGIENE_KIND_TOOLTIP[kind]]}
+            />
+          </span>
+        ))}
       </div>
       <HonestyNote
         variant="scope-limitation"
@@ -1159,8 +1191,9 @@ function MetricBar({ metric }: { metric: BenchmarkResponse["metrics"][number] })
         <span className="flex items-center gap-2 tabular-nums text-text-muted">
           {formatScore(metric.value, 2)} · p{pct}
           {metric.widened ? (
-            <span title={TOOLTIPS.widenedComparison}>
+            <span className="flex items-center gap-1">
               <Badge tone="med">widened</Badge>
+              <InfoTooltip label="What does widened mean?" text={TOOLTIPS.widenedComparison} />
             </span>
           ) : null}
           <span>
