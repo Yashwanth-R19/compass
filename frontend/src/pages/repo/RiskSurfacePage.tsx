@@ -11,44 +11,44 @@ import {
   ZAxis,
 } from "recharts";
 import { useBenchmark, useRisk } from "../../api/hooks";
-import type {
-  BenchmarkResponse,
-  RiskFileOut,
-  RiskResponse,
-  TestGapClassification,
-} from "../../api/types";
+import type { BenchmarkResponse, RiskFileOut, RiskResponse } from "../../api/types";
 import { Badge } from "../../components/ui/Badge";
 import { Card } from "../../components/ui/Card";
 import { ConfidenceMeter } from "../../components/ConfidenceMeter";
 import { HonestyNote } from "../../components/HonestyNote";
 import { InfoTooltip } from "../../components/ui/InfoTooltip";
 import { MetricRow } from "../../components/MetricRow";
-import { NarrativeBlock } from "../../components/NarrativeBlock";
 import { ScoreExplainer } from "../../components/ScoreExplainer";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { StageGate } from "../../components/StageGate";
 import { HONESTY, TOOLTIPS } from "../../content/explainability";
 import { CORPUS_REPO_LIST_URL } from "../../content/methods";
-import { TEST_CLASSIFICATION_COPY } from "../../lib/copy";
 import { confidenceLabel, formatPercent, formatScore } from "../../lib/format";
 import { CONFIDENCE_COLOR, rechartsTheme } from "../../lib/chartTheme";
 import type { RepoOutletContext } from "../RepoLayout";
 
-type RiskTab = "hotspots" | "benchmark";
+export type RiskTab = "hotspots" | "benchmark";
 
 function riskRowId(path: string): string {
   return `risk-row-${encodeURIComponent(path)}`;
 }
 
 /**
- * `/repos/:id/risk` (UI rebuild session 4, Part B) -- merges the former
- * Risk and Benchmark pages behind `?tab=hotspots|benchmark`.
+ * SCAFFOLDING -- mounted by `FindingsSurfacePage` at `findings?view=risk` /
+ * `findings?view=benchmark` (rebuild spec section 4.4: Risk/Benchmark are
+ * views inside Findings now, not their own surface). `initialTab` lets the
+ * caller pick which of its own two tabs to open on, since the discriminator
+ * arriving from the route is `?view=`, not this component's own `?tab=`.
+ * Internally still merges the former Risk and Benchmark pages behind
+ * `?tab=hotspots|benchmark` -- session 3 folds this fully into Findings.
  */
-export function RiskSurfacePage() {
+export function RiskSurfacePage({ initialTab = "hotspots" }: { initialTab?: RiskTab } = {}) {
   const { repo, share } = useOutletContext<RepoOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<RiskTab>(
-    searchParams.get("tab") === "benchmark" ? "benchmark" : "hotspots",
+    searchParams.get("tab") === "benchmark" || searchParams.get("tab") === "hotspots"
+      ? (searchParams.get("tab") as RiskTab)
+      : initialTab,
   );
 
   useEffect(() => {
@@ -316,8 +316,6 @@ function RiskEvidence({
   repoId: string;
   calibration: string;
 }) {
-  const classification = file.test_classification as TestGapClassification | null;
-
   return (
     <div className="flex flex-col gap-3 border-l-2 border-border-strong bg-bg-inset p-3">
       <MetricRow
@@ -360,19 +358,6 @@ function RiskEvidence({
             value: String(file.revert_cycle_count ?? "—"),
             tooltip: "revertCycleCount",
           },
-          {
-            label: "Test classification",
-            value:
-              classification && TEST_CLASSIFICATION_COPY[classification]
-                ? TEST_CLASSIFICATION_COPY[classification]()
-                : "not yet computed",
-            tooltip: "testClassification",
-          },
-          {
-            label: "Test co-change ratio",
-            value: file.test_cochange_ratio != null ? formatPercent(file.test_cochange_ratio) : "—",
-            tooltip: "testCochangeRatio",
-          },
           { label: "Expert count", value: String(file.expert_count), tooltip: "expert" },
           {
             label: "Orphaned knowledge",
@@ -388,7 +373,6 @@ function RiskEvidence({
       >
         View blast radius →
       </Link>
-      <NarrativeBlock surface="risk_file" subject={file.file_path} />
     </div>
   );
 }

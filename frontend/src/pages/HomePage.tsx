@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
@@ -10,14 +10,19 @@ import { Badge } from "../components/ui/Badge";
 import { Card } from "../components/ui/Card";
 import { Alert } from "../components/ui/Alert";
 import { Reveal } from "../components/motion/Reveal";
-import { WordReveal } from "../components/motion/WordReveal";
 import { CountUp } from "../components/motion/CountUp";
+import { PipelineSequence } from "../components/PipelineSequence";
 import { OnboardingPanel } from "../components/OnboardingPanel";
+import { GetStartedChecklist } from "../components/GetStartedChecklist";
+import { BlurText } from "../reactbits/BlurText";
+import { AnimatedList } from "../reactbits/AnimatedList";
 import { useOnboardingPanelOpen } from "../lib/onboardingPanelPref";
+import { hasCompletedFirstRun } from "../lib/firstRun";
 import type { ShowcaseRepoOut } from "../api/types";
 
 export function HomePage() {
   const [url, setUrl] = useState("");
+  const [submittedRepoId, setSubmittedRepoId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const me = useMe();
@@ -27,14 +32,24 @@ export function HomePage() {
   const hasRepoScope = Boolean(me.data?.has_repo_scope);
   const githubRepos = useMyGithubRepos(hasRepoScope);
 
+  // A freshly-logged-in user who hasn't been through /welcome yet lands
+  // there automatically the first time they arrive here (rebuild spec
+  // section 7.2) -- there's no "first login ever" signal from the backend
+  // to key off directly, so "logged in, on the home page, no completion
+  // flag set" is this app's own proxy for it.
+  useEffect(() => {
+    if (me.data && !hasCompletedFirstRun(me.data.id)) {
+      navigate("/welcome");
+    }
+  }, [me.data, navigate]);
+
   function submitUrl(targetUrl: string) {
     if (!targetUrl.trim()) return;
-    // Navigate the instant the repo/job rows exist -- RepoLayout takes over
-    // from there and polls /repos/{id}/status, which is what makes the
-    // stage strip appear within ~2 seconds instead of staring at this page
-    // until the whole analysis finishes (progressive reveal).
+    // Rendered inline via PipelineSequence below rather than navigating
+    // away to a spinner (rebuild spec Part D) -- the submission itself is
+    // the moment the showpiece exists for.
     submitRepo.mutate(targetUrl.trim(), {
-      onSuccess: (res) => navigate(`/repos/${res.repo_id}/overview`),
+      onSuccess: (res) => setSubmittedRepoId(res.repo_id),
     });
   }
 
@@ -52,7 +67,7 @@ export function HomePage() {
     <div className="mx-auto flex max-w-4xl flex-col gap-16 py-10">
       {/* Hero */}
       <section className="flex flex-col items-start gap-4">
-        <WordReveal
+        <BlurText
           text="Compass"
           tag="h1"
           className="font-display text-5xl font-medium tracking-tight text-text-heading"
@@ -67,6 +82,15 @@ export function HomePage() {
         </Reveal>
       </section>
 
+      {/* Persistent checklist -- logged-in visitors only, beneath the hero
+          (rebuild spec section 7.3). Renders nothing of its own once
+          dismissed or for an anonymous visitor. */}
+      {me.data ? (
+        <Reveal delay={0.1}>
+          <GetStartedChecklist />
+        </Reveal>
+      ) : null}
+
       {/* Onboarding panel */}
       {onboardingOpen ? (
         <Reveal>
@@ -74,7 +98,8 @@ export function HomePage() {
         </Reveal>
       ) : null}
 
-      {/* Showcase */}
+      {/* Showcase -- promoted above the submit form (D11): a visitor should
+          be inside real data in one click, not after an analysis wait. */}
       {showcaseRepos.length > 0 ? (
         <Reveal as="div" delay={0.05}>
           <section aria-label="Showcase repositories">
@@ -85,13 +110,12 @@ export function HomePage() {
             <p className="mt-1 text-sm text-text-muted">
               Pre-computed — click straight into a full result, no submission and no waiting.
             </p>
-            <ul className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3">
-              {showcaseRepos.map((repo, i) => (
-                <Reveal key={repo.id} as="li" delay={0.06 * i}>
-                  <ShowcaseCard repo={repo} />
-                </Reveal>
-              ))}
-            </ul>
+            <AnimatedList
+              items={showcaseRepos}
+              keyFor={(repo) => repo.id}
+              className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3"
+              renderItem={(repo) => <ShowcaseCard repo={repo} />}
+            />
           </section>
         </Reveal>
       ) : null}
@@ -102,81 +126,94 @@ export function HomePage() {
           <p className="cp-label mb-1">Analyze</p>
           <h2 className="font-display text-2xl text-text-heading">Point Compass at a repository</h2>
 
-          <Alert variant="info" className="mt-4">
-            This deployment&apos;s live analysis runs on a free-tier host — cloning and mining a
-            large repository can take a few minutes, and submissions are rate-limited. The showcase
-            repositories above are pre-computed and load instantly.
-          </Alert>
+          {submittedRepoId ? (
+            <div className="mt-4">
+              <PipelineSequence
+                repoId={submittedRepoId}
+                onDone={() => navigate(`/repos/${submittedRepoId}/overview`)}
+              />
+            </div>
+          ) : (
+            <>
+              <Alert variant="info" className="mt-4">
+                This deployment&apos;s live analysis runs on a free-tier host — cloning and mining a
+                large repository can take a few minutes, and submissions are rate-limited. The
+                showcase repositories above are pre-computed and load instantly.
+              </Alert>
 
-          <form onSubmit={handleSubmit} className="mt-4 flex w-full flex-col gap-2 sm:flex-row">
-            <Input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-              disabled={submitRepo.isPending}
-              className="flex-1 font-mono"
-            />
-            <Button type="submit" variant="primary" disabled={submitRepo.isPending}>
-              {submitRepo.isPending ? "Submitting…" : "Analyze"}
-            </Button>
-          </form>
+              <form onSubmit={handleSubmit} className="mt-4 flex w-full flex-col gap-2 sm:flex-row">
+                <Input
+                  type="text"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://github.com/owner/repo"
+                  disabled={submitRepo.isPending}
+                  className="flex-1 font-mono"
+                />
+                <Button type="submit" variant="primary" disabled={submitRepo.isPending}>
+                  {submitRepo.isPending ? "Submitting…" : "Analyze"}
+                </Button>
+              </form>
 
-          {submitError ? <SubmitErrorNotice error={submitError} /> : null}
+              {submitError ? <SubmitErrorNotice error={submitError} /> : null}
 
-          {me.data && !hasRepoScope ? (
-            <p className="mt-3 text-xs text-text-muted">
-              Want to analyze a private repository?{" "}
-              <a
-                href={githubLoginUrl("repo", "/")}
-                className="font-medium text-accent hover:underline"
-              >
-                Connect private repositories
-              </a>
-              .
-            </p>
-          ) : null}
-
-          {hasRepoScope ? (
-            <div className="mt-6">
-              <p className="cp-label mb-2">Or pick from your GitHub repositories</p>
-              {githubRepos.isPending ? (
-                <p className="text-xs text-text-muted">Loading…</p>
-              ) : githubRepos.isError ? (
-                <p className="text-xs text-danger">
-                  {githubRepos.error instanceof ApiError
-                    ? githubRepos.error.message
-                    : "Couldn't load your GitHub repositories."}
+              {me.data && !hasRepoScope ? (
+                <p className="mt-3 text-xs text-text-muted">
+                  Want to analyze a private repository?{" "}
+                  <a
+                    href={githubLoginUrl("repo", "/")}
+                    className="font-medium text-accent hover:underline"
+                  >
+                    Connect private repositories
+                  </a>
+                  .
                 </p>
-              ) : (
-                <div className="max-h-56 overflow-y-auto rounded-sm border border-border">
-                  {githubRepos.data.repos.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-text-muted">
-                      No repositories found on your GitHub account.
+              ) : null}
+
+              {hasRepoScope ? (
+                <div className="mt-6">
+                  <p className="cp-label mb-2">Or pick from your GitHub repositories</p>
+                  {githubRepos.isPending ? (
+                    <p className="text-xs text-text-muted">Loading…</p>
+                  ) : githubRepos.isError ? (
+                    <p className="text-xs text-danger">
+                      {githubRepos.error instanceof ApiError
+                        ? githubRepos.error.message
+                        : "Couldn't load your GitHub repositories."}
                     </p>
                   ) : (
-                    githubRepos.data.repos.map((repo) => (
-                      <button
-                        key={repo.full_name}
-                        type="button"
-                        disabled={submitRepo.isPending}
-                        onClick={() => submitUrl(`https://github.com/${repo.full_name}`)}
-                        className="flex w-full items-center justify-between gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-b-0 hover:bg-bg-inset disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <span className="truncate font-mono text-text-muted">{repo.full_name}</span>
-                        {repo.private ? <Badge tone="neutral">Private</Badge> : null}
-                      </button>
-                    ))
+                    <div className="max-h-56 overflow-y-auto rounded-sm border border-border">
+                      {githubRepos.data.repos.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-text-muted">
+                          No repositories found on your GitHub account.
+                        </p>
+                      ) : (
+                        githubRepos.data.repos.map((repo) => (
+                          <button
+                            key={repo.full_name}
+                            type="button"
+                            disabled={submitRepo.isPending}
+                            onClick={() => submitUrl(`https://github.com/${repo.full_name}`)}
+                            className="flex w-full items-center justify-between gap-2 border-b border-border px-3 py-2 text-left text-xs last:border-b-0 hover:bg-bg-inset disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <span className="truncate font-mono text-text-muted">
+                              {repo.full_name}
+                            </span>
+                            {repo.private ? <Badge tone="neutral">Private</Badge> : null}
+                          </button>
+                        ))
+                      )}
+                      {githubRepos.data.truncated ? (
+                        <p className="px-3 py-2 text-[10px] text-text-muted">
+                          Showing your first 300 repositories, sorted by most recently pushed.
+                        </p>
+                      ) : null}
+                    </div>
                   )}
-                  {githubRepos.data.truncated ? (
-                    <p className="px-3 py-2 text-[10px] text-text-muted">
-                      Showing your first 300 repositories, sorted by most recently pushed.
-                    </p>
-                  ) : null}
                 </div>
-              )}
-            </div>
-          ) : null}
+              ) : null}
+            </>
+          )}
         </section>
       </Reveal>
 
@@ -189,7 +226,7 @@ export function HomePage() {
             description="A stage-by-stage walk through the mining pipeline, with one real repository's numbers threaded through every step."
           />
           <TeaserCard
-            to="/methods"
+            to="/how-it-works#methods"
             title="Methods"
             description="Every formula Compass computes, which are locked and which are heuristic, and the calibration corpus behind the benchmark."
           />

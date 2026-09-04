@@ -31,24 +31,23 @@ export function parseOsvId(title: string): string | null {
   return title.slice(0, idx);
 }
 
-/** Resolves a finding to the one page/entity it's "about", per Part A's own
- * examples (a risk finding to that file's risk detail, a hidden-dependency
- * finding to the coupling graph focused on that pair, ...). Every category
- * a finding can carry (FindingCategory) must resolve to something, or
- * `null` when there's genuinely nothing more specific to focus on than the
- * surface itself. Judgement call (RULES.md sec 2.5), unchanged since this
- * table was first built: extend the "send the viewer to the page that
- * already visualizes that category's evidence" reasoning uniformly across
- * every category.
+/** Resolves a finding to the one page/entity it's "about", per section
+ * 4.4's own examples (a risk finding to that file's risk detail, a
+ * hidden-dependency finding to the coupling list focused on that pair,
+ * ...). Every category a finding can carry (FindingCategory) must resolve
+ * to something, or `null` when there's genuinely nothing more specific to
+ * focus on than the surface itself. Judgement call (RULES.md sec 2.5),
+ * unchanged since this table was first built: extend the "send the viewer
+ * to the page that already visualizes that category's evidence" reasoning
+ * uniformly across every category.
  *
- * UI rebuild session 4: retargeted for the 8-surface route map (section
- * 4.1). `hygiene`/`test_gap`/`secret`/`vulnerability` used to point at
- * standalone `audit/hygiene`/`audit/security` pages; those pages no longer
- * exist -- their evidence sections now live INSIDE this same `findings`
- * surface (Part A), so those four categories link to
- * `findings?category=<category>&...`, a same-surface deep link that
- * filters the ranked list to that category and scrolls/highlights the
- * matching evidence row, rather than navigating to a different surface. */
+ * Rebuild (section 4.6): retargeted for the five-surface route map. `risk`
+ * findings now live at `findings?view=risk` (Risk is no longer its own
+ * surface); `hidden_dependency`/`architecture` now live at
+ * `explore?view=structure` (Structure is no longer its own surface, folded
+ * into Explore); `knowledge` now lives at `guide?view=people` (People is no
+ * longer its own surface, folded into Guide). `test_gap` no longer exists
+ * as a category at all -- test-gap analysis was cut entirely (D7). */
 export function findingDeepLink(finding: FindingOut, repoId: string): FindingDeepLink | null {
   const base = `/repos/${repoId}`;
   const path = finding.file_path;
@@ -56,48 +55,46 @@ export function findingDeepLink(finding: FindingOut, repoId: string): FindingDee
 
   switch (category) {
     case "risk":
-      // "a risk finding to that file's risk detail" (Part A, verbatim).
+      // "a risk finding to that file's risk detail" -- Risk is a view
+      // inside Findings now, not its own surface.
       return path
         ? {
-            to: `${base}/risk?tab=hotspots&file=${encodeURIComponent(path)}`,
+            to: `${base}/findings?view=risk&file=${encodeURIComponent(path)}`,
             label: "View in Risk",
           }
         : null;
 
     case "hidden_dependency": {
-      // "a coupling finding links to the coupling graph focused on that
+      // "a coupling finding links to the coupling list focused on that
       // pair" -- hidden_dependency IS the coupling-derived category (there
       // is no separate "coupling" FindingCategory), so this is that example.
-      const params = new URLSearchParams({ view: "coupling", hiddenOnly: "1" });
+      const params = new URLSearchParams({ view: "structure", panel: "coupling", hiddenOnly: "1" });
       const pair = parseHiddenDependencyPair(finding.title);
       if (pair) params.set("pair", pair.join("|"));
-      return { to: `${base}/structure?${params.toString()}`, label: "View in Coupling" };
+      return { to: `${base}/explore?${params.toString()}`, label: "View in Coupling" };
     }
 
     case "architecture":
       return {
         to: path
-          ? `${base}/structure?view=architecture&file=${encodeURIComponent(path)}`
-          : `${base}/structure?view=architecture`,
-        label: "View in Architecture",
+          ? `${base}/explore?view=structure&panel=architecture&file=${encodeURIComponent(path)}`
+          : `${base}/explore?view=structure&panel=architecture`,
+        label: "View in Structure",
       };
 
     case "knowledge":
       // Knowledge-distribution findings are about who knows a file --
-      // People is where that's answered (same cross-page pattern
-      // Tour/Glossary already use for `people?path=`).
+      // Guide's People view is where that's answered (same cross-page
+      // pattern the Tour/Glossary views already use for `guide?view=people`).
       return path
-        ? { to: `${base}/people?path=${encodeURIComponent(path)}`, label: "View in People" }
+        ? {
+            to: `${base}/guide?view=people&path=${encodeURIComponent(path)}`,
+            label: "View in People",
+          }
         : null;
 
     case "hygiene": {
       const params = new URLSearchParams({ category: "hygiene" });
-      if (path) params.set("file", path);
-      return { to: `${base}/findings?${params.toString()}`, label: "View in Findings" };
-    }
-
-    case "test_gap": {
-      const params = new URLSearchParams({ category: "test_gap" });
       if (path) params.set("file", path);
       return { to: `${base}/findings?${params.toString()}`, label: "View in Findings" };
     }

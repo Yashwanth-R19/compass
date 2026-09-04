@@ -149,8 +149,6 @@ export interface RiskFileOut {
   churn_weighted: number;
   instability_score: number | null;
   revert_cycle_count: number | null;
-  test_classification: string | null;
-  test_cochange_ratio: number | null;
   expert_count: number;
   is_orphaned_knowledge: boolean;
 }
@@ -183,7 +181,6 @@ export type FindingCategory =
   | "hidden_dependency"
   | "knowledge"
   | "hygiene"
-  | "test_gap"
   | "secret"
   | "vulnerability";
 
@@ -679,23 +676,6 @@ export interface HygieneResponse {
   insufficient_history_for_oversized: boolean;
 }
 
-export type TestGapClassification = "no_test" | "stale_test" | "tracked";
-
-export interface TestGapFileOut {
-  file_path: string;
-  classification: TestGapClassification;
-  test_cochange_ratio: number | null;
-  mapped_test_paths: string[];
-}
-
-export interface TestGapsResponse {
-  repo_id: string;
-  files: TestGapFileOut[];
-  test_file_ratio: number;
-  mean_test_cochange_ratio: number;
-  limitation: string;
-}
-
 // Session 09, Part E: the codebase-map/city payload (mirrors
 // backend/app/schemas/analysis.py's City* models). `files` is COLUMNAR --
 // see CITY_FILE_COLUMNS below, which must match the backend's
@@ -819,10 +799,11 @@ export interface VulnerabilitiesResponse {
   no_supported_manifest: boolean;
 }
 
-// Session 12: the narrative layer (mirrors backend/app/schemas/narrative.py).
-// Exactly three surfaces exist -- see CLAUDE.md's "Narrative layer" section
-// and Known Hazard #8 ("do not put narrative on more than three surfaces").
-export type NarrativeSurface = "passport" | "risk_file" | "security";
+// The narrative layer (mirrors backend/app/schemas/narrative.py). Rebuild
+// D17/§8.2 collapsed the three former surfaces (passport / risk_file /
+// security) to a single, explicitly user-triggered "Explain this repo"
+// action -- there is no `?surface=`/`?subject=` any more; the endpoint
+// always answers for the whole repository.
 export type NarrativeUnavailableReason = "no_keys" | "pool_exhausted" | "rejected" | "disabled";
 
 export interface NarrativeResponse {
@@ -995,109 +976,6 @@ export interface CompareResponse {
   contributor_changes: ContributorChangeOut[];
   coupling_changes: CouplingChangeOut[];
   security: SecurityDiffOut;
-}
-
-// Session 14: portfolio + run queue (mirrors backend/app/schemas/portfolio.py).
-
-export interface PortfolioAnalyzeRequest {
-  repository_urls: string[];
-}
-
-export interface PortfolioQueuedItemOut {
-  repo_id: string;
-  run_id: string;
-  url: string;
-}
-
-export interface PortfolioSkippedItemOut {
-  url: string;
-  reason: string;
-}
-
-export interface PortfolioAnalyzeResponse {
-  queued: PortfolioQueuedItemOut[];
-  skipped: PortfolioSkippedItemOut[];
-  errors: PortfolioSkippedItemOut[];
-}
-
-export interface QueueItemOut {
-  run_id: string;
-  repo_id: string;
-  repo_url: string;
-  status: string;
-  position: number | null;
-  estimated_wait_seconds: number | null;
-}
-
-export interface PortfolioQueueResponse {
-  items: QueueItemOut[];
-  max_concurrent_runs: number;
-}
-
-export interface PortfolioTotalsOut {
-  repositories: number;
-  files: number;
-  loc: number;
-  commits: number;
-  contributors: number;
-}
-
-/** min/p25/median/p75/max/count -- app/analysis/portfolio.py::_five_number_summary. */
-export interface PortfolioDistributionSummary {
-  count: number;
-  min: number;
-  p25: number;
-  median: number;
-  p75: number;
-  max: number;
-}
-
-export interface PooledDistributionOut {
-  summary: PortfolioDistributionSummary;
-  by_repo: Record<string, number>;
-}
-
-export interface SharedDependencyOut {
-  ecosystem: string;
-  package_name: string;
-  repository_ids: string[];
-  repository_count: number;
-}
-
-export interface VulnerableSharedDependencyOut extends SharedDependencyOut {
-  osv_ids: string[];
-  max_severity: string;
-}
-
-export interface PortfolioCrossRepoPatternsOut {
-  shared_dependencies: SharedDependencyOut[];
-  shared_dependencies_total: number;
-  vulnerable_shared_dependencies: VulnerableSharedDependencyOut[];
-  vulnerable_shared_dependencies_total: number;
-}
-
-export interface PortfolioHealthOut {
-  average_health_score: number | null;
-  dormant_repository_ids: string[];
-  truck_factor_one_repository_ids: string[];
-  repositories_with_unresolved_high_severity_ids: string[];
-}
-
-export interface PortfolioGrowthOut {
-  commits_per_month: Record<string, number>;
-  repositories_started_per_year: Record<string, number>;
-}
-
-export interface PortfolioResponse {
-  computed_at: string;
-  repository_count: number;
-  totals: PortfolioTotalsOut;
-  language_activity_by_year: Record<string, Record<string, number>>;
-  pooled_distributions: Record<string, PooledDistributionOut>;
-  cross_repo_patterns: PortfolioCrossRepoPatternsOut;
-  portfolio_health: PortfolioHealthOut;
-  growth: PortfolioGrowthOut;
-  pooled_distribution_label: string;
 }
 
 // Session 14: corpus benchmark (mirrors backend/app/schemas/benchmark.py).

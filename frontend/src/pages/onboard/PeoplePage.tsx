@@ -16,6 +16,7 @@ import {
 } from "../../components/ScoreExplainer";
 import { StageGate } from "../../components/StageGate";
 import { formatPercent } from "../../lib/format";
+import { markChecklistFlag } from "../../lib/checklist";
 import { HONESTY, TOOLTIPS } from "../../content/explainability";
 import type { RepoOutletContext } from "../RepoLayout";
 
@@ -94,7 +95,14 @@ function WhoDoIAskCard({
         className="mb-3"
       />
       <div className="flex flex-col gap-4">
-        <FilePicker paths={paths} onSelect={setSelectedPath} placeholder="Search files by path…" />
+        <FilePicker
+          paths={paths}
+          onSelect={(path) => {
+            setSelectedPath(path);
+            markChecklistFlag("asked_who_to_ask");
+          }}
+          placeholder="Search files by path…"
+        />
 
         {selectedPath ? (
           expertise.isPending ? (

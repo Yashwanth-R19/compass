@@ -1,11 +1,11 @@
-import { colorForSubsystem } from "../lib/subsystemColors";
+import { colorForKey } from "../lib/palette";
 
 /** A small pill naming a subsystem -- used anywhere a file or finding is
  * tagged with the subsystem it belongs to. Renders nothing for a file with
  * no subsystem (a real, expected case), rather than showing an empty
- * badge. Coloured via the SAME categorical palette
- * (lib/subsystemColors.ts) the graph/treemap/city use, via a small dot
- * rather than a full-strength fill. */
+ * badge. Coloured via the SAME categorical palette (lib/palette.ts) every
+ * other subsystem-coloured view uses, via a small dot rather than a
+ * full-strength fill. */
 export function SubsystemBadge({ label }: { label: string | null | undefined }) {
   if (!label) return null;
 
@@ -14,7 +14,7 @@ export function SubsystemBadge({ label }: { label: string | null | undefined }) 
       <span
         aria-hidden="true"
         className="h-2 w-2 shrink-0"
-        style={{ backgroundColor: colorForSubsystem(label) }}
+        style={{ backgroundColor: colorForKey(label) }}
       />
       {label}
     </span>

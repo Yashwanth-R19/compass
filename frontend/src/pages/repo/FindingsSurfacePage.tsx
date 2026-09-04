@@ -14,9 +14,7 @@ import {
   useFindings,
   useHygiene,
   useRepoStatus,
-  useRisk,
   useSecrets,
-  useTestGaps,
   useVulnerabilities,
 } from "../../api/hooks";
 import type {
@@ -27,7 +25,6 @@ import type {
   HygieneFileOut,
   SecretHitOut,
   Severity,
-  TestGapFileOut,
   VulnerabilityOut,
 } from "../../api/types";
 import { Alert } from "../../components/ui/Alert";
@@ -37,21 +34,15 @@ import { Card } from "../../components/ui/Card";
 import { EvidenceLink } from "../../components/EvidenceLink";
 import { FindingItem } from "../../components/FindingItem";
 import { HonestyNote } from "../../components/HonestyNote";
-import { InfoTooltip } from "../../components/ui/InfoTooltip";
 import { LoadingState } from "../../components/LoadingState";
-import { NarrativeBlock } from "../../components/NarrativeBlock";
 import { PartialResultNotice } from "../../components/PartialResultNotice";
 import { ScoreExplainer } from "../../components/ScoreExplainer";
 import { StageGate } from "../../components/StageGate";
 import { HONESTY, TOOLTIPS } from "../../content/explainability";
-import {
-  FINDING_CATEGORY_COPY,
-  HYGIENE_KIND_COPY,
-  HYGIENE_KIND_LABEL,
-  TEST_CLASSIFICATION_COPY,
-} from "../../lib/copy";
-import { SEVERITY_LABEL, formatPercent, formatScore } from "../../lib/format";
+import { FINDING_CATEGORY_COPY, HYGIENE_KIND_COPY, HYGIENE_KIND_LABEL } from "../../lib/copy";
+import { SEVERITY_LABEL, formatScore } from "../../lib/format";
 import { CHROME, SEVERITY_COLOR, rechartsTheme } from "../../lib/chartTheme";
+import { RiskSurfacePage } from "./RiskSurfacePage";
 import type { RepoOutletContext } from "../RepoLayout";
 
 // THE governing constraint of this surface (section 5.2/RULES.md sec 12,
@@ -67,7 +58,6 @@ const CATEGORIES: FindingCategory[] = [
   "hidden_dependency",
   "knowledge",
   "hygiene",
-  "test_gap",
   "secret",
   "vulnerability",
 ];
@@ -92,9 +82,6 @@ function vulnRowId(v: VulnerabilityOut): string {
 function hygieneFileRowId(path: string): string {
   return `hygiene-file-${encodeURIComponent(path)}`;
 }
-function testGapFileRowId(path: string): string {
-  return `testgap-file-${encodeURIComponent(path)}`;
-}
 
 /**
  * `/repos/:id/findings` (UI rebuild session 4, Part A) -- merges the former
@@ -117,8 +104,22 @@ function testGapFileRowId(path: string): string {
  * a failed optional stage's own `/vulnerabilities` response is an
  * honestly-empty 200, indistinguishable from "no vulnerabilities" without
  * that check).
+ *
+ * SCAFFOLDING: `?view=risk|benchmark` (rebuild spec section 4.4 -- Risk and
+ * Benchmark are views inside Findings now, not their own surface) mount the
+ * pre-existing `RiskSurfacePage` component rather than being rebuilt here;
+ * session 3 folds them in for real.
  */
 export function FindingsSurfacePage() {
+  const [searchParams] = useSearchParams();
+  const view = searchParams.get("view");
+
+  if (view === "risk") return <RiskSurfacePage initialTab="hotspots" />;
+  if (view === "benchmark") return <RiskSurfacePage initialTab="benchmark" />;
+  return <FindingsStreamView />;
+}
+
+function FindingsStreamView() {
   const { repo, share } = useOutletContext<RepoOutletContext>();
   const [searchParams] = useSearchParams();
   const [category, setCategory] = useState<FindingCategory | "">(
@@ -210,8 +211,6 @@ export function FindingsSurfacePage() {
         error={securityStage?.error ?? null}
       />
       <HygieneSection repoId={repo.id} share={share} />
-      <TestMaintenanceSection repoId={repo.id} share={share} />
-      <NarrativeBlock surface="security" />
     </div>
   );
 }
@@ -782,131 +781,5 @@ function InstabilityRanking({
         </Button>
       ) : null}
     </Card>
-  );
-}
-
-// --- 4. Test maintenance --------------------------------------------------------
-
-function TestMaintenanceSection({ repoId, share }: { repoId: string; share?: string }) {
-  const testGaps = useTestGaps(repoId, share);
-  const risk = useRisk(repoId, share);
-  const [searchParams] = useSearchParams();
-  const highlightPath =
-    searchParams.get("category") === "test_gap" ? searchParams.get("file") : null;
-
-  useEffect(() => {
-    if (!highlightPath) return;
-    document
-      .getElementById(testGapFileRowId(highlightPath))
-      ?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [highlightPath]);
-
-  const riskByPath = useMemo(() => {
-    const map = new Map<string, number>();
-    if (risk.data?.kind === "data") {
-      for (const f of risk.data.data.files) map.set(f.file_path, f.risk_score);
-    }
-    return map;
-  }, [risk.data]);
-
-  return (
-    <StageGate
-      query={testGaps}
-      loadingLabel="Loading test maintenance data…"
-      emptyTitle="No test-mapped files"
-      isEmpty={(data) => data.files.length === 0}
-    >
-      {(data) => {
-        const counts: Record<TestGapFileOut["classification"], number> = {
-          no_test: 0,
-          stale_test: 0,
-          tracked: 0,
-        };
-        for (const f of data.files) counts[f.classification]++;
-        const total = data.files.length || 1;
-
-        const topGapsWithRisk = data.files
-          .filter((f) => f.classification !== "tracked" && riskByPath.has(f.file_path))
-          .map((f) => ({ ...f, risk_score: riskByPath.get(f.file_path)! }))
-          .sort((a, b) => b.risk_score - a.risk_score)
-          .slice(0, 10);
-
-        return (
-          <Card
-            title="Test maintenance"
-            eyebrow="Whether tests change alongside the code they cover"
-          >
-            {/* The API's own limitation string, verbatim, above the fold --
-                "untested code" is shorter and reads better, and it is
-                wrong: this measures maintenance, never coverage. */}
-            <HonestyNote variant="scope-limitation" text={data.limitation} className="mb-3" />
-
-            <ScoreExplainer formulaKey="test_gaps" contributions={[]} />
-
-            <div className="mb-4 mt-3 flex h-3 w-full overflow-hidden rounded-full bg-bg-inset">
-              <div
-                className="h-full bg-danger"
-                style={{ width: `${(counts.no_test / total) * 100}%` }}
-                title={`${TEST_CLASSIFICATION_COPY.no_test()} (${counts.no_test})`}
-              />
-              <div
-                className="h-full bg-warning"
-                style={{ width: `${(counts.stale_test / total) * 100}%` }}
-                title={`${TEST_CLASSIFICATION_COPY.stale_test()} (${counts.stale_test})`}
-              />
-              <div
-                className="h-full bg-success"
-                style={{ width: `${(counts.tracked / total) * 100}%` }}
-                title={`${TEST_CLASSIFICATION_COPY.tracked()} (${counts.tracked})`}
-              />
-            </div>
-            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-muted">
-              <span>No mapped test: {counts.no_test}</span>
-              <span>Rarely changes with code: {counts.stale_test}</span>
-              <span>Changes with code: {counts.tracked}</span>
-              <span className="flex items-center gap-1 text-text-muted">
-                · mean co-change ratio {formatPercent(data.mean_test_cochange_ratio)}
-                <InfoTooltip
-                  label="What is test co-change ratio?"
-                  text={TOOLTIPS.testCochangeRatio}
-                />
-              </span>
-            </div>
-
-            <h3 className="cp-label mb-1.5 text-text-muted">
-              Top-risk files with a maintenance gap
-            </h3>
-            {topGapsWithRisk.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                No top-risk file currently has a test-maintenance gap.
-              </p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-border">
-                {topGapsWithRisk.map((f) => (
-                  <li
-                    key={f.file_path}
-                    id={testGapFileRowId(f.file_path)}
-                    className={`flex flex-wrap items-center justify-between gap-2 py-2 text-sm ${
-                      highlightPath === f.file_path ? "bg-accent-bg" : ""
-                    }`}
-                  >
-                    <span
-                      className="max-w-[280px] truncate font-mono text-xs text-text-muted"
-                      title={f.file_path}
-                    >
-                      {f.file_path}
-                    </span>
-                    <span className="shrink-0 text-xs text-text-muted">
-                      {TEST_CLASSIFICATION_COPY[f.classification]()} · risk{" "}
-                      {formatScore(f.risk_score, 2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        );
-      }}
-    </StageGate>
   );
 }

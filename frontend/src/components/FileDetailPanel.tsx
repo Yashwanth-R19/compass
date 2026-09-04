@@ -62,13 +62,13 @@ export function FileDetailPanel({
         ) : null}
         {expertName ? <p>Principal author: {expertName}</p> : null}
         <Link
-          to={`/repos/${repoId}/people?path=${encodeURIComponent(path)}`}
+          to={`/repos/${repoId}/guide?view=people&path=${encodeURIComponent(path)}`}
           className="w-fit font-medium text-accent hover:underline"
         >
           See who knows this file →
         </Link>
         <Link
-          to={`/repos/${repoId}/structure?view=impact&path=${encodeURIComponent(path)}`}
+          to={`/repos/${repoId}/explore?view=impact&path=${encodeURIComponent(path)}`}
           className="w-fit font-medium text-accent hover:underline"
         >
           See its blast radius →

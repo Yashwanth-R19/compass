@@ -17,7 +17,6 @@ import type {
   HygieneEventKind,
   LabelSource,
   SubsystemChangeKind,
-  TestGapClassification,
   TourReasonCode,
 } from "../api/types";
 import { formatPercent, formatScore } from "./format";
@@ -119,7 +118,6 @@ export const FINDING_CATEGORY_COPY: Record<FindingCategory, () => string> = {
   hidden_dependency: () => "Hidden dependency",
   knowledge: () => "Knowledge",
   hygiene: () => "Hygiene",
-  test_gap: () => "Test gap",
   // Session 11: app/engines/security.py::SecurityEngine.
   secret: () => "Secret",
   vulnerability: () => "Vulnerability",
@@ -161,14 +159,6 @@ export const ENTRY_POINT_KIND_COPY: Record<EntryPointKind, () => string> = {
   build: () => "Build entry point",
   graph_inferred: () =>
     "Inferred from the dependency graph (nothing imports it, and it imports several others)",
-};
-
-// --- Test maintenance classification --------------------------------------
-
-export const TEST_CLASSIFICATION_COPY: Record<TestGapClassification, () => string> = {
-  no_test: () => "No mapped test was found for this file.",
-  stale_test: () => "A mapped test exists but rarely changes alongside this file.",
-  tracked: () => "A mapped test changes alongside this file.",
 };
 
 // --- Subsystem naming provenance -------------------------------------------

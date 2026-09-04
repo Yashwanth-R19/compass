@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiDelete, apiGet, apiGetOrPending, apiPost, onUnauthorized } from "./client";
-import { useNarrativeEnabled } from "../lib/narrativePref";
 import type {
   AnalysisRunsResponse,
   ArchitectureResponse,
@@ -25,12 +24,8 @@ import type {
   MyReposResponse,
   FormulasResponse,
   NarrativeResponse,
-  NarrativeSurface,
   PassportResponse,
   PipelineResponse,
-  PortfolioAnalyzeResponse,
-  PortfolioQueueResponse,
-  PortfolioResponse,
   RepoCreateResponse,
   RepoOut,
   RepoStatusResponse,
@@ -39,7 +34,6 @@ import type {
   ShareLinkOut,
   ShowcaseReposResponse,
   SubsystemsResponse,
-  TestGapsResponse,
   TimelineResponse,
   TourResponse,
   TruckFactorResponse,
@@ -300,16 +294,6 @@ export function useHygiene(repoId: string | undefined, share?: string) {
   });
 }
 
-export function useTestGaps(repoId: string | undefined, share?: string) {
-  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
-
-  return useQuery({
-    queryKey: ["test-gaps", repoId, share ?? null],
-    queryFn: () => apiGetOrPending<TestGapsResponse>(`/repos/${repoId}/test-gaps${qs}`),
-    enabled: Boolean(repoId),
-  });
-}
-
 export function useBlastRadius(
   repoId: string | undefined,
   path: string | undefined,
@@ -527,33 +511,25 @@ export function useRevokeShareLink() {
   });
 }
 
-/** Session 12: the one hook `NarrativeBlock` uses for all three surfaces.
- * Never fires while the global toggle (`lib/narrativePref.ts`) is off --
- * narrative rule 3 ("every page is fully usable with narrative off") means
- * a disabled toggle should cost zero requests, not just render nothing.
+/** Rebuild D17/§8.1: the narrative layer collapsed to ONE explicitly
+ * user-triggered "Explain this repo" action -- no `?surface=`/`?subject=`
+ * any more, and no global on/off toggle. `NarrativeDrawer` passes
+ * `enabled: true` only once the drawer has actually been opened, so this
+ * hook makes zero requests until a viewer clicks the button (rule 3: every
+ * page is fully usable, at zero cost, with the drawer never opened).
  * `GET /repos/{id}/narrative` never answers 202 (see the backend's own
  * module docstring), so this is a plain `apiGet`, not `apiGetOrPending`. */
-export function useNarrative(
-  repoId: string | undefined,
-  surface: NarrativeSurface,
-  subject?: string,
-  share?: string,
-) {
-  const enabled = useNarrativeEnabled();
-  const params = new URLSearchParams({ surface });
-  if (subject) params.set("subject", subject);
-  if (share) params.set("share", share);
+export function useNarrative(repoId: string | undefined, enabled: boolean, share?: string) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
 
   return useQuery({
-    queryKey: ["narrative", repoId, surface, subject ?? null, share ?? null],
-    queryFn: () => apiGet<NarrativeResponse>(`/repos/${repoId}/narrative?${params.toString()}`),
-    enabled: Boolean(repoId) && enabled && (surface !== "risk_file" || Boolean(subject)),
+    queryKey: ["narrative", repoId, share ?? null],
+    queryFn: () => apiGet<NarrativeResponse>(`/repos/${repoId}/narrative${qs}`),
+    enabled: Boolean(repoId) && enabled,
     retry: false,
     staleTime: Infinity,
   });
 }
-
-// --- Session 14: portfolio + run queue --------------------------------------
 
 /** `GET /repos/{id}/benchmark` -- one repository against the curated corpus.
  * Gates on "onboarding" (same as /passport), so it's a plain apiGet: the
@@ -566,50 +542,6 @@ export function useBenchmark(repoId: string | undefined, share?: string) {
     queryKey: ["benchmark", repoId, share ?? null],
     queryFn: () => apiGetOrPending<BenchmarkResponse>(`/repos/${repoId}/benchmark${qs}`),
     enabled: Boolean(repoId),
-  });
-}
-
-/** Queues up to MAX_PORTFOLIO_BATCH repository URLs for analysis (never
- * dispatches them directly -- see app/jobs/queue.py). Invalidates both the
- * queue and portfolio queries, since a fresh submission changes both. */
-export function useSubmitPortfolio() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (repositoryUrls: string[]) =>
-      apiPost<PortfolioAnalyzeResponse>("/portfolio/analyze", {
-        repository_urls: repositoryUrls,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["portfolio-queue"] });
-      void queryClient.invalidateQueries({ queryKey: ["portfolio"] });
-    },
-  });
-}
-
-/** Polls while the caller has anything queued/running, same 1.5s cadence
- * every other progressive-reveal poll in this app uses. */
-export function usePortfolioQueue(enabled: boolean) {
-  return useQuery({
-    queryKey: ["portfolio-queue"],
-    queryFn: () => apiGet<PortfolioQueueResponse>("/portfolio/queue"),
-    enabled,
-    refetchInterval: (query) => {
-      const items = query.state.data?.items ?? [];
-      const stillPending = items.some((i) => i.status === "queued" || i.status === "running");
-      return stillPending ? POLL_INTERVAL_MS : false;
-    },
-  });
-}
-
-/** The pooled portfolio view -- server-cached for 10 minutes
- * (app/analysis/portfolio.py::PORTFOLIO_CACHE_TTL_SECONDS), so this hook
- * itself uses a matching staleTime rather than refetching aggressively. */
-export function usePortfolio(enabled: boolean) {
-  return useQuery({
-    queryKey: ["portfolio"],
-    queryFn: () => apiGet<PortfolioResponse>("/portfolio"),
-    enabled,
-    staleTime: 5 * 60 * 1000,
   });
 }
 

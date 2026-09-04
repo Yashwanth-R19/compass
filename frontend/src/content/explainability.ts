@@ -97,8 +97,6 @@ export type TooltipKey =
   | "oversizedCommit"
   | "fixupChurn"
   | "riskyCommit"
-  | "testCochangeRatio"
-  | "testClassification"
   | "blastRadius"
   | "surprisingAffected"
   | "glossaryTermScore"
@@ -174,10 +172,6 @@ export const TOOLTIPS: Record<TooltipKey, string> = {
     "Three or more consecutive commits by the same author, close together in time, touching overlapping files, where at least one message reads like wip/fixup/oops/typo. Reported as a hygiene signal, never treated as a defect.",
   riskyCommit:
     "A commit scored 0–4 on four independent conditions: touching at least 3 subsystems, being in the top churn quintile, changing no test file, and having a message shorter than 15 characters. Reported once it meets at least 3 of the 4 — deliberately excludes anything about time of day, which is folklore and timezone-dependent.",
-  testCochangeRatio:
-    "The fraction of a file's commits that also touch at least one of its mapped tests. This measures test MAINTENANCE — whether tests keep changing alongside the code — never test coverage or quality. A file with excellent, rarely-changed tests can score exactly like an untested one.",
-  testClassification:
-    "no_test (no mapped test found), stale_test (a mapped test exists but its co-change ratio is 0.20 or below, with enough commit history to judge), or tracked (everything else). Mapping is best-effort, by naming convention and by structural import from a test file.",
   blastRadius:
     "Everything that could be affected by changing one file, from two independent angles: structural (files that transitively import it) and historical (files with a real change-coupling relationship to it, from the persisted coupling data). The two are shown separately and never blended into one score.",
   surprisingAffected:
@@ -304,10 +298,6 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: "Signals about HOW a repository is committed to — oversized commits, fixup churn, risky commits — distinct from risk (what's risky) and knowledge (who knows it).",
   },
   {
-    term: "Test gap",
-    body: "A file with no mapped test, or one whose mapped test rarely changes alongside it. Measures test maintenance, never coverage or quality.",
-  },
-  {
     term: "Blast radius",
     body: "Everything that could be affected by changing one file — structurally, by import, and historically, by real change-coupling.",
   },
@@ -329,7 +319,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   },
   {
     term: "Narrative",
-    body: "An optional, off-by-default sentence phrasing already-computed numbers into prose. Never a source of numbers itself — every figure it mentions is already on screen.",
+    body: 'An optional, explicitly requested phrasing of already-computed numbers into prose — generated only when you click "Explain this repo". Never a source of numbers itself — every figure it mentions is already on screen.',
   },
 ];
 
@@ -388,8 +378,6 @@ export const FORMULA_COPY: Record<string, FormulaCopyEntry> = {
       { label: "Total churn (unweighted)", tooltip: "churnTotal" },
       { label: "Instability score", tooltip: "instability" },
       { label: "Revert cycle count", tooltip: "revertCycleCount" },
-      { label: "Test classification", tooltip: "testClassification" },
-      { label: "Test co-change ratio", tooltip: "testCochangeRatio" },
       { label: "Expert count", tooltip: "expert" },
       { label: "Orphaned knowledge", tooltip: "orphanedKnowledge" },
     ],
@@ -449,12 +437,6 @@ export const FORMULA_COPY: Record<string, FormulaCopyEntry> = {
       "A weighted count of oversized commits, fixup-churn clusters, and revert cycles, with a revert counted double.",
     rangeNote: "Score range: 0 to 1, relative to this repository's own commit-size distribution.",
   },
-  test_gaps: {
-    summary:
-      "The fraction of a file's commits that also touch at least one of its mapped tests, classified against this repository's own thresholds.",
-    rangeNote:
-      "test_cochange_ratio ranges 0 to 1 — the fraction of a file's commits that also touch one of its mapped tests.",
-  },
   findings_rank: {
     summary: "Severity decides a finding's global rank first; confidence only breaks a tie.",
     rangeNote:
@@ -496,11 +478,10 @@ export const CALIBRATION_COPY: Record<"heuristic" | "corpus", string> = {
 // ---------------------------------------------------------------------------
 // The honesty registry (section 5.3) — fixed strings for statements that
 // are NOT already returned verbatim by the API. Where the API DOES return
-// the string (TimelineResponse.not_covered, TestGapsResponse.limitation,
-// GlossaryResponse.limitation, unreferenced_files_caveat, secrets_caveat,
-// pooled_distribution_label, corpus_note, the truck-factor interpretation),
-// render THAT string verbatim instead — never a local copy that could
-// drift out of sync with it.
+// the string (TimelineResponse.not_covered, GlossaryResponse.limitation,
+// unreferenced_files_caveat, secrets_caveat, corpus_note, the truck-factor
+// interpretation), render THAT string verbatim instead — never a local
+// copy that could drift out of sync with it.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -518,7 +499,6 @@ export const WHAT_COMPASS_DOES_NOT_DO: string[] = [
   "Renames are not tracked as continuity — a rename is recorded as the old path being deleted and a new one added, since git's own history doesn't reliably mark an arbitrary diff as a single rename event.",
   "Java same-package references are not inferred — only explicit import statements are modeled, because guessing at same-package usage would require real type resolution Compass doesn't attempt.",
   "Complexity is measured on the current checked-out tree only, never at a historical revision — sampling it historically would require checking the repository out at every point, which this product deliberately doesn't do.",
-  "Test-gap analysis measures maintenance, not coverage — Compass has no way to know whether a test actually exercises the code it sits near, only whether the two tend to change together.",
   "The domain glossary extracts vocabulary, not definitions — Compass has no access to what a term actually means, only how often it appears and how widely it's used across the codebase.",
   "Unreferenced-file detection is not dead-code detection — a file with no detected structural edge can still be reached through a dynamic import, reflection, or a build-config reference Compass doesn't parse.",
 ];
@@ -549,7 +529,7 @@ export const HONESTY = {
   riskConfidenceNotAFourthTerm:
     "risk_confidence is not a fourth term in the risk_score formula — it is a completely independent measure of how much commit history backs the score. A file can be exactly as risky as its score says and still be low-confidence, simply because there isn't much history behind the number yet.",
   benchmarkVsPortfolioDistinct:
-    "This is a comparison against a curated corpus of OTHER repositories — a genuine external benchmark. It is a different thing from the Portfolio page's pooled distributions, which compare a repository only against the caller's own other repositories. The two are never rendered through the same component.",
+    "This is a comparison against a curated corpus of OTHER repositories — a genuine external benchmark, not a self-comparison against this repository's own past runs (that's what the Evolution surface's run-to-run compare is for).",
   directoryGrainHasNoStructuralCrossReference:
     "\"Hidden dependencies only\" isn't offered at directory granularity — the backend's own directory-truncation depth isn't known to the frontend, so there is no honest way to check which directory pairs share a structural edge at this grain. Switch to subsystem or file granularity for that filter.",
   layeringHeuristicConservative:

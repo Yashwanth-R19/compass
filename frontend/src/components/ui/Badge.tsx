@@ -2,20 +2,19 @@ import type { ReactNode } from "react";
 
 type Tone = "neutral" | "accent" | "high" | "med" | "low";
 
-// `high`/`med`/`low` read from the heat ramp (section 3.1), never a
-// separate hue -- but as a FILLED chip, not a hairline outline, since
-// scale-5 (dark scheme)/scale-1 (light scheme) fail real measured contrast
-// as text/border colour (see lib/format.ts::SEVERITY_CLASSES, which this
-// mirrors exactly -- SeverityChip and Badge's severity tones are the same
-// visual language, not two implementations of it).
+// `high`/`med`/`low` map onto danger/warning/success -- a filled chip
+// (soft tint + solid text), the SAME pattern as `lib/format.ts::
+// SEVERITY_CLASSES`, which this mirrors exactly. SeverityChip and Badge's
+// severity tones are the same visual language, not two implementations of
+// it.
 const OUTLINE_TONE: Record<"neutral" | "accent", string> = {
   neutral: "border border-border text-text-muted",
   accent: "border border-accent text-accent",
 };
 const FILL_TONE: Record<"high" | "med" | "low", string> = {
-  high: "bg-scale-5 text-scale-ink-light",
-  med: "bg-scale-3 text-scale-ink-light dark:text-scale-ink-dark",
-  low: "bg-scale-1 text-scale-ink-dark",
+  high: "bg-danger-bg text-danger",
+  med: "bg-warning-bg text-warning",
+  low: "bg-success-bg text-success",
 };
 
 /** A small static label. `neutral`/`accent` are a hairline-bordered

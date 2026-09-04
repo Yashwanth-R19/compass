@@ -5,6 +5,7 @@ import { EvidencePanel } from "./EvidencePanel";
 import { SeverityChip } from "./SeverityChip";
 import { FINDING_CATEGORY_COPY } from "../lib/copy";
 import { findingDeepLink, parseHiddenDependencyPair } from "../lib/findingLinks";
+import { markChecklistFlag } from "../lib/checklist";
 
 function categoryLabel(category: string): string {
   const copy = FINDING_CATEGORY_COPY[category as FindingCategory];
@@ -44,7 +45,10 @@ export function FindingItem({
     <li className="border-b border-border py-3 last:border-0">
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          setExpanded((v) => !v);
+          markChecklistFlag("opened_finding");
+        }}
         aria-expanded={expanded}
         className="flex w-full flex-col gap-2 text-left"
       >

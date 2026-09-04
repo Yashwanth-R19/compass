@@ -135,6 +135,20 @@ img {
   }
 }
 
+/* The one looping animation permitted anywhere in this app (rebuild spec
+   section 6.3): the running-stage indeterminate rule in
+   components/PipelineSequence.tsx, only while a stage is genuinely running.
+   Collapsed to near-instant by the prefers-reduced-motion block below, same
+   as every other CSS animation in the app. */
+@keyframes pipeline-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
 /* prefers-reduced-motion: reduce -- collapses every CSS animation/
    transition to effectively instant. This is the CSS half of rule M5; it
    does NOT reach a JS-driven spring (motion/react useSpring, CountUp's own

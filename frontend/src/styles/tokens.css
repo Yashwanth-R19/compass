@@ -1,11 +1,10 @@
 /**
- * Compass design tokens — "Verdigris & Bone" (UI rebuild session 1).
- *
- * DIRECTION: oxidised copper on warm near-black. An aged brass field
- * instrument, not a SaaS dashboard. See plan/UI_REBUILD_SESSIONS.md
- * section 3 for the full normative spec this file implements, and
- * DESIGN.md at the repo root for the rationale, the contrast table and the
- * palette-verification result.
+ * Compass design tokens — ported verbatim from the sibling Aporia project's
+ * shipped `tokens.css` (rebuild spec section 5, D4) onto Compass's existing
+ * two-layer `--cp-*` / `@theme` architecture. "Ink Observatory" (dark,
+ * default) / "Parchment Journal" (light) — near-black with a gilt-gold
+ * accent, or warm paper with a brass accent. See DESIGN.md at the repo
+ * root for what this replaced ("Verdigris & Bone") and why.
  *
  * THEME MODEL — dark is the unconditional default:
  *   `:root` (no attribute) carries the DARK values directly. Light is an
@@ -13,44 +12,36 @@
  *   deliberately no `@media (prefers-color-scheme: dark)` anywhere in this
  *   file — the OS colour scheme never decides which palette renders; only
  *   `theme/ThemeProvider.tsx` (backed by `localStorage['compass-theme']`)
- *   and `index.html`'s inline pre-paint script do, by stamping
- *   `data-theme="dark"|"light"` on `<html>` before first paint.
+ *   and `public/pre-paint-theme.js` do, by stamping `data-theme="dark"|
+ *   "light"` on `<html>` before first paint.
  *
- * TWO LAYERS, same reasoning as the outgoing session-15 file, carried
- * forward because the underlying Tailwind v4 constraint that motivated it
- * is unchanged:
+ * TWO LAYERS (unchanged from before this port — the underlying Tailwind v4
+ * constraint that motivated it is unchanged):
  *
  *  1. PRIVATE `--cp-*` variables (this file's plain `:root` blocks) hold
  *     the real, per-scheme colour VALUES. Plain custom properties are
- *     never tree-shaken by Tailwind's `@theme` compiler, and — just as
- *     importantly — a plain, un-layered `:root[data-theme="light"]` rule
- *     always wins the cascade over `@theme`'s own compiled output (which
- *     Tailwind v4 places inside `@layer theme`, and unlayered CSS beats
- *     layered CSS at equal specificity regardless of source order — the
- *     exact mechanism session 15's own Known Hazard #1 documents). Every
- *     token any JavaScript module reads via `getComputedStyle` (see
- *     `lib/chartTheme.ts`) reads one of these `--cp-*` names directly, or
- *     a `--subsystem-N`/`--scale-N` value declared the same way — never an
- *     `@theme`-only token, which Tailwind v4 silently drops from the
- *     compiled CSS the moment no generated utility class references it
- *     (this has bitten this codebase before — see DESIGN.md).
+ *     never tree-shaken by Tailwind's `@theme` compiler, and a plain,
+ *     un-layered `:root[data-theme="light"]` rule always wins the cascade
+ *     over `@theme`'s own compiled output (Tailwind v4 places it inside
+ *     `@layer theme`, and unlayered CSS beats layered CSS at equal
+ *     specificity regardless of source order). Every token any JavaScript
+ *     module reads via `getComputedStyle` (see `lib/chartTheme.ts`) reads
+ *     one of these `--cp-*` names directly, or a `--scale-N` value declared
+ *     the same way — never an `@theme`-only token, which Tailwind v4
+ *     silently drops from the compiled CSS the moment no generated utility
+ *     class references it (this has bitten this codebase before — see
+ *     DESIGN.md).
  *  2. The `@theme` block below maps every PUBLIC Tailwind-facing name
  *     (`--color-bg`, `--color-accent`, ...) to `var(--cp-*)`, so ordinary
  *     utility classes (`bg-bg`, `text-accent`, ...) resolve through the
  *     same switchable value, with zero per-component `data-theme` branching
  *     needed anywhere else in the app.
  *
- * UI rebuild session 1 shipped a TRANSITIONAL compatibility remap here
- * (raw Tailwind `slate-*`/`indigo-*` utilities, plus the outgoing
- * session-15 semantic token names `bg-surface`/`text-ink`/`border-signal`/
- * `text-sev-*`/`text-conf-*`/`bg-risk-*`/`text-recency-*`) so every
- * not-yet-rebuilt page stayed visually coherent while sessions 3 and 4
- * worked through the eight repo surfaces. UI rebuild session 4 deleted
- * that entire block once every page and shared component had migrated off
- * it (confirmed by grep — zero remaining `slate-`/`indigo-`/old-semantic-
- * name usages anywhere in `src/` — see DESIGN_NOTES.md's session 4 entry).
- * If you are looking for it, it no longer exists; every page now uses the
- * going-forward semantic tokens below directly.
+ * The subsystem/language/contributor categorical palette lives in
+ * `src/lib/palette.ts` now, not here — it's read only by JavaScript
+ * (`colorForKey`), never by a generated Tailwind utility class, so there is
+ * nothing for a CSS custom property to buy it; hand-coding the same 14-hex
+ * array directly in TypeScript is simpler and equally shareable.
  *
  * Every token group below is documented at its own declaration. Never
  * inline a raw hex/px/ms value in a component — add a token here first.
@@ -62,43 +53,46 @@
    * Fontsource (imported once in main.tsx). Numerals are tabular
    * everywhere (index.css sets font-variant-numeric globally).
    * ============================================================ */
-  --font-display: "Newsreader Variable", "Newsreader", Georgia, "Times New Roman", serif;
+  --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
   --font-sans:
     "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
+  /* JetBrains Mono is KEPT for data columns (shas, counts, scores, axis
+     ticks) even though Aporia's own shipped file points --font-mono at
+     Inter — Aporia dropped mono by explicit request for THAT project;
+     Compass is an instrument with far more numeric content (judgement
+     call, rebuild spec section 2, reversible in one line: point this at
+     --font-sans instead). */
   --font-mono:
     "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", "Cascadia Code",
     "Roboto Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   --text-2xs: 0.6875rem; /* 11px — micro labels, axis ticks */
   --text-xs: 0.75rem; /* 12px — captions, chips, table meta */
-  --text-sm: 0.8125rem; /* 13px — dense table body, secondary UI */
-  --text-base: 0.9375rem; /* 15px — body copy */
-  --text-lg: 1.125rem; /* 18px — lead paragraphs */
-  --text-xl: 1.375rem; /* 22px — card headings */
-  --text-2xl: 1.75rem; /* 28px — section headings */
-  --text-3xl: 2.25rem; /* 36px — page titles */
-  --text-4xl: 3rem; /* 48px — hero title */
-  --text-5xl: 4rem; /* 64px — landing wordmark */
+  --text-sm: 0.875rem; /* 14px — dense table body, secondary UI */
+  --text-base: 1rem; /* 16px — body copy */
+  --text-md: 1.0625rem; /* 17px — lead paragraphs */
+  --text-lg: 1.25rem; /* 20px — card headings */
+  --text-xl: 1.5rem; /* 24px — section headings */
+  --text-2xl: 2rem; /* 32px — page titles */
+  --text-3xl: 2.75rem; /* 44px — hero title */
+  --text-4xl: 3.75rem; /* 60px — landing wordmark */
 
   /* ============================================================
-   * Radius — a deliberate, visible departure from the outgoing
-   * 0–2px flat scale. Softened, never pill-shaped except chips and
-   * the theme toggle (those opt into radius-full explicitly).
+   * Radius — Aporia's exact scale (section 5.3).
    * ============================================================ */
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius-md: 5px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-2xl: 12px;
-  --radius-3xl: 12px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 16px;
+  --radius-2xl: 16px;
+  --radius-3xl: 16px;
   --radius-full: 999px;
 
   /* ============================================================
-   * Shadow — real, restrained elevation (unlike the outgoing
-   * flattened scale). Values differ by scheme, so each is
-   * indirected through a --cp-shadow-* variable below, same
+   * Shadow — real, restrained elevation. Values differ by scheme, so
+   * each is indirected through a --cp-shadow-* variable below, same
    * reasoning as every colour token.
    * ============================================================ */
   --shadow-2xs: var(--cp-shadow-sm);
@@ -110,71 +104,48 @@
   --shadow-2xl: var(--cp-shadow-lg);
 
   /* ============================================================
-   * Motion — one-shot entrance vocabulary only (rule M4). Named so
-   * components reference `--dur-base`/`--ease-out` instead of
-   * inventing timings ad hoc. `--ease-emphatic` overshoots slightly
-   * and is permitted ONLY on one-shot entrance reveals (rule in
-   * section 3.3) — never hover, never anything that repeats.
+   * Motion — Aporia's exact durations/easing (section 5.3). The
+   * running-stage indeterminate rule (components/PipelineSequence.tsx)
+   * is the ONLY looping animation permitted anywhere in this app.
    * prefers-reduced-motion handling lives in index.css (CSS) and in
-   * each motion primitive itself (JS springs, rule M5).
+   * each ReactBits-sourced/motion primitive itself (JS springs).
    * ============================================================ */
   --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --ease-emphatic: cubic-bezier(0.34, 1.28, 0.64, 1);
+  --ease-emphatic: var(--ease-out);
 
-  /* ============================================================
-   * Leading and tracking (section 3.2) — declared inside @theme,
-   * unlike --space-* below, because Tailwind v4 recognises
-   * `--leading-*`/`--tracking-*` as real theme namespaces that
-   * generate/override the `leading-*`/`tracking-*` utility classes
-   * themselves. Left outside @theme, these would just be inert
-   * custom properties while every `leading-snug`/`tracking-wide`
-   * class in the app kept resolving to Tailwind's OWN stock values
-   * instead of this file's -- found directly this session (a handful
-   * of already-written call sites, both new and in un-rebuilt pages,
-   * used the utility class form and were silently getting Tailwind's
-   * default 0.025em/1.375 rather than this spec's 0.09em/1.35).
-   * Declaring them here is the same "redefine the scale, reskin every
-   * existing usage app-wide" leverage this file already applies to
-   * slate/indigo/radius/shadow below.
-   * ============================================================ */
   --leading-tight: 1.15; /* display */
   --leading-snug: 1.35; /* headings */
-  --leading-normal: 1.55; /* UI */
-  --leading-relaxed: 1.75; /* long-form prose (How-it-works, Methods) */
+  --leading-normal: 1.5; /* UI */
+  --leading-relaxed: 1.65; /* long-form prose (How it works) */
 
-  --tracking-tight: -0.02em; /* display serif at 2xl and above */
+  --tracking-tight: -0.01em; /* display serif at 2xl and above */
   --tracking-normal: 0em;
-  --tracking-wide: 0.09em; /* uppercase eyebrows and section labels */
+  --tracking-wide: 0.08em; /* uppercase eyebrows and section labels */
 
   /* ============================================================
-   * Semantic tokens — the going-forward system (section 3.1).
-   * Every one indirects through a --cp-* private variable (or, for
-   * the subsystem/heat-ramp values, a --subsystem-N/--scale-N plain
+   * Semantic tokens. Every one indirects through a --cp-* private
+   * variable (or, for the heat-ramp values, a --scale-N plain
    * property) so it survives both Tailwind's tree-shaking and the
    * dark/light cascade override described in the file header.
    * ============================================================ */
   --color-bg: var(--cp-bg);
   --color-bg-elevated: var(--cp-bg-elevated);
   --color-bg-subtle: var(--cp-bg-subtle);
-  --color-bg-inset: var(--cp-bg-inset);
+  /* Not one of Aporia's own three background tiers -- Compass still needs
+     a fourth, slightly-raised-off-bg tier for inputs/table zebra/inset
+     rows. Aliased to the same value as --color-bg-subtle (Aporia's own
+     "wells, inputs" role) rather than inventing a fifth hex not sourced
+     from Aporia at all. */
+  --color-bg-inset: var(--cp-bg-subtle);
   --color-border: var(--cp-border);
   --color-border-strong: var(--cp-border-strong);
-  /* Not in section 3's list — added per the rebuild spec's own rule (an
-     agent needing a value not listed must add it, following this file's
-     naming conventions). `--color-border`/`-strong` are DECORATIVE
-     dividers (card edges, hairlines, list separators) and are not held to
-     WCAG 1.4.11's 3:1 non-text boundary bar — measured directly this
-     session, `--color-border-strong` against `--color-bg-elevated` is
-     only 1.60:1 (dark) / 1.97:1 (light), nowhere near 3:1, because
-     section 3.1 never actually specified a DEDICATED interactive-boundary
-     token, only a decorative one (the exact gap the outgoing session-15
-     system's own `--color-border-interactive` token existed to close, for
-     the same reason). Every primitive with a REAL interactive boundary
-     (Input, Select's trigger, Button's secondary variant, Table) uses
-     THIS token instead — reusing `--cp-text-muted`'s own value, already
-     measured at 5.53:1/5.62:1 against `--color-bg-elevated`, rather than
-     inventing a fourth colour. See DESIGN.md's accessibility section. */
+  /* Not in Aporia's own token list -- added per the port's own rule (an
+     agent needing a value not listed adds it, following naming
+     conventions already established). Every primitive with a REAL
+     interactive boundary (Input, Select's trigger, Button's secondary
+     variant, Table) uses this rather than the decorative --color-border,
+     matching the convention this codebase already had before the port. */
   --color-border-interactive: var(--cp-text-muted);
   --color-text: var(--cp-text);
   --color-text-muted: var(--cp-text-muted);
@@ -182,7 +153,6 @@
 
   --color-accent: var(--cp-accent);
   --color-accent-strong: var(--cp-accent-strong);
-  --color-accent-dim: var(--cp-accent-dim);
   --color-accent-bg: var(--cp-accent-bg);
   --color-accent-border: var(--cp-accent-border);
   --color-accent-contrast: var(--cp-accent-contrast);
@@ -197,30 +167,22 @@
   --color-info-bg: var(--cp-info-bg);
 
   --color-focus: var(--cp-focus);
-  /* Not in section 3's list — added per the rebuild spec's own rule
-     ("an agent needing a value not listed must add it, following the
-     naming conventions here"). Used by Drawer's modal backdrop. */
+  /* Not in Aporia's own token list -- added per the same rule as
+     --color-border-interactive above. Used by Drawer/Dialog's modal
+     backdrop. */
   --color-overlay: var(--cp-overlay);
 
-  /* Not in section 3's list — added per the rebuild spec's own rule (UI
-     rebuild session 4, Part F). The 3D city's own lighting/ground is the
-     one deliberate exception to "every surface reskins with the theme
-     toggle" (rule V3's own carve-out) — its floating HTML labels/tooltips
-     (components/CodeCity.tsx, drei's <Html> overlays projected over the
-     WebGL canvas) need a chip treatment that stays legible against that
-     scene regardless of the app's light/dark toggle, the same convention
-     map-style on-canvas labels use everywhere. Declared once, scheme-
-     INVARIANT (no light override, same treatment as --color-subsystem-*),
-     replacing what used to be raw slate-900/slate-700/slate-300 utility
-     classes. */
-  --color-scene-overlay-bg: var(--scene-overlay-bg);
-  --color-scene-overlay-border: var(--scene-overlay-border);
-  --color-scene-overlay-text: var(--scene-overlay-text);
-  --color-scene-overlay-text-muted: var(--scene-overlay-text-muted);
-
-  /* Six-stop heat ramp (section 3.1) — the ONE ordered scale for risk,
-     severity and any other "how bad / how much" encoding. Never green
-     (rule R2). */
+  /* Six-stop heat ramp -- the ONE ordered scale for a GRADUATED/graphical
+     encoding of risk or severity (a scatter-plot point, a bar fill, a
+     percentile bar) where nothing needs to sit legibly ON TOP of the
+     fill. Mathematically interpolated from --color-success ->
+     --color-warning -> --color-danger (never a bare red/green pair) --
+     see this file's own :root block below for the derivation. Anywhere
+     TEXT must render on top of a severity-coloured surface (SeverityChip,
+     Badge's severity tones), this app instead uses the same soft-tint +
+     solid-text pattern every other status colour in it already does
+     (bg-danger-bg + text-danger, ...) rather than a fill from this ramp --
+     documented at SEVERITY_CLASSES in lib/format.ts. */
   --color-scale-0: var(--scale-0);
   --color-scale-1: var(--scale-1);
   --color-scale-2: var(--scale-2);
@@ -228,251 +190,165 @@
   --color-scale-4: var(--scale-4);
   --color-scale-5: var(--scale-5);
 
-  /* Not in section 3's list — added per the rebuild spec's own rule.
-     Text/border colour drawn DIRECTLY from the heat ramp fails real
-     contrast at both ends this session actually measured: scale-5 (dark
-     scheme) is only 2.84:1 against --color-bg-elevated (below even the
-     3:1 non-text bar), and scale-1 (light scheme) is 3.37:1 (clears 3:1
-     but fails the 4.5:1 body-text bar SeverityChip's own label needs).
-     SeverityChip therefore renders severity as a FILLED chip
-     (background = the scale-N stop itself) with the label set in
-     whichever of these two FIXED (never scheme-switching) inks actually
-     clears 4.5:1 against that specific fill — chosen per severity tier,
-     not derived generically, since the heat ramp's middle stops don't
-     reliably contrast with either a fixed black or a fixed white (see
-     DESIGN.md's accessibility section for the full measured table this
-     choice is based on). */
-  --color-scale-ink-dark: #14170f;
-  --color-scale-ink-light: #fbfaf5;
-
-  /* Compare-direction diverging pair (session 13's compare view) — not
-     enumerated in section 3.1's table but needed by lib/chartTheme.ts
-     (a protected module whose existing DIVERGING_* exports must keep
-     working). Improve reuses the accent (rule R1: verdigris is the
-     positive hue); worsen uses a heat-ramp stop rather than a second,
-     invented hue, keeping this pair inside the same warm-vs-verdigris
-     colour-vision-safe opposition the rest of the system already uses. */
+  /* Compare-direction diverging pair (the evolution surface's run-vs-run
+     compare view) -- improve reuses the accent (the positive hue in this
+     system); worsen reuses danger directly (a text/foreground use, not a
+     fill, so no contrast-engineering is needed the way the heat ramp's
+     fills would). */
   --color-diverging-improve: var(--cp-accent);
-  --color-diverging-worsen: var(--scale-3);
+  --color-diverging-worsen: var(--cp-danger);
   --color-diverging-neutral: var(--cp-text-muted);
-
-  /* Subsystem categorical palette — scheme-INVARIANT (declared once in
-     the plain :root block below, no light override) — a subsystem's
-     identity must not change hue between a light and dark screenshot of
-     the same repo. */
-  --color-subsystem-1: var(--subsystem-1);
-  --color-subsystem-2: var(--subsystem-2);
-  --color-subsystem-3: var(--subsystem-3);
-  --color-subsystem-4: var(--subsystem-4);
-  --color-subsystem-5: var(--subsystem-5);
-  --color-subsystem-6: var(--subsystem-6);
-  --color-subsystem-7: var(--subsystem-7);
-  --color-subsystem-8: var(--subsystem-8);
-  --color-subsystem-9: var(--subsystem-9);
-  --color-subsystem-10: var(--subsystem-10);
-  --color-subsystem-11: var(--subsystem-11);
-  --color-subsystem-12: var(--subsystem-12);
-  --color-subsystem-unassigned: var(--subsystem-unassigned);
-}
-
-/*
- * Subsystem categorical palette (12 slots) and the 6-stop heat ramp are
- * declared as PLAIN custom properties, deliberately OUTSIDE @theme, for
- * the tree-shaking reason explained in the file header: nothing in this
- * app applies a `bg-subsystem-7`/`bg-scale-3` utility class directly (both
- * are read by JavaScript via lib/chartTheme.ts's getComputedStyle calls,
- * and by lib/subsystemColors.ts's colorForSubsystem), so an @theme-only
- * declaration would be silently dropped from the production build the
- * moment Tailwind's tree-shaker sees no generated utility using it.
- *
- * Palette choice: section 3.1's own "starting proposal" hex values (a
- * hand-picked set built around the words verdigris/clay/slate
- * blue/ochre/teal/rosewood/olive/apricot/petrol/bronze/sage) FAILED the
- * verification script outright -- several pairs (clay/apricot/bronze in
- * particular, all warm oranges clustered close in hue and lightness)
- * scored as low as deltaE 1.7 under protanopia, nowhere near the
- * threshold of 8. Re-deriving by eye a second time risked repeating the
- * same mistake, so this session instead searched HSL space
- * programmatically (greedy farthest-point selection under the same
- * Machado/Oliveira/Fernandes simulation the verification script itself
- * runs, seeded only with the one fixed value section 3.1 requires --
- * slot 1 must be the accent verdigris, #5FB99A), restricted to hues
- * OUTSIDE 215-345 degrees (a generously wide band, well past a literal
- * violet/magenta range alone, so nothing borderline indigo or orchid
- * could slip through a maximiser that only optimises pairwise distance,
- * never hue family -- rule V1) and to a muted saturation/lightness
- * gamut (S 26-52%, L 38-64%) so the result still reads as hand-picked
- * instrument colours rather than an optimiser's neon output. Slot 8 is
- * this session's deliberate choice for the one slot section 3.1 left
- * unfilled (a warm rose, clearly outside the violet band). See
- * DESIGN.md for the measured worst-case delta-E (12.4, comfortably
- * above the threshold of 8) and the full per-vision-type breakdown.
- */
-:root {
-  --subsystem-1: #5fb99a; /* verdigris (the accent, per section 3.1) */
-  --subsystem-2: #bfb740; /* mustard */
-  --subsystem-3: #913030; /* brick */
-  --subsystem-4: #425f80; /* slate blue */
-  --subsystem-5: #9cc379; /* willow */
-  --subsystem-6: #a87438; /* bronze */
-  --subsystem-7: #7291ac; /* dusty blue */
-  --subsystem-8: #c75766; /* rosewood -- this session's slot-8 choice */
-  --subsystem-9: #578bc7; /* cerulean */
-  --subsystem-10: #80424e; /* maroon */
-  --subsystem-11: #c2cf6e; /* chartreuse */
-  --subsystem-12: #a1935e; /* khaki */
-  --subsystem-unassigned: #7e8496;
-
-  /* Six-stop heat ramp (section 3.1) -- neutral -> straw -> ochre -> clay
-     -> oxblood -> deep. Dark values live here (the default); the light
-     variant is redeclared in the single :root[data-theme="light"] block
-     below, alongside every other light-mode override -- there must be
-     only ONE such block in this file (a token-completeness test scans it
-     specifically; a second, separate :root[data-theme="light"] rule would
-     still work in a browser via normal cascade merging, but would break
-     that test's single-anchor assumption). */
-  --scale-0: #8a8f80;
-  --scale-1: #c9be8a;
-  --scale-2: #d3a04a;
-  --scale-3: #c97b4a;
-  --scale-4: #b85c4e;
-  --scale-5: #9e4038;
-
-  /* Scene-overlay chip (3D city HTML labels) -- scheme-invariant on purpose,
-     see the --color-scene-overlay-* comment above. Values are this file's
-     own dark-scheme bg-elevated/border/text-heading/text-muted, fixed. */
-  --scene-overlay-bg: rgb(19 21 18 / 90%);
-  --scene-overlay-border: #363b31;
-  --scene-overlay-text: #f2efe4;
-  --scene-overlay-text-muted: #8a8f80;
 }
 
 /* ============================================================
- * DARK (default) — private values every semantic token above
- * indirects through. This is the base :root block: no selector
- * qualification, so it applies unconditionally unless overridden
- * by :root[data-theme="light"] below.
+ * The six-stop heat ramp is declared as a PLAIN custom property,
+ * deliberately OUTSIDE @theme, for the tree-shaking reason explained in
+ * the file header: nothing in this app applies a `bg-scale-3` utility
+ * class directly via a string Tailwind's scanner can see at build time in
+ * every case (lib/chartTheme.ts reads it by name via getComputedStyle) --
+ * an @theme-only declaration would risk being silently dropped from the
+ * production build the moment Tailwind's tree-shaker sees too few
+ * generated utilities using it.
+ *
+ * Derivation: linear RGB interpolation across this file's own
+ * --cp-success -> --cp-warning -> --cp-danger (dark-scheme values), 3
+ * stops each side of the midpoint (0=neutral..2 lean toward success,
+ * 3=warning itself, 4-5 lean toward/reach danger) -- computed once by
+ * hand, not sourced from Aporia (whose own tokens.css has no such ramp;
+ * Aporia's UI has no equivalent to Compass's risk/severity encoding).
+ * Re-run the same interpolation if success/warning/danger are ever
+ * revisited.
+ * ============================================================ */
+:root {
+  --scale-0: #7e848f; /* = --cp-text-muted: neutral, no signal */
+  --scale-1: #7b9d73; /* lerp(success, warning, 0.25) */
+  --scale-2: #a89359; /* lerp(success, warning, 0.65) */
+  --scale-3: #cf8b43; /* = --cp-warning */
+  --scale-4: #d48b6e; /* lerp(warning, danger, 0.5) */
+  --scale-5: #d98a98; /* = --cp-danger */
+}
+
+/* ============================================================
+ * DARK (default) — "Ink Observatory". Near-black, warm neutral text,
+ * gilt-gold accent. Values are Aporia's shipped tokens.css, verbatim.
+ * This is the base :root block: no selector qualification, so it
+ * applies unconditionally unless overridden by :root[data-theme="light"]
+ * below.
  * ============================================================ */
 :root {
   color-scheme: dark;
 
-  --cp-bg: #0b0c0a; /* page ground */
-  --cp-bg-elevated: #131512; /* cards, panels, popovers */
-  --cp-bg-subtle: #060706; /* wells, canvas backdrops, code blocks */
-  --cp-bg-inset: #0f110e; /* inputs, table zebra, inset rows */
-  --cp-border: #242821; /* hairlines, dividers, card edges */
-  --cp-border-strong: #363b31; /* emphasised edges */
-  --cp-text: #c2c6b9; /* body copy */
-  --cp-text-muted: #8a8f80; /* secondary, captions, axis labels */
-  --cp-text-heading: #f2efe4; /* headings, key numerals (bone) */
+  --cp-bg: #0a0b0d;
+  --cp-bg-elevated: #121418;
+  --cp-bg-subtle: #050608;
+  --cp-border: #23262d;
+  --cp-border-strong: #343a44;
+  --cp-text: #c3c7ce;
+  --cp-text-muted: #7e848f;
+  --cp-text-heading: #f1ede3;
 
-  --cp-accent: #5fb99a; /* verdigris */
-  --cp-accent-strong: #8ad9bc; /* hover, emphasis, focus ring */
-  --cp-accent-dim: #3e8871; /* accent borders, low-emphasis fills */
-  --cp-accent-bg: rgb(95 185 154 / 12%);
-  --cp-accent-border: rgb(95 185 154 / 36%);
-  --cp-accent-contrast: #06120d; /* text/icon ON an accent fill */
+  --cp-accent: #d6ac4d;
+  --cp-accent-strong: #ecc873;
+  --cp-accent-bg: rgb(214 172 77 / 12%);
+  --cp-accent-border: rgb(214 172 77 / 38%);
+  --cp-accent-contrast: #0a0b0d;
 
-  --cp-success: #63b58c; /* accent family, by rule R1 */
-  --cp-success-bg: rgb(99 181 140 / 14%);
-  --cp-warning: #d3a04a; /* ochre */
-  --cp-warning-bg: rgb(211 160 74 / 14%);
-  --cp-danger: #d2705f; /* clay */
-  --cp-danger-bg: rgb(210 112 95 / 15%);
-  --cp-info: #7ba6c4; /* dusty blue */
-  --cp-info-bg: rgb(123 166 196 / 14%);
+  --cp-success: #5fa383;
+  --cp-success-bg: rgb(95 163 131 / 15%);
+  --cp-warning: #cf8b43;
+  --cp-warning-bg: rgb(207 139 67 / 15%);
+  --cp-danger: #d98a98;
+  --cp-danger-bg: rgb(217 138 152 / 15%);
+  --cp-info: #6aa8e0;
+  --cp-info-bg: rgb(106 168 224 / 15%);
 
-  --cp-focus: #8ad9bc;
-  --cp-overlay: rgb(6 7 6 / 65%);
+  --cp-focus: #6aa8e0;
+  --cp-overlay: rgb(5 6 8 / 65%);
 
-  --cp-shadow-sm: 0 1px 2px rgb(0 0 0 / 50%);
-  --cp-shadow-md: 0 6px 20px rgb(0 0 0 / 45%);
-  --cp-shadow-lg: 0 16px 40px rgb(0 0 0 / 55%);
+  --cp-shadow-sm: 0 1px 2px rgb(0 0 0 / 45%);
+  --cp-shadow-md: 0 8px 26px rgb(0 0 0 / 42%);
+  --cp-shadow-lg: 0 18px 44px rgb(0 0 0 / 50%);
 }
 
 /* ============================================================
- * LIGHT (opt-in) — "Parchment". Applied only when the manual
+ * LIGHT (opt-in) — "Parchment Journal". Applied only when the manual
  * theme toggle stamps data-theme="light" on <html>
- * (theme/ThemeProvider.tsx + index.html's pre-paint script).
- * A plain, unlayered :root[data-theme="light"] selector always
- * wins over @theme's own @layer-theme output regardless of source
- * order (see the file header) -- this is what makes overriding a
- * token also declared inside @theme actually take effect.
+ * (theme/ThemeProvider.tsx + public/pre-paint-theme.js). A plain,
+ * unlayered :root[data-theme="light"] selector always wins over
+ * @theme's own @layer-theme output regardless of source order (see the
+ * file header) -- this is what makes overriding a token also declared
+ * inside @theme actually take effect. Values are Aporia's shipped
+ * tokens.css, verbatim.
  * ============================================================ */
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --cp-bg: #f6f4ec;
-  --cp-bg-elevated: #fffdf6;
-  --cp-bg-subtle: #edeadf;
-  --cp-bg-inset: #e9e6da;
-  --cp-border: #d8d3c2;
-  --cp-border-strong: #bdb7a3;
-  --cp-text: #3a3d33;
-  --cp-text-muted: #64685a;
-  --cp-text-heading: #14170f;
+  --cp-bg: #f3eee3;
+  --cp-bg-elevated: #fbf8f1;
+  --cp-bg-subtle: #ece5d6;
+  --cp-border: #ded5c3;
+  --cp-border-strong: #c9bca1;
+  --cp-text: #3d4761;
+  --cp-text-muted: #7c8398;
+  --cp-text-heading: #1a2436;
 
-  --cp-accent: #26694f;
-  --cp-accent-strong: #1b5340;
-  --cp-accent-dim: #6fa48c;
-  --cp-accent-bg: rgb(38 105 79 / 10%);
-  --cp-accent-border: rgb(38 105 79 / 32%);
-  --cp-accent-contrast: #fffdf6;
+  --cp-accent: #9a6b1e;
+  --cp-accent-strong: #7e5410;
+  --cp-accent-bg: rgb(154 107 30 / 10%);
+  --cp-accent-border: rgb(154 107 30 / 35%);
+  --cp-accent-contrast: #fbf8f1;
 
-  --cp-success: #2a7358;
-  --cp-success-bg: rgb(42 115 88 / 12%);
-  --cp-warning: #8a5e16;
-  --cp-warning-bg: rgb(138 94 22 / 12%);
-  --cp-danger: #a83e33;
-  --cp-danger-bg: rgb(168 62 51 / 12%);
-  --cp-info: #2f5f80;
-  --cp-info-bg: rgb(47 95 128 / 12%);
+  --cp-success: #3d6b57;
+  --cp-success-bg: rgb(61 107 87 / 12%);
+  --cp-warning: #9a5b2a;
+  --cp-warning-bg: rgb(154 91 42 / 12%);
+  --cp-danger: #a03e4c;
+  --cp-danger-bg: rgb(160 62 76 / 10%);
+  --cp-info: #2e5d8a;
+  --cp-info-bg: rgb(46 93 138 / 10%);
 
-  --cp-focus: #26694f;
-  --cp-overlay: rgb(58 53 38 / 45%);
+  --cp-focus: #2e5d8a;
+  --cp-overlay: rgb(26 36 54 / 45%);
 
-  --cp-shadow-sm: 0 1px 2px rgb(58 53 38 / 10%);
-  --cp-shadow-md: 0 6px 20px rgb(58 53 38 / 10%);
-  --cp-shadow-lg: 0 16px 40px rgb(58 53 38 / 14%);
+  --cp-shadow-sm: 0 1px 2px rgb(26 36 54 / 6%);
+  --cp-shadow-md: 0 4px 16px rgb(26 36 54 / 8%);
+  --cp-shadow-lg: 0 12px 32px rgb(26 36 54 / 12%);
 
-  /* Six-stop heat ramp, light-mode values (paired with the dark/base
-     declaration above the subsystem palette). */
-  --scale-0: #7a7d6e;
-  --scale-1: #9c8a3e;
-  --scale-2: #8a5e16;
-  --scale-3: #a65a28;
-  --scale-4: #98422f;
-  --scale-5: #7c2a22;
+  /* Heat ramp, light-mode values -- same interpolation as the dark :root
+     block above, across THIS scheme's own success/warning/danger. */
+  --scale-0: #7c8398; /* = --cp-text-muted */
+  --scale-1: #546753; /* lerp(success, warning, 0.25) */
+  --scale-2: #79613a; /* lerp(success, warning, 0.65) */
+  --scale-3: #9a5b2a; /* = --cp-warning */
+  --scale-4: #9d4d3b; /* lerp(warning, danger, 0.5) */
+  --scale-5: #a03e4c; /* = --cp-danger */
 }
 
 /* ============================================================
- * Structural tokens (scheme-independent) — spacing and motion
- * durations (section 3.3). Declared as plain :root properties: these
- * are for explicit use (inline style, arbitrary-value utilities)
- * rather than redefining a Tailwind-recognised theme namespace --
- * unlike --leading-* and --tracking-* above, Tailwind v4 has no
- * --space-* or --dur-* namespace of its own to hijack, and
- * redefining Tailwind's actual spacing multiplier would silently
- * reflow every pre-existing gap-*, px-*, py-* class across the
- * un-rebuilt pages, which depends on its default ratio.
+ * Structural tokens (scheme-independent) — Aporia's exact spacing scale
+ * (section 5.3) and this app's own motion durations, both declared as
+ * plain :root properties for explicit use (inline style, arbitrary-value
+ * utilities) rather than redefining a Tailwind-recognised theme
+ * namespace.
  * ============================================================ */
 :root {
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 32px;
-  --space-8: 40px;
-  --space-9: 48px;
-  --space-10: 64px;
-  --space-11: 80px;
-  --space-12: 96px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 2.75rem;
+  --space-8: 3.5rem;
 
   --dur-instant: 90ms;
-  --dur-fast: 150ms;
+  --dur-fast: 140ms;
   --dur-base: 240ms;
-  --dur-slow: 420ms;
-  --dur-reveal: 620ms;
+  --dur-slow: 480ms;
+  --dur-reveal: 480ms;
+
+  /* Section 5.3: "Compass currently uses a much wider content column.
+     Adopt 1080px." -- a narrower measure is a large part of why Aporia
+     reads as calm and Compass used to read as a wall. */
+  --layout-max-width: 1080px;
 }

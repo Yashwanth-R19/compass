@@ -2,13 +2,11 @@ import type { Severity } from "../api/types";
 import { SEVERITY_CLASSES, SEVERITY_LABEL } from "../lib/format";
 
 /** The one severity pill, used anywhere a `Severity` needs a chip --
- * findings, cycles, layering violations. Reads only from the heat ramp
- * (`SEVERITY_CLASSES`, `lib/format.ts`) — section 3.1: "severity maps onto
- * that ramp and nowhere else". A solid FILLED chip (not a hairline
- * outline) with a per-tier ink colour chosen for real measured contrast
- * — see `SEVERITY_CLASSES`'s own docstring for why an outline doesn't
- * clear WCAG at every tier — always paired with the text label so a
- * colour-deficient viewer never depends on hue alone. */
+ * findings, cycles, layering violations. Reads only from
+ * `SEVERITY_CLASSES` (`lib/format.ts`) — a soft-tinted fill plus solid
+ * text, mapping high/med/low onto danger/warning/success. Always paired
+ * with the text label so a colour-deficient viewer never depends on hue
+ * alone. */
 export function SeverityChip({ severity }: { severity: Severity }) {
   return (
     <span

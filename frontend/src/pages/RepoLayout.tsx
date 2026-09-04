@@ -24,24 +24,23 @@ import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Alert } from "../components/ui/Alert";
 import { useToast } from "../components/ui/Toast";
+import { NarrativeDrawer } from "../components/NarrativeDrawer";
+import { PipelineSequence } from "../components/PipelineSequence";
+import { markChecklistFlag } from "../lib/checklist";
 import type { RepoOut, StageName, StageOut, StageStatus } from "../api/types";
 
 /**
- * The eight repository surfaces (rebuild spec section 4.1) -- real routes,
+ * The five repository surfaces (rebuild spec section 4) -- real routes,
  * `NavLink`s, so deep-linking, the back button, and every existing share
- * link keep working. This REPLACES the outgoing Onboard/Audit dual-mode
- * system entirely: there is no mode switcher any more, and the old
- * `compass:mode` localStorage key is no longer read or written anywhere
- * in this codebase.
+ * link keep working. "Explore" absorbs the former Map/Structure/Impact
+ * surfaces; "Guide" absorbs Tour/Glossary/People; Risk/Benchmark are now
+ * views inside Findings.
  */
 const REPO_TABS = [
   { to: "overview", label: "Overview" },
-  { to: "map", label: "Map" },
-  { to: "tour", label: "Tour" },
-  { to: "people", label: "People" },
+  { to: "guide", label: "Guide" },
+  { to: "explore", label: "Explore" },
   { to: "findings", label: "Findings" },
-  { to: "risk", label: "Risk" },
-  { to: "structure", label: "Structure" },
   { to: "evolution", label: "Evolution" },
 ];
 
@@ -90,16 +89,28 @@ function buildRedirectTarget(
   return `/repos/${repoId}/${path}${mergedString ? `?${mergedString}` : ""}${hash}`;
 }
 
-/** Every one of the rebuild spec's 23 required redirects (section 4.2)
+/** Every one of the rebuild spec's required redirects (section 4.6)
  * renders through this one component -- `to` is the fixed target suffix
- * (see `buildRedirectTarget` above). Covers both the pre-consolidation
- * dual-mode paths (`onboard/*`/`audit/*`/bare `compare`) and the
- * session-02 legacy share-link paths (`coupling`/`architecture`/`risk`),
- * which must keep working indefinitely -- they are still-live links,
- * not a one-time migration aid. */
-export function LegacyRedirect({ to }: { to: string }) {
+ * (see `buildRedirectTarget` above). Covers the pre-consolidation
+ * eight-surface paths, the session-02 legacy share-link paths
+ * (`coupling`/`architecture`/`risk`), and the pre-eight-surface dual-mode
+ * paths (`onboard/*`/`audit/*`/bare `compare`) -- all still-live links,
+ * never a one-time migration aid.
+ *
+ * `absolute`: for the handful of redirects that are NOT `/repos/:id/...`
+ * scoped at all (`/methods` -> `/how-it-works#methods`) -- `to` is used
+ * verbatim as the navigation target, with `location.search` still merged
+ * in underneath any query string `to` itself carries. */
+export function LegacyRedirect({ to, absolute = false }: { to: string; absolute?: boolean }) {
   const { repoId } = useParams<{ repoId: string }>();
   const location = useLocation();
+  if (absolute) {
+    const hashIndex = to.indexOf("#");
+    const path = hashIndex >= 0 ? to.slice(0, hashIndex) : to;
+    const hash = hashIndex >= 0 ? to.slice(hashIndex) : "";
+    const search = location.search;
+    return <Navigate to={`${path}${search}${hash}`} replace />;
+  }
   return <Navigate to={buildRedirectTarget(repoId, to, location.search)} replace />;
 }
 
@@ -111,7 +122,7 @@ const REPO_STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
 };
 
-const STAGE_LABEL: Record<StageName, string> = {
+export const STAGE_LABEL: Record<StageName, string> = {
   clone: "Clone",
   mine: "Mine",
   structure: "Structure",
@@ -130,7 +141,7 @@ const STAGE_LABEL: Record<StageName, string> = {
 // The one summary field worth surfacing as a pill's number, per stage --
 // each stage's summary JSONB carries several fields, but the pill only has
 // room for one.
-const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
+export const STAGE_SUMMARY_KEY: Partial<Record<StageName, string>> = {
   mine: "commits",
   structure: "dependencies",
   persist_facts: "commits",
@@ -223,13 +234,25 @@ export function RepoLayout() {
               {REPO_STATUS_LABEL[displayStatus] ?? displayStatus}
             </span>
             {(runs.data?.runs.length ?? 0) >= 2 ? <CompareLink /> : null}
+            {status.data?.current_run_id ? (
+              <NarrativeDrawer repoId={repo.id} share={share} />
+            ) : null}
             {me.data && status.data?.current_run_id ? (
               <ShareButton runId={status.data.current_run_id} />
             ) : null}
           </div>
         </div>
 
-        {status.data && status.data.stages.length > 0 ? (
+        {/* While a run is genuinely in progress, the live pipeline
+            showpiece (rebuild spec section 6.3) replaces the plain stage
+            pill strip; once the run reaches a terminal status the compact
+            pill row (unchanged) takes back over for a finished/historical
+            view. */}
+        {status.data?.run_status === "running" ? (
+          <div className="mt-4">
+            <PipelineSequence repoId={repo.id} share={share} compact />
+          </div>
+        ) : status.data && status.data.stages.length > 0 ? (
           <div className="mt-4 flex flex-wrap gap-1.5">
             {status.data.stages.map((s) => (
               <StagePill key={s.name} stage={s} />
@@ -345,7 +368,7 @@ function stageSummaryValue(stage: StageOut): string | null {
 function CompareLink() {
   return (
     <NavLink
-      to="evolution?tab=compare"
+      to="evolution?view=compare"
       className={({ isActive }) =>
         `inline-flex items-center rounded-xs border px-2.5 py-1 text-xs font-medium transition-colors ${
           isActive
@@ -372,6 +395,7 @@ function ShareButton({ runId }: { runId: string }) {
     const result = await createShare.mutateAsync(runId);
     const shareUrl = `${window.location.origin}/shared/${result.slug}`;
     setLink(shareUrl);
+    markChecklistFlag("shared_run");
     try {
       await navigator.clipboard.writeText(shareUrl);
       showToast("Link copied to clipboard");

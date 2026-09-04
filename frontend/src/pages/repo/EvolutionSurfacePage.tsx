@@ -42,7 +42,7 @@ import {
   SUBSYSTEM_CHANGE_COPY,
 } from "../../lib/copy";
 import { DIRECTION_TEXT_CLASS, formatSignedDelta, headlineDirection } from "../../lib/compare";
-import { colorForSubsystem } from "../../lib/subsystemColors";
+import { colorForKey } from "../../lib/palette";
 import { CHROME, SUBSYSTEM_PALETTE, rechartsTheme } from "../../lib/chartTheme";
 import {
   contributorBandData,
@@ -62,14 +62,17 @@ const NEUTRAL_LINE = CHROME.inkFaint;
 const STEP_MS = 800;
 
 /**
- * `/repos/:id/evolution` (UI rebuild session 4, Part D) -- merges the
- * former Evolution (time-travel scrubber) and Compare (run-vs-run diff)
- * pages behind `?tab=timeline|compare`.
+ * `/repos/:id/evolution` -- merges the former Evolution (time-travel
+ * scrubber) and Compare (run-vs-run diff) pages. Rebuild spec section 4.5
+ * names the discriminator `?view=timeline|compare`; this still reads its
+ * own pre-existing `?tab=` too (whichever is present wins, `view` checked
+ * first) so both the current redirect table (`evolution?view=compare`) and
+ * any already-live `?tab=` link keep landing on the right tab.
  */
 export function EvolutionSurfacePage() {
   const { repo, share } = useOutletContext<RepoOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const urlTab = searchParams.get("tab");
+  const urlTab = searchParams.get("view") ?? searchParams.get("tab");
   const [tab, setTab] = useState<EvolutionTab>(isEvolutionTab(urlTab) ? urlTab : "timeline");
 
   useEffect(() => {
@@ -398,10 +401,8 @@ function ContributorBand({
                   type="monotone"
                   dataKey={name}
                   stackId="share"
-                  stroke={
-                    name === "Other" ? NEUTRAL_LINE : colorForSubsystem(`contributor:${name}`)
-                  }
-                  fill={name === "Other" ? NEUTRAL_LINE : colorForSubsystem(`contributor:${name}`)}
+                  stroke={name === "Other" ? NEUTRAL_LINE : colorForKey(`contributor:${name}`)}
+                  fill={name === "Other" ? NEUTRAL_LINE : colorForKey(`contributor:${name}`)}
                   fillOpacity={0.7}
                   isAnimationActive={false}
                 />

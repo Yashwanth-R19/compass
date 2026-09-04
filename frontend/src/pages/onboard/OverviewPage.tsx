@@ -26,7 +26,6 @@ import { InfoTooltip } from "../../components/ui/InfoTooltip";
 import { CountUp } from "../../components/motion/CountUp";
 import { ContributorChip } from "../../components/ContributorChip";
 import { HonestyNote } from "../../components/HonestyNote";
-import { NarrativeBlock } from "../../components/NarrativeBlock";
 import { ScoreExplainer, type ScoreExplainerContribution } from "../../components/ScoreExplainer";
 import { ScoreGauge } from "../../components/ScoreGauge";
 import { StageGate } from "../../components/StageGate";
@@ -138,7 +137,6 @@ export function OverviewPage() {
             <ScaleAndCadenceCard data={data.data} />
             <TeamShapeCard data={data.data} repoId={repo.id} share={share} />
             <ShapeCard data={data.data} repoId={repo.id} share={share} />
-            <NarrativeBlock surface="passport" />
           </>
         )}
       </StageGate>

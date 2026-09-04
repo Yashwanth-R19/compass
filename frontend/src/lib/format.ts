@@ -21,28 +21,21 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
   low: "Low",
 };
 
-/** A FILLED chip per severity (background = the heat-ramp stop itself),
- * reading only from the six-stop heat ramp (design tokens section 3.1:
- * "severity maps onto that ramp and nowhere else") -- high = scale-5,
- * med = scale-3, low = scale-1. Always paired with SEVERITY_LABEL's text,
- * never colour alone (WCAG 1.4.1).
- *
- * NOT a hairline-bordered outline (unlike Badge's other tones) --
- * measured this session: scale-5 (dark scheme) is only 2.84:1 against
- * --color-bg-elevated as text/border, below even the 3:1 non-text bar,
- * and scale-1 (light scheme) is 3.37:1, short of the 4.5:1 body-text bar.
- * A solid fill with a per-tier FIXED ink colour (chosen specifically per
- * severity level -- see tokens.css's own comment on
- * --color-scale-ink-dark/-light for why a single generic choice doesn't
- * work) is what actually clears contrast at every tier, in both schemes,
- * with real margin. `med` is the one tier that needs a scheme-conditional
- * ink (dark ink in dark scheme, light ink in light scheme) -- `dark:`
- * here correctly tracks the app's own manual theme toggle
- * (index.css's `@custom-variant dark`), not the OS setting. */
+/** A filled chip per severity -- a soft self-tinted background plus solid
+ * text in the same hue, the SAME pattern every other status colour in this
+ * app already uses (Alert's `border-danger text-danger`, Badge's
+ * `bg-danger-bg`, ...) rather than a solid fill from the heat ramp with a
+ * hand-picked ink colour: a `*-bg` tint is by construction close to
+ * `--color-bg-elevated`, so the solid-hue text on top of it clears
+ * contrast the same way it already does as plain foreground text
+ * elsewhere in the app, with no per-palette contrast re-engineering
+ * needed. `high`/`med`/`low` map onto danger/warning/success -- three
+ * distinct hues, never a bare red/green pair. Always paired with
+ * SEVERITY_LABEL's text, never colour alone (WCAG 1.4.1). */
 export const SEVERITY_CLASSES: Record<Severity, string> = {
-  high: "bg-scale-5 text-scale-ink-light",
-  med: "bg-scale-3 text-scale-ink-light dark:text-scale-ink-dark",
-  low: "bg-scale-1 text-scale-ink-dark",
+  high: "bg-danger-bg text-danger",
+  med: "bg-warning-bg text-warning",
+  low: "bg-success-bg text-success",
 };
 
 export function confidenceLabel(confidence: number): "low" | "medium" | "high" {

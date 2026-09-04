@@ -2,49 +2,17 @@ import { Compass, LogOut } from "lucide-react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { githubLoginUrl } from "../api/client";
 import { useLogout, useMe } from "../api/hooks";
-import { setNarrativeEnabled, useNarrativeEnabled } from "../lib/narrativePref";
 import { reopenOnboardingPanel } from "../lib/onboardingPanelPref";
 import { TooltipProvider } from "./ui/Tooltip";
 import { ToastProvider } from "./ui/Toast";
 import { ThemeToggle } from "./ThemeToggle";
 import { GlossaryDialog } from "./GlossaryDialog";
+import { CommandPalette } from "./CommandPalette";
 
 const PRIMARY_NAV = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/portfolio", label: "Portfolio" },
   { to: "/how-it-works", label: "How it works" },
-  { to: "/methods", label: "Methods" },
 ];
-
-/** The single global "narrative phrasing" toggle -- always visible in the
- * header regardless of route or repo. Defaults to off and every page
- * remains fully usable either way; this control only decides whether
- * `NarrativeBlock` instances fetch and render anything at all. */
-function NarrativeToggle() {
-  const enabled = useNarrativeEnabled();
-
-  return (
-    <label className="flex cursor-pointer items-center gap-1.5">
-      <span className="cp-label hidden sm:inline">Narrative</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label="Toggle generated narrative phrasing"
-        onClick={() => setNarrativeEnabled(!enabled)}
-        className={`relative h-4 w-7 shrink-0 rounded-full border transition-colors ${
-          enabled ? "border-accent bg-accent" : "border-border-strong bg-bg-inset"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-bg-elevated transition-transform motion-reduce:transition-none ${
-            enabled ? "translate-x-3.5" : "translate-x-0.5"
-          }`}
-        />
-      </button>
-    </label>
-  );
-}
 
 /** Reopens the landing page's onboarding panel from anywhere in the app --
  * navigates to `/` first (a no-op if already there) so the panel has
@@ -59,7 +27,7 @@ function ReopenOnboardingButton() {
         reopenOnboardingPanel();
         navigate("/");
       }}
-      className="cp-label hover:text-text"
+      className="cp-label hidden hover:text-text md:inline"
     >
       How Compass works
     </button>
@@ -75,7 +43,7 @@ export function AppShell() {
       <ToastProvider>
         <div className="flex min-h-full flex-col">
           <header className="border-b border-border bg-bg-elevated">
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+            <div className="mx-auto flex max-w-[var(--layout-max-width)] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="flex items-center gap-6">
                 <Link to="/" className="flex items-center gap-2 text-text-heading">
                   <Compass
@@ -102,14 +70,14 @@ export function AppShell() {
                 </nav>
               </div>
 
-              <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-3 text-xs">
                 <ReopenOnboardingButton />
+                <CommandPalette />
                 <GlossaryDialog />
-                <NarrativeToggle />
                 <ThemeToggle />
 
                 {me.data ? (
-                  <div className="flex items-center gap-2 border-l border-border pl-4">
+                  <div className="flex items-center gap-2 border-l border-border pl-3">
                     {me.data.avatar_url ? (
                       <img
                         src={me.data.avatar_url}
@@ -118,7 +86,7 @@ export function AppShell() {
                         referrerPolicy="no-referrer"
                       />
                     ) : null}
-                    <span className="text-text-muted">{me.data.github_login}</span>
+                    <span className="hidden text-text-muted sm:inline">{me.data.github_login}</span>
                     <button
                       type="button"
                       onClick={() => logout.mutate()}
@@ -132,7 +100,7 @@ export function AppShell() {
                 ) : (
                   <a
                     href={githubLoginUrl("basic")}
-                    className="ml-1 rounded-sm border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-contrast hover:bg-accent-strong hover:border-accent-strong"
+                    className="ml-1 rounded-sm border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-contrast hover:border-accent-strong hover:bg-accent-strong"
                   >
                     Log in with GitHub
                   </a>
@@ -158,7 +126,7 @@ export function AppShell() {
             </nav>
           </header>
 
-          <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6">
+          <main className="mx-auto w-full min-w-0 max-w-[var(--layout-max-width)] flex-1 px-4 py-6 sm:px-6">
             <Outlet />
           </main>
         </div>
