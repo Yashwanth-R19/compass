@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import {
+  useClaimRepo,
   useCreateShareLink,
   useMe,
   useRepo,
@@ -248,6 +249,7 @@ export function RepoLayout() {
             {status.data?.current_run_id ? (
               <NarrativeDrawer repoId={repo.id} share={share} />
             ) : null}
+            {me.data && repo.is_claimable ? <ClaimButton repoId={repo.id} /> : null}
             {me.data && status.data?.current_run_id ? (
               <ShareButton runId={status.data.current_run_id} />
             ) : null}
@@ -416,6 +418,42 @@ function CompareLink() {
     >
       Compare
     </NavLink>
+  );
+}
+
+/** Links a repo with no owner yet (e.g. analyzed while logged out) to the
+ * caller's account -- shown only when logged in and `repo.is_claimable` is
+ * true (RepoOut), so it never appears for a repo someone already owns. Never
+ * re-runs analysis; just makes the repo start showing up on `/dashboard`. */
+function ClaimButton({ repoId }: { repoId: string }) {
+  const claimRepo = useClaimRepo();
+  const showToast = useToast();
+
+  function handleClaim() {
+    claimRepo.mutate(repoId, {
+      onSuccess: () => showToast("Added to your dashboard"),
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={handleClaim}
+        disabled={claimRepo.isPending}
+      >
+        {claimRepo.isPending ? "Adding…" : "Claim this repo"}
+      </Button>
+      {claimRepo.isError ? (
+        <span className="text-xs text-danger">
+          {claimRepo.error instanceof ApiError
+            ? claimRepo.error.message
+            : "Couldn't link this repo to your account."}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

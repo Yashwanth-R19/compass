@@ -42,6 +42,7 @@ export interface RepoOut {
   file_count: number;
   is_private: boolean;
   is_showcase: boolean;
+  is_claimable: boolean;
 }
 
 // Session 16, Part A: one home-page showcase card.

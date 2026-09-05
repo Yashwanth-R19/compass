@@ -233,12 +233,9 @@ def list_showcase_repos(db: Session = Depends(get_db)) -> ShowcaseReposResponse:
     return ShowcaseReposResponse(repos=out)
 
 
-@router.get("/repos/{repo_id}", response_model=RepoOut)
-def get_repo(
-    repo_id: uuid.UUID, db: Session = Depends(get_db), repo: Repo = Depends(require_repo_access)
-) -> RepoOut:
+def _build_repo_out(repo: Repo, db: Session) -> RepoOut:
     file_count = (
-        db.scalar(select(func.count()).select_from(File).where(File.repo_id == repo_id)) or 0
+        db.scalar(select(func.count()).select_from(File).where(File.repo_id == repo.id)) or 0
     )
 
     return RepoOut(
@@ -254,7 +251,55 @@ def get_repo(
         file_count=file_count,
         is_private=repo.is_private,
         is_showcase=repo.is_showcase,
+        is_claimable=repo.owner_user_id is None and not repo.is_private and not repo.is_showcase,
     )
+
+
+@router.get("/repos/{repo_id}", response_model=RepoOut)
+def get_repo(
+    repo_id: uuid.UUID, db: Session = Depends(get_db), repo: Repo = Depends(require_repo_access)
+) -> RepoOut:
+    return _build_repo_out(repo, db)
+
+
+@router.post("/repos/{repo_id}/claim", response_model=RepoOut)
+def claim_repo(
+    repo_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    repo: Repo = Depends(require_repo_access),
+    user: User = Depends(current_user_required),
+) -> RepoOut:
+    """Links a repository with no owner yet (e.g. submitted anonymously) to
+    the caller's account, so it starts appearing on their ``GET /me/repos``
+    dashboard -- without re-running analysis and without needing to prove
+    live GitHub access the way an authenticated ``POST /repos`` resubmission
+    already implicitly does (see that endpoint's own ownership comment).
+
+    Deliberately narrower than resubmission's ownership-transfer behaviour:
+    this only ever moves a repo from NO owner to the caller -- it can never
+    take ownership away from a different account that already claimed or
+    submitted it (409), which resubmission-based transfer still can (a
+    documented, pre-existing judgement call, unchanged here). Private repos
+    are excluded too: one always already has an owner by construction (an
+    anonymous submitter can never even create a private repo's row, since
+    ``POST /repos``'s visibility check 403s first), so there's nothing to
+    claim there. Showcase repos are never claimable, same as they're never
+    deletable.
+    """
+    if repo.is_showcase:
+        raise HTTPException(status_code=403, detail="Showcase repositories cannot be claimed.")
+    if repo.is_private:
+        raise HTTPException(status_code=400, detail="This repository already has an owner.")
+    if repo.owner_user_id is not None and repo.owner_user_id != user.id:
+        raise HTTPException(
+            status_code=409, detail="This repository is already linked to another account."
+        )
+
+    if repo.owner_user_id is None:
+        repo.owner_user_id = user.id
+        db.commit()
+        db.refresh(repo)
+    return _build_repo_out(repo, db)
 
 
 @router.get("/repos/{repo_id}/status", response_model=RepoStatusResponse)

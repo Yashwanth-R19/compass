@@ -135,6 +135,117 @@ def test_delete_repo_refuses_a_showcase_repo(client, db_session):
     assert db_session.get(Repo, repo.id) is not None
 
 
+def test_claim_repo_links_an_unowned_public_repo_to_the_caller(client, db_session):
+    user = _make_user(db_session, github_id=444)
+    repo = Repo(
+        url="https://github.com/fixture/orphan",
+        owner="fixture",
+        name="orphan",
+        status=RepoStatus.ready,
+        is_private=False,
+    )
+    db_session.add(repo)
+    db_session.commit()
+
+    _login(client, user)
+    resp = client.post(f"/repos/{repo.id}/claim")
+    assert resp.status_code == 200
+    assert resp.json()["is_claimable"] is False
+    db_session.refresh(repo)
+    assert repo.owner_user_id == user.id
+
+
+def test_claim_repo_requires_login(client, db_session):
+    repo = Repo(
+        url="https://github.com/fixture/orphan-anon",
+        owner="fixture",
+        name="orphan-anon",
+        status=RepoStatus.ready,
+        is_private=False,
+    )
+    db_session.add(repo)
+    db_session.commit()
+
+    resp = client.post(f"/repos/{repo.id}/claim")
+    assert resp.status_code == 401
+
+
+def test_claim_repo_is_idempotent_for_the_current_owner(client, db_session):
+    user = _make_user(db_session, github_id=445)
+    repo = Repo(
+        url="https://github.com/fixture/already-mine",
+        owner="fixture",
+        name="already-mine",
+        status=RepoStatus.ready,
+        is_private=False,
+        owner_user_id=user.id,
+    )
+    db_session.add(repo)
+    db_session.commit()
+
+    _login(client, user)
+    resp = client.post(f"/repos/{repo.id}/claim")
+    assert resp.status_code == 200
+
+
+def test_claim_repo_refuses_a_repo_owned_by_someone_else(client, db_session):
+    owner = _make_user(db_session, github_id=446)
+    other = _make_user(db_session, github_id=447)
+    repo = Repo(
+        url="https://github.com/fixture/someone-elses",
+        owner="fixture",
+        name="someone-elses",
+        status=RepoStatus.ready,
+        is_private=False,
+        owner_user_id=owner.id,
+    )
+    db_session.add(repo)
+    db_session.commit()
+
+    _login(client, other)
+    resp = client.post(f"/repos/{repo.id}/claim")
+    assert resp.status_code == 409
+    db_session.refresh(repo)
+    assert repo.owner_user_id == owner.id
+
+
+def test_claim_repo_refuses_a_private_repo(client, db_session):
+    owner = _make_user(db_session, github_id=448)
+    repo = Repo(
+        url="https://github.com/fixture/private-one",
+        owner="fixture",
+        name="private-one",
+        status=RepoStatus.ready,
+        is_private=True,
+        owner_user_id=owner.id,
+    )
+    db_session.add(repo)
+    db_session.commit()
+
+    _login(client, owner)
+    resp = client.post(f"/repos/{repo.id}/claim")
+    assert resp.status_code == 400
+
+
+def test_claim_repo_refuses_a_showcase_repo(client, db_session):
+    user = _make_user(db_session, github_id=449)
+    repo = Repo(
+        url="https://github.com/fixture/pinned-orphan",
+        owner="fixture",
+        name="pinned-orphan",
+        status=RepoStatus.ready,
+        is_private=False,
+        is_showcase=True,
+        showcase_rank=2,
+    )
+    db_session.add(repo)
+    db_session.commit()
+
+    _login(client, user)
+    resp = client.post(f"/repos/{repo.id}/claim")
+    assert resp.status_code == 403
+
+
 def test_internal_endpoints_require_admin_token(client, monkeypatch):
     import app.config as config_module
 

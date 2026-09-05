@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Check, X, Minus } from "lucide-react";
 import { usePipeline, useRepoStatus } from "../api/hooks";
 import { STAGE_LABEL, STAGE_SUMMARY_KEY } from "../pages/RepoLayout";
@@ -52,14 +53,18 @@ export function PipelineSequence({
   // component's own lifetime -- an already-finished run mounted fresh
   // (e.g. a page reload) renders collapsed immediately, no false "just
   // completed" animation for something that finished before this component
-  // ever existed.
+  // ever existed. Fires (and notifies `onDone`) exactly once per mount --
+  // NOT gated on having separately observed a "running" status first: a
+  // repo whose analysis finishes very quickly (facts reused, tiny repo) can
+  // legitimately have its very first status fetch already show a terminal
+  // result, and gating on "running" having been seen left that case stuck
+  // showing the fully-expanded, all-done pipeline forever with no way
+  // forward.
   const [collapsed, setCollapsed] = useState(isTerminal);
-  const everRunning = useRef(false);
+  const notified = useRef(false);
   useEffect(() => {
-    if (runStatus === "running") everRunning.current = true;
-  }, [runStatus]);
-  useEffect(() => {
-    if (isTerminal && everRunning.current) {
+    if (isTerminal && !notified.current) {
+      notified.current = true;
       setCollapsed(true);
       onDone?.(runStatus!);
     }
@@ -84,11 +89,16 @@ export function PipelineSequence({
     .sort((a, b) => a.order - b.order)
     .map((p) => ({ pipeline: p, status: byName.get(p.name as StageName) }));
 
+  const overviewHref = repoId
+    ? `/repos/${repoId}/overview${share ? `?share=${encodeURIComponent(share)}` : ""}`
+    : null;
+
   if (collapsed) {
     return (
       <CollapsedSummary
         merged={merged}
         runStatus={runStatus ?? "running"}
+        overviewHref={overviewHref}
         onExpand={() => setCollapsed(false)}
       />
     );
@@ -99,21 +109,38 @@ export function PipelineSequence({
   }
 
   return (
-    <ol className="flex flex-col">
-      {merged.map(({ pipeline: p, status: s }) => (
-        <StageRow key={p.name} stage={p} status={s} reducedMotion={reducedMotion} />
-      ))}
-    </ol>
+    <div className="flex flex-col gap-4">
+      <ol className="flex flex-col">
+        {merged.map(({ pipeline: p, status: s }) => (
+          <StageRow key={p.name} stage={p} status={s} reducedMotion={reducedMotion} />
+        ))}
+      </ol>
+      {/* Only reachable by manually re-expanding an already-collapsed,
+          finished run (see "Show pipeline" below) -- the collapse effect
+          above fires the moment the run goes terminal, so a fresh
+          completion is never seen in this expanded form. Repeated here so
+          there's still an explicit way to the results after re-expanding. */}
+      {isTerminal && overviewHref ? (
+        <Link
+          to={overviewHref}
+          className="inline-flex w-fit items-center gap-1.5 rounded-sm border border-accent-border bg-accent-bg px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-contrast"
+        >
+          View full analysis →
+        </Link>
+      ) : null}
+    </div>
   );
 }
 
 function CollapsedSummary({
   merged,
   runStatus,
+  overviewHref,
   onExpand,
 }: {
   merged: Merged[];
   runStatus: string;
+  overviewHref: string | null;
   onExpand: () => void;
 }) {
   const failed = merged.filter((m) => m.status?.status === "failed").length;
@@ -125,16 +152,36 @@ function CollapsedSummary({
         (failed > 0 ? `, ${failed} optional stage${failed === 1 ? "" : "s"} failed` : "");
 
   return (
-    <button
-      type="button"
-      onClick={onExpand}
-      className={`flex w-full items-center justify-between gap-2 rounded-sm border px-3 py-2 text-left text-xs transition-colors hover:bg-bg-inset ${
+    <div
+      className={`flex w-full items-center justify-between gap-2 rounded-sm border px-3 py-2 text-xs ${
         runStatus === "failed" ? "border-danger text-danger" : "border-success text-success"
       }`}
     >
-      <span className="font-medium">{label}</span>
-      <span className="text-text-muted">Show pipeline</span>
-    </button>
+      <button
+        type="button"
+        onClick={onExpand}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left transition-colors hover:underline"
+      >
+        <span className="truncate font-medium">{label}</span>
+      </button>
+      <div className="flex shrink-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={onExpand}
+          className="text-text-muted transition-colors hover:text-text hover:underline"
+        >
+          Show pipeline
+        </button>
+        {overviewHref ? (
+          <Link
+            to={overviewHref}
+            className="rounded-sm border border-current px-2 py-1 font-medium transition-colors hover:bg-bg-inset"
+          >
+            View analysis →
+          </Link>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

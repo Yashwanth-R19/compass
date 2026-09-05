@@ -31,6 +31,12 @@ class RepoOut(BaseModel):
     file_count: int
     is_private: bool
     is_showcase: bool
+    # True when this repo has no owner yet (e.g. submitted anonymously) and
+    # isn't private/showcase -- POST /repos/{id}/claim links it to the
+    # caller's account, which is what makes it start showing up on their
+    # GET /me/repos dashboard. False once any account already owns it
+    # (claiming never takes ownership away from someone else).
+    is_claimable: bool
 
 
 class JobOut(BaseModel):

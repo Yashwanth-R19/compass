@@ -522,6 +522,21 @@ export function useDeleteRepo() {
   });
 }
 
+/** Links a repo with no owner yet (e.g. analyzed while logged out) to the
+ * caller's account, so it starts appearing on GET /me/repos -- never
+ * re-runs analysis. Invalidates both the repo itself (`is_claimable` flips
+ * to false) and `my-repos` (the dashboard listing this just joined). */
+export function useClaimRepo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (repoId: string) => apiPost<RepoOut>(`/repos/${repoId}/claim`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["repo"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-repos"] });
+    },
+  });
+}
+
 export function useMyGithubRepos(enabled: boolean) {
   return useQuery({
     queryKey: ["my-github-repos"],
