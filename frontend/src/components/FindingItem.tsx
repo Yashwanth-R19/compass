@@ -40,7 +40,7 @@ export function FindingItem({
   const deepLink = findingDeepLink(finding, repoId);
 
   return (
-    <div className="border-b border-border py-3 last:border-0">
+    <div className="cp-row-hover border-b border-border py-3 last:border-0">
       <Expander
         onOpenChange={(open) => {
           if (open) markChecklistFlag("opened_finding");

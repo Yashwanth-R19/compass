@@ -53,7 +53,14 @@
    * Fontsource (imported once in main.tsx). Numerals are tabular
    * everywhere (index.css sets font-variant-numeric globally).
    * ============================================================ */
-  --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  /* Fraunces (user-requested restyling pass) replaces the Aporia-ported
+     Cormorant Garamond -- a variable, optically-sized editorial serif with
+     more character at hero/wordmark scale while staying calm as a section
+     heading. Browsers default `font-optical-sizing` to `auto`, so the
+     right `opsz` axis value is picked per rendered size automatically with
+     no extra CSS -- a 60px wordmark and a 20px card title each get their
+     own correctly-proportioned cut from the same variable file. */
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
   --font-sans:
     "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
@@ -373,8 +380,13 @@
   --dur-slow: 480ms;
   --dur-reveal: 480ms;
 
-  /* Section 5.3: "Compass currently uses a much wider content column.
-     Adopt 1080px." -- a narrower measure is a large part of why Aporia
-     reads as calm and Compass used to read as a wall. */
-  --layout-max-width: 1080px;
+  /* Widened from Aporia's ported 1080px (session 4 of the rebuild). Aporia
+     is editorial/prose-first, where a narrow measure is the whole point;
+     Compass is a data instrument -- tables, stat grids, card walls -- and
+     at 1080px on any monitor wider than a laptop the app read as a narrow
+     column marooned in unused space, not "calm." 1440px keeps prose
+     sections (How it works, findings detail) comfortably short of an
+     unreadable line length while giving grids/tables room to actually
+     breathe. */
+  --layout-max-width: 1440px;
 }

@@ -1057,8 +1057,12 @@ function RiskRow({
       // Low confidence gets a LEFT-BORDER treatment, not a background fill
       // -- a full-row bg-warning-bg wash falls short of body-text contrast;
       // a border keeps the row's background at the already-verified
-      // bg-elevated pairing.
-      className={`border-b border-border pl-2 last:border-0 ${
+      // bg-elevated pairing. That utility-layer border-l-warning correctly
+      // wins over cp-row-hover's own (components-layer) left border on
+      // hover too, per Tailwind v4's layer order -- a row already flagged
+      // low-confidence keeps its warning edge instead of briefly flashing
+      // gold.
+      className={`cp-row-hover border-b border-border last:border-0 ${
         isLowConfidence ? "border-l-2 border-l-warning" : ""
       }`}
     >

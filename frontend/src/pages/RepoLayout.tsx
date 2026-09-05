@@ -26,6 +26,7 @@ import { Alert } from "../components/ui/Alert";
 import { useToast } from "../components/ui/Toast";
 import { NarrativeDrawer } from "../components/NarrativeDrawer";
 import { PipelineSequence } from "../components/PipelineSequence";
+import { CapsuleNav } from "../components/CapsuleNav";
 import { markChecklistFlag } from "../lib/checklist";
 import type { RepoOut, StageName, StageOut, StageStatus } from "../api/types";
 
@@ -138,6 +139,21 @@ export const STAGE_LABEL: Record<StageName, string> = {
   rank: "Rank",
 };
 
+// Mirrors app/jobs/stages.py's FACT_STAGES/INSIGHT_STAGES split exactly
+// (CLAUDE.md "Facts vs Insight") -- used only to GROUP the pill row below
+// into two visually separated clusters instead of one flat 13-item strip,
+// never to change what's shown. `StageName`'s own union type is already
+// hardcoded locally in this file (STAGE_LABEL, STAGE_SUMMARY_KEY); this is
+// the same kind of static categorisation, not live backend logic
+// duplicated into the client.
+const FACT_STAGE_NAMES = new Set<StageName>([
+  "clone",
+  "mine",
+  "structure",
+  "persist_facts",
+  "secrets",
+]);
+
 // The one summary field worth surfacing as a pill's number, per stage --
 // each stage's summary JSONB carries several fields, but the pill only has
 // room for one.
@@ -187,11 +203,6 @@ export function RepoLayout() {
 
   if (isPending) return <LoadingState label="Loading repo…" />;
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
-
-  const tabClass = ({ isActive }: { isActive: boolean }) =>
-    `cp-label -mb-px shrink-0 border-b-2 px-0.5 py-2.5 transition-colors ${
-      isActive ? "border-accent text-text" : "border-transparent hover:text-text"
-    }`;
 
   const displayStatus = status.data?.repo_status ?? repo.status;
   // A run has NEVER succeeded for this repo until current_run_id is set --
@@ -253,10 +264,20 @@ export function RepoLayout() {
             <PipelineSequence repoId={repo.id} share={share} compact />
           </div>
         ) : status.data && status.data.stages.length > 0 ? (
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            {status.data.stages.map((s) => (
-              <StagePill key={s.name} stage={s} />
-            ))}
+          // Grouped into Facts / Insight (the app's own governing
+          // architectural split, CLAUDE.md) instead of one flat 13-pill
+          // strip -- the same information, but scannable in two smaller
+          // clusters rather than one wall of equally-weighted chips.
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+            <StageGroup
+              label="Facts"
+              stages={status.data.stages.filter((s) => FACT_STAGE_NAMES.has(s.name))}
+            />
+            <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
+            <StageGroup
+              label="Insight"
+              stages={status.data.stages.filter((s) => !FACT_STAGE_NAMES.has(s.name))}
+            />
           </div>
         ) : null}
 
@@ -273,17 +294,21 @@ export function RepoLayout() {
         {showTabs ? (
           // The tab nav scrolls WITHIN itself (overflow-x-auto, shrink-0
           // items) rather than widening the page body -- verified at a
-          // 360px viewport (Part K).
-          <nav
-            aria-label="Repository sections"
-            className="mt-4 flex gap-5 overflow-x-auto border-b border-border"
-          >
-            {REPO_TABS.map((tab) => (
-              <NavLink key={tab.to} to={tab.to} className={tabClass}>
-                {tab.label}
-              </NavLink>
-            ))}
-          </nav>
+          // 360px viewport (Part K). `bordered={false}` (CapsuleNav) is
+          // what makes that safe with a pill-style active indicator: an
+          // outer rounded container fighting with an inner horizontal
+          // scroll would clip its own corners mid-scroll, so each tab
+          // carries its own independent pill instead of sharing one
+          // bordered island.
+          <div className="mt-4 border-b border-border pb-3">
+            <CapsuleNav
+              items={REPO_TABS}
+              groupId="repo-tabs"
+              bordered={false}
+              className="flex overflow-x-auto"
+              itemClassName="shrink-0"
+            />
+          </div>
         ) : null}
       </div>
 
@@ -330,6 +355,18 @@ function ArchivedBanner({ repoUrl }: { repoUrl: string }) {
         </Button>
       </div>
     </Alert>
+  );
+}
+
+function StageGroup({ label, stages }: { label: string; stages: StageOut[] }) {
+  if (stages.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="cp-label shrink-0">{label}</span>
+      {stages.map((s) => (
+        <StagePill key={s.name} stage={s} />
+      ))}
+    </div>
   );
 }
 

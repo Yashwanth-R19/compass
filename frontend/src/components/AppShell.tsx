@@ -1,15 +1,20 @@
+import { useState } from "react";
 import { Compass, LogOut } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { Link, NavLink, useLocation, useNavigate, useOutlet } from "react-router-dom";
+import { Link, useLocation, useNavigate, useOutlet } from "react-router-dom";
 import { githubLoginUrl } from "../api/client";
 import { useLogout, useMe } from "../api/hooks";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { reopenOnboardingPanel } from "../lib/onboardingPanelPref";
 import { TooltipProvider } from "./ui/Tooltip";
 import { ToastProvider } from "./ui/Toast";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { ThemeToggle } from "./ThemeToggle";
 import { GlossaryDialog } from "./GlossaryDialog";
 import { CommandPalette } from "./CommandPalette";
+import { CapsuleNav } from "./CapsuleNav";
+import { Magnet } from "../reactbits/Magnet";
+import { GlareHover } from "../reactbits/GlareHover";
 
 /** The route branch a pathname belongs to, for `RouteTransition`'s key --
  * every `/repos/:repoId/...` path collapses to `/repos/:repoId` regardless
@@ -93,37 +98,30 @@ function ReopenOnboardingButton() {
 export function AppShell() {
   const me = useMe();
   const logout = useLogout();
+  const navigate = useNavigate();
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
     <TooltipProvider>
       <ToastProvider>
         <div className="flex min-h-full flex-col">
-          <header className="border-b border-border bg-bg-elevated">
+          <header className="sticky top-0 z-30 border-b border-border bg-bg-elevated/90 backdrop-blur-sm">
             <div className="mx-auto flex max-w-[var(--layout-max-width)] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="flex items-center gap-6">
-                <Link to="/" className="flex items-center gap-2 text-text-heading">
+                <Link
+                  to="/"
+                  className="group flex items-center gap-2 text-text-heading transition-transform duration-150 hover:-translate-y-px"
+                >
                   <Compass
                     size={20}
-                    className="text-accent"
+                    className="text-accent transition-transform duration-300 group-hover:rotate-45"
                     aria-hidden="true"
                     strokeWidth={1.75}
                   />
                   <span className="font-display text-lg font-medium tracking-tight">Compass</span>
                 </Link>
 
-                <nav aria-label="Primary" className="hidden items-center gap-4 sm:flex">
-                  {PRIMARY_NAV.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      className={({ isActive }) =>
-                        `cp-label transition-colors ${isActive ? "text-accent" : "hover:text-text"}`
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
-                  ))}
-                </nav>
+                <CapsuleNav items={PRIMARY_NAV} groupId="app" className="hidden sm:flex" />
               </div>
 
               <div className="flex items-center gap-3 text-xs">
@@ -133,59 +131,85 @@ export function AppShell() {
                 <ThemeToggle />
 
                 {me.data ? (
-                  <div className="flex items-center gap-2 border-l border-border pl-3">
-                    {me.data.avatar_url ? (
-                      <img
-                        src={me.data.avatar_url}
-                        alt=""
-                        className="h-6 w-6 rounded-full"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : null}
-                    <span className="hidden text-text-muted sm:inline">{me.data.github_login}</span>
+                  <div className="flex items-center gap-1.5 border-l border-border pl-3">
+                    <Link
+                      to="/profile"
+                      className="flex items-center gap-2 rounded-full py-1 pr-2.5 pl-1 transition-colors hover:bg-bg-inset"
+                      title="Your profile"
+                    >
+                      {me.data.avatar_url ? (
+                        <img
+                          src={me.data.avatar_url}
+                          alt=""
+                          className="h-7 w-7 rounded-full border border-border"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-bg-inset font-display text-[13px] text-text-heading">
+                          {me.data.github_login.slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="hidden text-text-muted sm:inline">
+                        {me.data.github_login}
+                      </span>
+                    </Link>
                     <button
                       type="button"
-                      onClick={() => logout.mutate()}
+                      onClick={() => setLogoutOpen(true)}
                       aria-label="Log out"
                       title="Log out"
-                      className="text-text-muted hover:text-text"
+                      className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-bg-inset hover:text-text"
                     >
                       <LogOut size={14} aria-hidden="true" />
                     </button>
                   </div>
                 ) : (
-                  <a
-                    href={githubLoginUrl("basic")}
-                    className="ml-1 rounded-sm border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-contrast hover:border-accent-strong hover:bg-accent-strong"
-                  >
-                    Log in with GitHub
-                  </a>
+                  <Magnet padding={40} magnetStrength={8} wrapperClassName="ml-1">
+                    <GlareHover className="rounded-full">
+                      <a
+                        href={githubLoginUrl("basic")}
+                        className="inline-block rounded-full border border-accent bg-accent px-4 py-1.5 text-xs font-medium text-accent-contrast shadow-sm transition-colors hover:border-accent-strong hover:bg-accent-strong"
+                      >
+                        Log in with GitHub
+                      </a>
+                    </GlareHover>
+                  </Magnet>
                 )}
               </div>
             </div>
 
-            <nav
-              aria-label="Primary (small screens)"
-              className="flex gap-4 border-t border-border px-4 py-2 sm:hidden"
-            >
-              {PRIMARY_NAV.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    `cp-label transition-colors ${isActive ? "text-accent" : "hover:text-text"}`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
+            <div className="px-4 pb-2 sm:hidden">
+              <CapsuleNav
+                items={PRIMARY_NAV}
+                groupId="app-mobile"
+                className="flex w-full"
+                itemClassName="flex-1 text-center"
+              />
+            </div>
           </header>
 
           <main className="mx-auto w-full min-w-0 max-w-[var(--layout-max-width)] flex-1 px-4 py-6 sm:px-6">
             <RouteTransition />
           </main>
         </div>
+
+        <ConfirmDialog
+          open={logoutOpen}
+          onOpenChange={setLogoutOpen}
+          title="Log out?"
+          description="You'll need to sign in with GitHub again to access your repositories and history."
+          confirmLabel="Log out"
+          variant="primary"
+          pending={logout.isPending}
+          onConfirm={() => {
+            logout.mutate(undefined, {
+              onSuccess: () => {
+                setLogoutOpen(false);
+                navigate("/");
+              },
+            });
+          }}
+        />
       </ToastProvider>
     </TooltipProvider>
   );

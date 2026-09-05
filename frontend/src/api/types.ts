@@ -248,6 +248,7 @@ export interface UserOut {
   name: string | null;
   avatar_url: string | null;
   has_repo_scope: boolean;
+  created_at: string;
 }
 
 export interface MyRepoOut {

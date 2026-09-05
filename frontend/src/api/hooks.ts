@@ -459,6 +459,38 @@ export function useLogout() {
   });
 }
 
+/** The softer "Disconnect GitHub" action (`/profile`) -- clears the stored
+ * token/scopes so Compass can no longer read private repositories, but
+ * keeps the account and its analysis history intact; the user may
+ * reconnect at any time. See `useDeleteAccount` for the harder, full
+ * "stop sharing my data" action. */
+export function useDisconnectGithub() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiDelete<{ status: string }>("/auth/github/connection"),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+/** The full "stop sharing my data with Compass" action (`/profile`):
+ * revokes this app's GitHub authorization entirely (a future login
+ * re-prompts every consent screen, exactly as if the account were new),
+ * deletes every repository this user owns, and deletes the account itself
+ * -- then logs the browser out, since the session it was holding no longer
+ * points at anything. Irreversible. */
+export function useDeleteAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiDelete<{ status: string }>("/auth/account"),
+    onSuccess: () => {
+      queryClient.setQueryData(["me"], null);
+      void queryClient.invalidateQueries();
+    },
+  });
+}
+
 export function useMyRepos(page = 1, perPage = 20) {
   return useQuery({
     queryKey: ["my-repos", page, perPage],

@@ -136,7 +136,7 @@ export function ScoreExplainer({
             the live response; a partial breakdown would misrepresent the
             total. */}
         {showNumericBreakdown ? (
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-4">
             {priced.map((c, i) => {
               const product = products[i];
               const share = total > 0 ? product / total : 0;

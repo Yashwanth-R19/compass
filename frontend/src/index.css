@@ -57,15 +57,41 @@ html {
   font-family: var(--font-sans);
 }
 
+/* A soft top-of-page glow + a barely-there film-grain texture (user-
+   requested colour-scheme pass) -- both are pure BACKGROUND layers behind
+   every real element, so neither touches a single foreground text colour:
+   the extensive, axe-core-verified contrast work documented in
+   tokens.css's own history is completely unaffected. The grain is a tiled
+   SVG <feTurbulence> data URI with its output alpha scaled to 0.05 (light
+   theme) / 0.06 (dark) via <feColorMatrix> -- visible as texture up close,
+   invisible as a colour shift from a normal viewing distance. The glow
+   reuses --cp-bg-elevated, which is already only a few percent lighter
+   than --cp-bg by design, so it reads as depth ("Ink Observatory" catching
+   a little light from above), not as a different colour. */
 body {
   margin: 0;
-  background: var(--color-bg);
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(ellipse 1400px 700px at 50% -12%, var(--cp-bg-elevated) 0%, transparent 65%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-attachment: fixed, fixed;
+  background-repeat: no-repeat, repeat;
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* The light theme's grain is dialled down a touch (0.05 vs dark's 0.06) --
+   grain reads more visibly against a light, desaturated surface than a
+   near-black one at the same alpha, found by comparing both themes side
+   by side rather than assuming one value suits both. */
+:root[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 1400px 700px at 50% -12%, var(--cp-bg-elevated) 0%, transparent 65%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 img {
@@ -132,6 +158,33 @@ img {
   .cp-prose h2 + p,
   .cp-prose h3 + p {
     margin-top: var(--space-4);
+  }
+
+  /* A clickable/expandable list row (a finding, a tour stop, a coupling
+     pair) -- one shared hover treatment (a gold left-edge accent + a soft
+     background tint) so every such row across the app reads as "this is
+     interactive" the same way, rather than each list re-inventing its own
+     hover state or, worse, having none at all (found missing entirely on
+     the findings list -- see FindingItem.tsx). `padding-left`/
+     `border-left-width` stay CONSTANT between states, so only the colour
+     transitions -- the row never shifts content on hover. Deliberately a
+     colour-only transition, not a transform/scale: this is meant to repeat
+     safely down a long list, where a transform-heavy hover per row would
+     read as noisy rather than premium (the more decorative hover effects
+     in this app -- SpotlightCard, GlareHover, Magnet -- are reserved for
+     singular elements: a showcase card, a primary CTA, never a repeated
+     list row). */
+  .cp-row-hover {
+    border-left: 2px solid transparent;
+    padding-left: var(--space-3);
+    margin-left: calc(var(--space-3) * -1);
+    transition:
+      border-color var(--dur-fast) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out);
+  }
+  .cp-row-hover:hover {
+    border-left-color: var(--color-accent);
+    background-color: var(--color-bg-inset);
   }
 }
 

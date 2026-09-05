@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { ArrowRight } from "lucide-react";
 import { Link, useOutletContext } from "react-router-dom";
 import {
   Bar,
@@ -24,6 +25,7 @@ import {
 import { Card } from "../../components/ui/Card";
 import { InfoTooltip } from "../../components/ui/InfoTooltip";
 import { AnimatedList } from "../../reactbits/AnimatedList";
+import { SpotlightCard } from "../../reactbits/SpotlightCard";
 import { CountUp } from "../../components/motion/CountUp";
 import { Reveal } from "../../components/motion/Reveal";
 import { ContributorChip } from "../../components/ContributorChip";
@@ -656,22 +658,30 @@ function ThreeThingsCard({ items, repoId }: { items: PassportFirstPrItem[]; repo
           Nothing stood out sharply enough to flag here — a quiet result, not a missing one.
         </p>
       ) : (
+        // "Three things" reads as three things -- a row of small cards
+        // states that shape directly, rather than a plain stacked list
+        // that happens to have three rows.
         <AnimatedList
           items={items}
           keyFor={(item) => item.code}
-          className="flex flex-col gap-3"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-3"
           renderItem={(item) => (
-            <div className="flex items-start justify-between gap-3">
-              <p className="min-w-0 break-words text-sm text-text-muted">
-                {FIRST_PR_COPY[item.code](item.params)}
-              </p>
-              <Link
-                to={`/repos/${repoId}/${FIRST_PR_LINK[item.code]}`}
-                className="shrink-0 text-xs font-medium text-accent hover:underline"
-              >
-                View →
-              </Link>
-            </div>
+            <Link
+              to={`/repos/${repoId}/${FIRST_PR_LINK[item.code]}`}
+              className="group block h-full"
+            >
+              <SpotlightCard className="flex h-full flex-col justify-between gap-3 rounded-md border border-border bg-bg-inset p-3 transition-colors group-hover:border-accent-border">
+                <p className="text-sm text-text">{FIRST_PR_COPY[item.code](item.params)}</p>
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
+                  View
+                  <ArrowRight
+                    size={12}
+                    aria-hidden="true"
+                    className="transition-transform group-hover:translate-x-0.5"
+                  />
+                </span>
+              </SpotlightCard>
+            </Link>
           )}
         />
       )}

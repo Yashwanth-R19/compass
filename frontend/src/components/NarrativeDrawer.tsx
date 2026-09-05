@@ -5,6 +5,7 @@ import { Button } from "./ui/Button";
 import { Drawer } from "./ui/Drawer";
 import { Tooltip } from "./ui/Tooltip";
 import { Skeleton } from "./ui/Skeleton";
+import { GlareHover } from "../reactbits/GlareHover";
 import { markChecklistFlag } from "../lib/checklist";
 import { onNarrativeDrawerOpenRequested } from "../lib/narrativeDrawerSignal";
 
@@ -68,7 +69,7 @@ export function NarrativeDrawer({
   return (
     <>
       {keysConfigured ? (
-        trigger
+        <GlareHover className="inline-flex rounded-sm">{trigger}</GlareHover>
       ) : (
         <Tooltip content="AI explanations aren't configured for this deployment">
           {/* A disabled native button still receives hover in most
@@ -83,6 +84,7 @@ export function NarrativeDrawer({
           isPending={narrative.isPending || narrative.isFetching}
           isError={narrative.isError}
           available={narrative.data?.available}
+          reason={narrative.data?.reason}
           content={narrative.data?.content}
           provider={narrative.data?.provider}
           model={narrative.data?.model}
@@ -92,10 +94,23 @@ export function NarrativeDrawer({
   );
 }
 
+// One short, honest sentence per `NarrativeUnavailableReason` -- `no_keys`
+// specifically is worth distinguishing from the others in the UI: it means
+// this DEPLOYMENT has no provider keys configured at all (COMPASS_GEMINI_KEYS/
+// COMPASS_GROQ_KEYS unset), not that a request failed, so the generic
+// "try again later" framing the other reasons use would be misleading here.
+const REASON_COPY: Record<string, string> = {
+  no_keys: "This deployment has no AI provider keys configured.",
+  pool_exhausted: "Every configured provider key is temporarily rate-limited. Try again shortly.",
+  rejected: "The generated text didn't pass Compass's own grounding check and was discarded.",
+  disabled: "The underlying analysis for this repo isn't finished yet.",
+};
+
 function NarrativeDrawerContent({
   isPending,
   isError,
   available,
+  reason,
   content,
   provider,
   model,
@@ -103,6 +118,7 @@ function NarrativeDrawerContent({
   isPending: boolean;
   isError: boolean;
   available: boolean | undefined;
+  reason: string | null | undefined;
   content: string | null | undefined;
   provider: string | null | undefined;
   model: string | null | undefined;
@@ -120,9 +136,14 @@ function NarrativeDrawerContent({
 
   if (isError || !available) {
     return (
-      <p className="text-sm text-text-muted">
-        Narrative unavailable — the computed data across this repo's pages is unaffected.
-      </p>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm text-text-muted">
+          Narrative unavailable — the computed data across this repo's pages is unaffected.
+        </p>
+        {reason && REASON_COPY[reason] ? (
+          <p className="text-xs text-text-muted">{REASON_COPY[reason]}</p>
+        ) : null}
+      </div>
     );
   }
 

@@ -7,7 +7,6 @@ import { ApiError, RateLimitedError, githubLoginUrl } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
-import { Card } from "../components/ui/Card";
 import { Alert } from "../components/ui/Alert";
 import { Reveal } from "../components/motion/Reveal";
 import { CountUp } from "../components/motion/CountUp";
@@ -16,6 +15,9 @@ import { OnboardingPanel } from "../components/OnboardingPanel";
 import { GetStartedChecklist } from "../components/GetStartedChecklist";
 import { BlurText } from "../reactbits/BlurText";
 import { AnimatedList } from "../reactbits/AnimatedList";
+import { SpotlightCard } from "../reactbits/SpotlightCard";
+import { GlareHover } from "../reactbits/GlareHover";
+import { ClickSpark } from "../reactbits/ClickSpark";
 import { useOnboardingPanelOpen } from "../lib/onboardingPanelPref";
 import { hasCompletedFirstRun } from "../lib/firstRun";
 import type { ShowcaseRepoOut } from "../api/types";
@@ -150,9 +152,13 @@ export function HomePage() {
                   disabled={submitRepo.isPending}
                   className="flex-1 font-mono"
                 />
-                <Button type="submit" variant="primary" disabled={submitRepo.isPending}>
-                  {submitRepo.isPending ? "Submitting…" : "Analyze"}
-                </Button>
+                <ClickSpark className="shrink-0">
+                  <GlareHover className="rounded-sm">
+                    <Button type="submit" variant="primary" disabled={submitRepo.isPending}>
+                      {submitRepo.isPending ? "Submitting…" : "Analyze"}
+                    </Button>
+                  </GlareHover>
+                </ClickSpark>
               </form>
 
               {submitError ? <SubmitErrorNotice error={submitError} /> : null}
@@ -238,26 +244,25 @@ export function HomePage() {
 
 function ShowcaseCard({ repo }: { repo: ShowcaseRepoOut }) {
   return (
-    <Link
-      to={`/repos/${repo.id}/overview`}
-      className="flex min-h-40 flex-col justify-between bg-bg-elevated p-4 transition-colors hover:bg-bg-inset"
-    >
-      <div>
-        <p className="truncate font-mono text-sm font-medium text-text-heading">
-          {repo.owner}/{repo.name}
-        </p>
-        <p className="mt-1 text-xs text-text-muted">{repo.hook}</p>
-      </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
-        <ShowcaseStat label="Commits" value={repo.commit_count} />
-        <ShowcaseStat label="Subsystems" value={repo.subsystem_count} />
-        {repo.truck_factor != null ? (
-          <ShowcaseStat label="Truck factor" value={repo.truck_factor} />
-        ) : null}
-        {repo.health_score != null ? (
-          <ShowcaseStat label="Health" value={Math.round(repo.health_score)} suffix=" / 100" />
-        ) : null}
-      </dl>
+    <Link to={`/repos/${repo.id}/overview`} className="group block">
+      <SpotlightCard className="flex min-h-40 flex-col justify-between bg-bg-elevated p-4 transition-colors group-hover:bg-bg-inset">
+        <div>
+          <p className="truncate font-mono text-sm font-medium text-text-heading transition-colors group-hover:text-accent">
+            {repo.owner}/{repo.name}
+          </p>
+          <p className="mt-1 text-xs text-text-muted">{repo.hook}</p>
+        </div>
+        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <ShowcaseStat label="Commits" value={repo.commit_count} />
+          <ShowcaseStat label="Subsystems" value={repo.subsystem_count} />
+          {repo.truck_factor != null ? (
+            <ShowcaseStat label="Truck factor" value={repo.truck_factor} />
+          ) : null}
+          {repo.health_score != null ? (
+            <ShowcaseStat label="Health" value={Math.round(repo.health_score)} suffix=" / 100" />
+          ) : null}
+        </dl>
+      </SpotlightCard>
     </Link>
   );
 }
@@ -291,14 +296,18 @@ function TeaserCard({
   description: string;
 }) {
   return (
-    <Link to={to} className="block h-full">
-      <Card className="h-full transition-colors hover:bg-bg-inset">
+    <Link to={to} className="group block h-full">
+      <SpotlightCard className="h-full rounded-lg border border-border bg-bg-elevated p-5 transition-all duration-200 group-hover:-translate-y-1 group-hover:border-accent-border group-hover:shadow-md">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-display text-lg text-text-heading">{title}</h3>
-          <ArrowRight size={16} className="mt-1 shrink-0 text-text-muted" aria-hidden="true" />
+          <ArrowRight
+            size={16}
+            className="mt-1 shrink-0 text-text-muted transition-transform duration-200 group-hover:translate-x-1 group-hover:text-accent"
+            aria-hidden="true"
+          />
         </div>
         <p className="mt-2 text-sm text-text-muted">{description}</p>
-      </Card>
+      </SpotlightCard>
     </Link>
   );
 }

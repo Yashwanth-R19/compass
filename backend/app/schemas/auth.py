@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -13,3 +14,4 @@ class UserOut(BaseModel):
     # two-step scope escalation) and can therefore submit/view private
     # repositories and use GET /me/github/repos.
     has_repo_scope: bool
+    created_at: datetime

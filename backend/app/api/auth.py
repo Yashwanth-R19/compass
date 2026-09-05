@@ -20,6 +20,7 @@ and a Lax cookie would never reach a cross-site ``fetch(..., {credentials:
 "include"})`` call.
 """
 
+import base64
 import hmac
 import json
 import logging
@@ -36,12 +37,12 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.crypto import encrypt_token
+from app.auth.crypto import decrypt_token, encrypt_token
 from app.auth.deps import current_user_required, has_repo_scope
 from app.auth.session import SESSION_COOKIE_NAME, SESSION_TTL, create_session_token
 from app.config import settings
 from app.db.base import get_db
-from app.db.models import User
+from app.db.models import Repo, User
 from app.jobs.log_redaction import redact
 from app.schemas.auth import UserOut
 
@@ -252,8 +253,20 @@ def github_callback(
 def logout() -> JSONResponse:
     # Clears the session cookie only -- the stored GitHub token is left
     # alone, the user may log back in (session 02, Part C).
+    #
+    # The deletion's own Set-Cookie must repeat the exact `Secure;
+    # SameSite=None` attributes the cookie was originally issued with
+    # (app/auth/session.py's module docstring). The frontend and API are
+    # different sites, so this response is a cross-site fetch response from
+    # the browser's point of view -- and a cross-site Set-Cookie header that
+    # isn't `SameSite=None; Secure` is silently REJECTED by the browser
+    # rather than applied. Starlette's `delete_cookie` default
+    # (`secure=False, samesite="lax"`) is exactly such a header, which is
+    # why logout previously appeared to do nothing: the browser never
+    # actually cleared the cookie, so the very next request was still
+    # authenticated under the old session.
     response = JSONResponse({"status": "ok"})
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/", secure=True, samesite="none")
     return response
 
 
@@ -268,6 +281,75 @@ def delete_github_connection(
     return {"status": "ok"}
 
 
+def _revoke_github_grant(access_token: str) -> None:
+    """Revokes this OAuth App's entire authorization for ``access_token`` via
+    GitHub's grant-deletion endpoint -- this is what makes a later login with
+    the same GitHub account show the consent screen again, exactly as if the
+    user had never connected before. Merely clearing our own stored token
+    (``DELETE /auth/github/connection`` above) leaves GitHub's own record of
+    the grant in place, so a future login would silently re-use it with no
+    prompt. Best-effort: the caller swallows any failure here rather than
+    blocking account deletion on a GitHub API hiccup -- never logs or raises
+    the token itself."""
+    credentials = base64.b64encode(
+        f"{settings.GITHUB_CLIENT_ID}:{settings.GITHUB_CLIENT_SECRET}".encode()
+    ).decode("ascii")
+    request = urllib.request.Request(
+        f"https://api.github.com/applications/{settings.GITHUB_CLIENT_ID}/grant",
+        data=json.dumps({"access_token": access_token}).encode("utf-8"),
+        method="DELETE",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Basic {credentials}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=_OAUTH_TIMEOUT_SECONDS):
+        pass
+
+
+@router.delete("/auth/account")
+def delete_account(
+    user: User = Depends(current_user_required),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """The full "stop sharing my data with Compass" action -- distinct from
+    (and stronger than) ``DELETE /auth/github/connection`` above, which only
+    disconnects private-repo access and keeps the account/history intact.
+    This: (1) revokes this app's GitHub authorization entirely, so the next
+    login re-prompts every consent screen from scratch; (2) deletes every
+    repository this user owns, cascading through every Facts/Insight table
+    that references it (same cascade ``DELETE /repos/{id}`` relies on) --
+    never a showcase repo, matching that endpoint's own guard; (3) deletes
+    the user's own account row (``share_links.created_by`` cascades,
+    ``repos.owner_user_id``/``analysis_runs.triggered_by_user_id`` on any
+    OTHER repo just go to NULL); (4) clears the session cookie so the
+    browser is logged out immediately, not just left pointing at a
+    now-deleted user id."""
+    if user.access_token_encrypted:
+        try:
+            access_token = decrypt_token(user.access_token_encrypted)
+            _revoke_github_grant(access_token)
+        except Exception as exc:  # best-effort GitHub call, never blocks account deletion
+            logger.warning(redact(f"GitHub grant revocation failed: {exc!r}"))
+
+    owned_repo_ids = db.scalars(
+        select(Repo.id).where(Repo.owner_user_id == user.id, Repo.is_showcase.is_(False))
+    ).all()
+    for repo_id in owned_repo_ids:
+        repo = db.get(Repo, repo_id)
+        if repo is not None:
+            db.delete(repo)
+
+    db.delete(user)
+    db.commit()
+
+    response = JSONResponse({"status": "deleted"})
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/", secure=True, samesite="none")
+    return response
+
+
 @router.get("/auth/me", response_model=UserOut)
 def get_me(user: User = Depends(current_user_required)) -> UserOut:
     return UserOut(
@@ -276,6 +358,7 @@ def get_me(user: User = Depends(current_user_required)) -> UserOut:
         name=user.name,
         avatar_url=user.avatar_url,
         has_repo_scope=has_repo_scope(user),
+        created_at=user.created_at,
     )
 
 

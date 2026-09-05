@@ -5,6 +5,7 @@ import { HomePage } from "./pages/HomePage";
 import { WelcomePage } from "./pages/WelcomePage";
 import { HowItWorksPage } from "./pages/HowItWorksPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { PortfolioRedirect } from "./pages/PortfolioRedirect";
 import { SharedRedirectPage } from "./pages/SharedRedirectPage";
 import { LegacyRedirect, RepoIndexRedirect, RepoLayout } from "./pages/RepoLayout";
@@ -40,6 +41,7 @@ function App() {
               element={<LegacyRedirect to="/how-it-works#methods" absolute />}
             />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="profile" element={<ProfilePage />} />
             {/* D7: the Portfolio feature was cut entirely. A one-time toast
                 explains the removal instead of a silent 404. */}
             <Route path="portfolio" element={<PortfolioRedirect />} />
