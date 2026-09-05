@@ -282,6 +282,3 @@ A limitations section is here because every one of these is a real, known trade-
 - **Free-tier hosting has real latency cost.** The API cold-starts after a period of inactivity, and the database has a storage cap enforced by an automatic LRU eviction policy.
 - **This is not a replacement for SAST/DAST tooling.** Secret-in-history detection and basic dependency scanning are useful, but Compass does not claim to be a complete security product.
 
-## Author
-
-Built by [Yashwanth R](https://github.com/Yashwanth-R19) as an independent project.
