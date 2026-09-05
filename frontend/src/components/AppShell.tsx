@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Compass, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Link, useLocation, useNavigate, useOutlet } from "react-router-dom";
 import { githubLoginUrl } from "../api/client";
 import { useLogout, useMe } from "../api/hooks";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { reopenOnboardingPanel } from "../lib/onboardingPanelPref";
+import { Logo } from "./Logo";
 import { TooltipProvider } from "./ui/Tooltip";
 import { ToastProvider } from "./ui/Toast";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
@@ -112,11 +113,9 @@ export function AppShell() {
                   to="/"
                   className="group flex items-center gap-2 text-text-heading transition-transform duration-150 hover:-translate-y-px"
                 >
-                  <Compass
+                  <Logo
                     size={20}
                     className="text-accent transition-transform duration-300 group-hover:rotate-45"
-                    aria-hidden="true"
-                    strokeWidth={1.75}
                   />
                   <span className="font-display text-lg font-medium tracking-tight">Compass</span>
                 </Link>

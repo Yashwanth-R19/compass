@@ -18,6 +18,7 @@ import { AnimatedList } from "../reactbits/AnimatedList";
 import { SpotlightCard } from "../reactbits/SpotlightCard";
 import { GlareHover } from "../reactbits/GlareHover";
 import { ClickSpark } from "../reactbits/ClickSpark";
+import { colorForKey } from "../lib/palette";
 import { useOnboardingPanelOpen } from "../lib/onboardingPanelPref";
 import { hasCompletedFirstRun } from "../lib/firstRun";
 import type { ShowcaseRepoOut } from "../api/types";
@@ -115,7 +116,7 @@ export function HomePage() {
             <AnimatedList
               items={showcaseRepos}
               keyFor={(repo) => repo.id}
-              className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3"
+              className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
               renderItem={(repo) => <ShowcaseCard repo={repo} />}
             />
           </section>
@@ -243,25 +244,38 @@ export function HomePage() {
 }
 
 function ShowcaseCard({ repo }: { repo: ShowcaseRepoOut }) {
+  // A deterministic, muted accent per repo (lib/palette.ts's shared
+  // categorical set -- the same one subsystem/language colouring already
+  // uses) so a row of showcase cards reads as several distinct
+  // repositories at a glance, not four copies of the same grey rectangle.
+  const accent = colorForKey(`repo:${repo.owner}/${repo.name}`);
+
   return (
-    <Link to={`/repos/${repo.id}/overview`} className="group block">
-      <SpotlightCard className="flex min-h-40 flex-col justify-between bg-bg-elevated p-4 transition-colors group-hover:bg-bg-inset">
-        <div>
-          <p className="truncate font-mono text-sm font-medium text-text-heading transition-colors group-hover:text-accent">
-            {repo.owner}/{repo.name}
-          </p>
-          <p className="mt-1 text-xs text-text-muted">{repo.hook}</p>
+    <Link to={`/repos/${repo.id}/overview`} className="group block h-full">
+      <SpotlightCard className="flex h-full min-h-44 flex-col justify-between overflow-hidden rounded-lg border border-border bg-bg-elevated shadow-sm transition-all duration-200 group-hover:-translate-y-1 group-hover:border-accent-border group-hover:shadow-md">
+        <div
+          className="h-1 w-full shrink-0"
+          style={{ backgroundColor: accent }}
+          aria-hidden="true"
+        />
+        <div className="flex flex-1 flex-col justify-between p-4">
+          <div>
+            <p className="truncate font-mono text-sm font-medium text-text-heading transition-colors group-hover:text-accent">
+              {repo.owner}/{repo.name}
+            </p>
+            <p className="mt-1 text-xs text-text-muted">{repo.hook}</p>
+          </div>
+          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
+            <ShowcaseStat label="Commits" value={repo.commit_count} />
+            <ShowcaseStat label="Subsystems" value={repo.subsystem_count} />
+            {repo.truck_factor != null ? (
+              <ShowcaseStat label="Truck factor" value={repo.truck_factor} />
+            ) : null}
+            {repo.health_score != null ? (
+              <ShowcaseStat label="Health" value={Math.round(repo.health_score)} suffix=" / 100" />
+            ) : null}
+          </dl>
         </div>
-        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
-          <ShowcaseStat label="Commits" value={repo.commit_count} />
-          <ShowcaseStat label="Subsystems" value={repo.subsystem_count} />
-          {repo.truck_factor != null ? (
-            <ShowcaseStat label="Truck factor" value={repo.truck_factor} />
-          ) : null}
-          {repo.health_score != null ? (
-            <ShowcaseStat label="Health" value={Math.round(repo.health_score)} suffix=" / 100" />
-          ) : null}
-        </dl>
       </SpotlightCard>
     </Link>
   );

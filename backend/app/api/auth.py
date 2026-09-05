@@ -178,6 +178,19 @@ def github_login(
             "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
             "scope": _GITHUB_SCOPES[scope],
             "state": state,
+            # Without this, GitHub silently re-authenticates as whichever
+            # GitHub account the browser already has an active session for
+            # -- Compass's OWN session cookie (session 02) is entirely
+            # separate from github.com's own login state, so logging out of
+            # Compass never touches it, and the very next "Log in with
+            # GitHub" click looks like it "assumed" an account with no
+            # prompt at all. `prompt=select_account` is GitHub's own
+            # documented, non-destructive answer to exactly this: it forces
+            # the account picker every time, without logging the browser
+            # out of github.com or touching this app's stored token/scopes
+            # in any way -- see GitHub's June 2024 changelog,
+            # "Account picker updates for OAuth and GitHub App sign-in".
+            "prompt": "select_account",
         }
     )
     response = RedirectResponse(url=f"{GITHUB_AUTHORIZE_URL}?{params}", status_code=302)
