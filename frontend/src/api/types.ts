@@ -1082,3 +1082,180 @@ export interface WorkedExampleResponse {
   vulnerability_count: number | null;
   finding_count: number | null;
 }
+
+// The Map surface (mirrors backend/app/schemas/diagram.py). Every group,
+// band, arrow and infra box is COMPUTED (app/analysis/diagram.py); the AI
+// types at the bottom only ever carry text for those computed elements.
+
+export type DiagramGrouping = "subsystem" | "folder";
+export type DiagramLayerKind =
+  "actor" | "surface" | "middle" | "foundation" | "connected" | "standalone" | "infra";
+export type DiagramInfraCategory = "container" | "deploy" | "ci" | "datastore";
+
+export interface DiagramSourceOut {
+  host: "github" | "gitlab" | "other";
+  head_sha: string | null;
+  blob_base_url: string | null;
+  tree_base_url: string | null;
+}
+
+export interface DiagramFileOut {
+  i: number;
+  path: string;
+  group_id: string;
+  loc: number;
+  churn_365d: number;
+  commit_count: number;
+  last_changed: number;
+  language: string;
+  is_test: boolean;
+  centrality: number | null;
+}
+
+export interface DiagramEntryPointOut {
+  file_index: number;
+  path: string;
+  kind: string;
+  evidence: string;
+  confidence: number;
+}
+
+export interface DiagramGroupOut {
+  id: string;
+  label: string;
+  label_source: string;
+  base_path: string;
+  layer: number;
+  file_count: number;
+  total_loc: number;
+  churn_365d: number;
+  commit_count: number;
+  last_changed: number;
+  cohesion: number | null;
+  internal_edges: number | null;
+  external_edges: number | null;
+  entry_points: DiagramEntryPointOut[];
+  in_group_cycle: boolean;
+  folded_count: number;
+}
+
+export interface DiagramGroupEdgeOut {
+  source: string;
+  target: string;
+  import_count: number;
+  in_file_cycle: boolean;
+  in_group_cycle: boolean;
+}
+
+export interface DiagramHiddenGroupEdgeOut {
+  a: string;
+  b: string;
+  pair_count: number;
+  max_degree: number;
+  total_shared_revs: number;
+}
+
+export interface DiagramHiddenPairOut {
+  a: number;
+  b: number;
+  degree: number;
+  shared_revs: number;
+}
+
+export interface DiagramLayerOut {
+  index: number;
+  kind: DiagramLayerKind;
+  label: string;
+  group_ids: string[];
+}
+
+export interface DiagramInfraOut {
+  id: string;
+  category: DiagramInfraCategory;
+  label: string;
+  evidence: string[];
+  paths: string[];
+  runs_group_ids: string[];
+}
+
+export interface DiagramActorOut {
+  id: string;
+  label: string;
+  group_ids: string[];
+  entry_kinds: string[];
+}
+
+export interface DiagramStatsOut {
+  file_count: number;
+  group_count: number;
+  import_edge_count: number;
+  hidden_pair_count: number;
+  cycle_count: number;
+  imports_truncated: boolean;
+  other_folded_count: number;
+}
+
+export interface DiagramCapsOut {
+  max_top_groups: number;
+  max_children_visible: number;
+  max_import_edges: number;
+  folder_split_dominance: number;
+  folder_min_groups: number;
+}
+
+export interface DiagramResponse {
+  repo_id: string;
+  run_id: string;
+  grouping: DiagramGrouping;
+  facts_archived: boolean;
+  source: DiagramSourceOut;
+  groups: DiagramGroupOut[];
+  group_edges: DiagramGroupEdgeOut[];
+  hidden_group_edges: DiagramHiddenGroupEdgeOut[];
+  layers: DiagramLayerOut[];
+  infra: DiagramInfraOut[];
+  actor: DiagramActorOut | null;
+  files: DiagramFileOut[];
+  /** [from_index, to_index] -- "from" imports "to". */
+  imports: [number, number][];
+  hidden_pairs: DiagramHiddenPairOut[];
+  cycles: number[][];
+  stats: DiagramStatsOut;
+  caps: DiagramCapsOut;
+}
+
+export interface DiagramAiGroupOut {
+  group_id: string;
+  friendly_name: string | null;
+  caption: string | null;
+}
+
+export interface DiagramAiBandOut {
+  layer: number;
+  name: string;
+}
+
+export interface DiagramAiEdgeVerbOut {
+  from_group: string;
+  to_group: string;
+  verb: string;
+}
+
+export interface DiagramAiPayload {
+  summary: string | null;
+  groups: DiagramAiGroupOut[];
+  bands: DiagramAiBandOut[];
+  edge_verbs: DiagramAiEdgeVerbOut[];
+}
+
+export type DiagramAiUnavailableReason = "no_keys" | "pool_exhausted" | "rejected" | "disabled";
+
+export interface DiagramAiResponse {
+  available: boolean;
+  reason: DiagramAiUnavailableReason | null;
+  provider: string | null;
+  model: string | null;
+  generated_at: string | null;
+  grouping: DiagramGrouping;
+  payload: DiagramAiPayload | null;
+}

@@ -8,6 +8,9 @@ import type {
   BlastRadiusResponse,
   CityResponse,
   CompareResponse,
+  DiagramAiResponse,
+  DiagramGrouping,
+  DiagramResponse,
   ContributorsResponse,
   CouplingResponse,
   EntryPointsResponse,
@@ -631,5 +634,44 @@ export function useWorkedExample() {
     queryKey: ["meta-worked-example"],
     queryFn: () => apiGet<WorkedExampleResponse | null>("/meta/worked-example"),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** `GET /repos/{id}/diagram` -- the Map's computed diagram for one grouping.
+ * Unlike most older hooks, this one re-polls while its gating stage
+ * ("architecture") still answers 202, so opening the Map mid-analysis
+ * resolves on its own instead of sitting on a skeleton. */
+export function useDiagram(repoId: string | undefined, grouping: DiagramGrouping, share?: string) {
+  const params = new URLSearchParams({ grouping });
+  if (share) params.set("share", share);
+
+  return useQuery({
+    queryKey: ["diagram", repoId, grouping, share ?? null],
+    queryFn: () =>
+      apiGetOrPending<DiagramResponse>(`/repos/${repoId}/diagram?${params.toString()}`),
+    enabled: Boolean(repoId),
+    refetchInterval: (query) => (query.state.data?.kind === "pending" ? POLL_INTERVAL_MS : false),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** `GET /repos/{id}/diagram/ai` -- optional AI labelling for the Map. Like
+ * `useNarrative`, it costs nothing until `enabled` first turns true (the
+ * user clicked "Describe with AI"), and never retries a failure. */
+export function useDiagramAi(
+  repoId: string | undefined,
+  grouping: DiagramGrouping,
+  enabled: boolean,
+  share?: string,
+) {
+  const params = new URLSearchParams({ grouping });
+  if (share) params.set("share", share);
+
+  return useQuery({
+    queryKey: ["diagram-ai", repoId, grouping, share ?? null],
+    queryFn: () => apiGet<DiagramAiResponse>(`/repos/${repoId}/diagram/ai?${params.toString()}`),
+    enabled: Boolean(repoId) && enabled,
+    retry: false,
+    staleTime: Infinity,
   });
 }

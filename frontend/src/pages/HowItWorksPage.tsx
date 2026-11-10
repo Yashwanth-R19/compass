@@ -503,6 +503,16 @@ export function HowItWorksPage() {
             ))}
           </dl>
         </div>
+
+        {/* 3.5 -- the Map: what is computed, what is heuristic, and what the
+            optional AI labelling may and may not do. */}
+        <div className="mt-12">
+          <p className="cp-label mb-1">{section("map")?.eyebrow}</p>
+          <h3 className="font-display text-xl text-text-heading">{section("map")?.title}</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">
+            {section("map")?.body}
+          </p>
+        </div>
       </section>
 
       {/* Movement 4 -- what Compass deliberately does not do. ------------- */}

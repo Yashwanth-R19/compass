@@ -28,6 +28,7 @@ import { AnimatedList } from "../../reactbits/AnimatedList";
 import { SpotlightCard } from "../../reactbits/SpotlightCard";
 import { CountUp } from "../../components/motion/CountUp";
 import { Reveal } from "../../components/motion/Reveal";
+import { MiniMapPreview } from "../../components/map/MiniMapPreview";
 import { ContributorChip } from "../../components/ContributorChip";
 import { HonestyNote } from "../../components/HonestyNote";
 import { ScoreExplainer, type ScoreExplainerContribution } from "../../components/ScoreExplainer";
@@ -147,6 +148,9 @@ export function OverviewSurfacePage() {
             </div>
             <Reveal delay={0.1}>
               <HealthHistorySparkline repoId={repo.id} share={share} />
+            </Reveal>
+            <Reveal delay={0.11}>
+              <MiniMapPreview repoId={repo.id} share={share} />
             </Reveal>
             <Reveal delay={0.12}>
               <ThreeThingsCard items={data.data.first_pr} repoId={repo.id} />

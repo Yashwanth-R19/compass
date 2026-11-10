@@ -61,6 +61,7 @@ Compass exists to compute the specific set of facts that require history and a f
 
 | Feature | What it answers |
 |---|---|
+| Architecture map | How is the codebase put together? An interactive, layered diagram of computed subsystems or folders, where every box and arrow is backed by imports or commit history (hidden co-change links, cycles, entry points, infrastructure), with drill-down, search, path finding, and PNG/SVG/Mermaid export. Optional AI labelling adds names only. |
 | Guided reading order | Where should a new contributor start reading? |
 | Subsystem map | What are the actual architectural boundaries (computed via Louvain clustering over the coupling + dependency graph)? |
 | Expertise / who-to-ask | Who has effective ownership of a given file? |
@@ -196,7 +197,8 @@ This is not a trained model, a defect classifier, or transfer learning — it is
 | Background jobs | FastAPI `BackgroundTasks` locally, GitHub Actions worker in production | The same job function runs in both transports — no duplicated pipeline logic. |
 | Authentication | GitHub OAuth | Enables private-repository analysis and per-user rate limiting. |
 | Frontend | React 19, TypeScript, Vite | A single-page app that polls and progressively renders results as each analysis stage completes. |
-| Charts | Recharts | The only visualization library in the frontend — no canvas-based or WebGL rendering. |
+| Charts | Recharts | The charting library — no canvas-based or WebGL rendering. |
+| Architecture map | React Flow + ELK | DOM/SVG diagram (no canvas) for the Map surface only, lazy-loaded so neither library ships with any other page. |
 | Deployment | Render (API), Vercel (frontend), Neon (database), GitHub Actions (worker) | Runs entirely on free tiers. |
 
 ## Repository structure

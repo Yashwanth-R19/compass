@@ -5,6 +5,7 @@ from app.api import (
     analysis,
     auth,
     compare,
+    diagram,
     health,
     internal,
     jobs,
@@ -71,6 +72,7 @@ app.include_router(auth.router)
 app.include_router(repos.router)
 app.include_router(jobs.router)
 app.include_router(analysis.router)
+app.include_router(diagram.router)
 app.include_router(me.router)
 app.include_router(share.router)
 app.include_router(narrative.router)

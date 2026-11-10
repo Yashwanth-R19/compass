@@ -109,7 +109,15 @@ export type TooltipKey =
   | "calibration"
   | "snapshot"
   | "churnRankedHotspot"
-  | "engineVersion";
+  | "engineVersion"
+  // The Map surface.
+  | "mapLayers"
+  | "mapImportEdge"
+  | "mapHiddenEdge"
+  | "mapCycleEdge"
+  | "mapActivity"
+  | "mapActor"
+  | "mapAiLabel";
 
 export const TOOLTIPS: Record<TooltipKey, string> = {
   riskScore:
@@ -196,6 +204,20 @@ export const TOOLTIPS: Record<TooltipKey, string> = {
     "One point in the evolution timeline, recomputed from commit history up to that point only — never from a checked-out tree at that revision. Up to 24 points, spaced evenly by commit index (not by date), so an unevenly active repository's snapshots still represent roughly equal amounts of real development activity.",
   churnRankedHotspot:
     "The top files by cumulative churn AS OF one historical snapshot — deliberately never called 'risk' at that point in time, since complexity was never measured historically and the locked risk formula needs it.",
+  mapLayers:
+    "Bands are computed from import direction: the top band holds code nothing else imports, the bottom band code that is imported but imports nothing internal. Groups that import each other share a band.",
+  mapImportEdge:
+    "File-level import statements rolled up to the boxes on screen. Thicker means more imports.",
+  mapHiddenEdge:
+    "These groups' files repeatedly change together in commit history with no import between them — a hidden dependency.",
+  mapCycleEdge:
+    "This link is part of a dependency cycle: following imports from here eventually leads back.",
+  mapActivity:
+    "Changes to these files in the last 365 days (churn), relative to the busiest box currently on screen.",
+  mapActor:
+    "Points at detected entry points (web servers, UI roots, CLIs), found from manifests and naming conventions.",
+  mapAiLabel:
+    "Written by an AI model from the computed data. The boxes and arrows themselves are computed, not generated.",
   engineVersion:
     "Which version of the analysis formulas produced a given run. Bumped only when a measurement genuinely changes (for example, session 07's switch from raw churn to recency-weighted churn) — comparing two runs across a version boundary is legitimate, but some of the movement may reflect the measurement change rather than the code.",
   subsystemCount:
@@ -532,6 +554,9 @@ export const HONESTY = {
     "\"Hidden dependencies only\" isn't offered at directory granularity — the backend's own directory-truncation depth isn't known to the frontend, so there is no honest way to check which directory pairs share a structural edge at this grain. Switch to subsystem or file granularity for that filter.",
   layeringHeuristicConservative:
     "Layering violations use a conservative, keyword-based heuristic: a file matching none of the UI/service/database layer keywords is left unclassified and excluded entirely, rather than guessed at. A clean result here does not guarantee there is no layering problem — only that none was found among files this heuristic could confidently classify.",
+  // The Map surface.
+  mapInfraHeuristic:
+    "Infrastructure boxes are a heuristic: they're detected from config file names and declared dependencies. Compass can't see which code actually talks to a database, so datastores have no arrows.",
   subsystemIdentityInferredByOverlap:
     "A subsystem's identity across two runs is inferred by how much its membership overlaps, never tracked directly — there is no stable subsystem id. A large refactor that leaves no subsystem on either side overlapping by 50% or more will legitimately show as one subsystem disappearing and a different one appearing, rather than a rename.",
 } as const;

@@ -217,3 +217,89 @@ img {
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================
+ * The Map (pages/repo/MapSurfacePage.tsx) -- React Flow themed from the
+ * app's own tokens, plus the owner-approved flowing-edge animation (see
+ * tokens.css's Motion note). The global reduced-motion block above
+ * already collapses these; the explicit rules below make the intent
+ * unmistakable and also honour the Map's own Motion toggle.
+ * ============================================================ */
+.cp-map .react-flow {
+  --xy-background-color: var(--color-bg-elevated);
+  --xy-background-pattern-color: var(--color-border);
+  --xy-node-border: none;
+  --xy-node-color: var(--color-text);
+  --xy-edge-stroke: var(--color-border-strong);
+  --xy-edge-stroke-selected: var(--color-accent);
+  --xy-selection-background-color: var(--color-accent-bg);
+  --xy-selection-border: 1px solid var(--color-accent);
+  --xy-minimap-background-color: var(--color-bg);
+  --xy-minimap-mask-background-color: var(--color-overlay);
+  --xy-minimap-node-stroke-color: transparent;
+  --xy-controls-button-background-color: var(--color-bg-elevated);
+  --xy-controls-button-background-color-hover: var(--color-bg-inset);
+  --xy-controls-button-color: var(--color-text);
+  --xy-controls-button-color-hover: var(--color-accent);
+  --xy-controls-button-border-color: var(--color-border);
+  --xy-handle-background-color: transparent;
+  background: var(--color-bg-elevated);
+}
+
+/* Custom node components draw their own box; React Flow's default node
+   chrome (padding, border, background) must not double it up. */
+.cp-map .react-flow__node {
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  transition: transform 250ms var(--ease-out);
+}
+
+.cp-map .react-flow__node:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.cp-map .react-flow__controls {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.cp-map .react-flow__minimap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+@keyframes cp-map-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+.cp-map-edge-flow {
+  stroke-dasharray: 2 14;
+  animation: cp-map-flow 1.4s linear infinite;
+}
+
+.cp-map-edge-flow-hidden {
+  stroke-dasharray: 4 6;
+  animation: cp-map-flow 2.8s linear infinite;
+}
+
+[data-map-motion="off"] .cp-map-edge-flow,
+[data-map-motion="off"] .cp-map-edge-flow-hidden {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-map-edge-flow,
+  .cp-map-edge-flow-hidden {
+    animation: none;
+  }
+  .cp-map .react-flow__node {
+    transition: none;
+  }
+}

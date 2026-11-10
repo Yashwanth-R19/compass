@@ -58,6 +58,7 @@ export function CommandPalette() {
     if (repoId) {
       const surfaces: [string, string][] = [
         ["overview", "Overview"],
+        ["map", "Map"],
         ["guide", "Guide"],
         ["explore", "Explore"],
         ["findings", "Findings"],
@@ -130,9 +131,23 @@ export function CommandPalette() {
   }, [repoId, me.data, myRepos.data, showcase.data]);
 
   const normalized = query.trim().toLowerCase();
-  const filtered = normalized
+  const matched = normalized
     ? commands.filter((c) => c.label.toLowerCase().includes(normalized))
     : commands;
+  // "Find X on the map" always shows while something is typed on a repo
+  // page -- it answers the query itself, so it's never filtered by it.
+  const filtered: Command[] =
+    repoId && normalized
+      ? [
+          {
+            id: "find-on-map",
+            group: "This repository",
+            label: `Find "${query.trim()}" on the map`,
+            run: () => go(`/repos/${repoId}/map?find=${encodeURIComponent(query.trim())}`),
+          },
+          ...matched,
+        ]
+      : matched;
 
   const groups = new Map<string, Command[]>();
   for (const c of filtered) {

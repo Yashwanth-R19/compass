@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
@@ -14,6 +15,13 @@ import { GuideSurfacePage } from "./pages/repo/GuideSurfacePage";
 import { ExploreSurfacePage } from "./pages/repo/ExploreSurfacePage";
 import { FindingsSurfacePage } from "./pages/repo/FindingsSurfacePage";
 import { EvolutionSurfacePage } from "./pages/repo/EvolutionSurfacePage";
+import { LoadingState } from "./components/LoadingState";
+
+// The Map pulls in React Flow + ELK -- lazy-loaded so those libraries only
+// download when someone actually opens the Map tab.
+const MapSurfacePage = lazy(() =>
+  import("./pages/repo/MapSurfacePage").then((m) => ({ default: m.MapSurfacePage })),
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,8 +59,17 @@ function App() {
               {/* The bare index route -- always lands on Overview. */}
               <Route index element={<RepoIndexRedirect />} />
 
-              {/* The five real repository surfaces (rebuild spec section 4). */}
+              {/* The six real repository surfaces (rebuild spec section 4, plus
+                  the Map). */}
               <Route path="overview" element={<OverviewSurfacePage />} />
+              <Route
+                path="map"
+                element={
+                  <Suspense fallback={<LoadingState label="Loading map…" />}>
+                    <MapSurfacePage />
+                  </Suspense>
+                }
+              />
               <Route path="guide" element={<GuideSurfacePage />} />
               <Route path="explore" element={<ExploreSurfacePage />} />
               <Route path="findings" element={<FindingsSurfacePage />} />
@@ -63,7 +80,8 @@ function App() {
                   this app shipped with until a moment ago, and the
                   session-02-era legacy share-link paths that predate even
                   those. */}
-              <Route path="map" element={<LegacyRedirect to="explore?view=files" />} />
+              {/* `map` used to redirect to explore?view=files; it is now the real
+                  Map surface above (old /map links land on the diagram). */}
               <Route path="onboard" element={<LegacyRedirect to="overview" />} />
               <Route path="onboard/passport" element={<LegacyRedirect to="overview" />} />
               <Route path="onboard/tour" element={<LegacyRedirect to="guide?view=tour" />} />

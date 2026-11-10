@@ -114,6 +114,9 @@
    * Motion — Aporia's exact durations/easing (section 5.3). The
    * running-stage indeterminate rule (components/PipelineSequence.tsx)
    * is the ONLY looping animation permitted anywhere in this app.
+   * Exception (owner-approved): the Map's flowing edges
+   * (`.cp-map-edge-flow*` in index.css), disabled under reduced motion
+   * and by the Map's own Motion toggle.
    * prefers-reduced-motion handling lives in index.css (CSS) and in
    * each ReactBits-sourced/motion primitive itself (JS springs).
    * ============================================================ */
@@ -389,4 +392,23 @@
      unreadable line length while giving grids/tables room to actually
      breathe. */
   --layout-max-width: 1440px;
+}
+
+/* ============================================================
+ * Map Activity lens -- a six-step tint ramp from the page background
+ * toward the accent (bucket 0 = no change in 365 days, 5 = busiest box
+ * on screen). Deliberately NOT the risk heat ramp: activity is not a
+ * judgement, so it must not read as green-good/red-bad. Declared once:
+ * custom properties resolve their var() references on the element where
+ * they're used (<html>), so the same declaration follows the light
+ * theme's --cp-accent/--cp-bg automatically. Read only via inline style
+ * (lib/diagram/activity.ts), so no @theme mapping is needed.
+ * ============================================================ */
+:root {
+  --cp-activity-0: var(--cp-bg);
+  --cp-activity-1: color-mix(in oklab, var(--cp-accent) 12%, var(--cp-bg));
+  --cp-activity-2: color-mix(in oklab, var(--cp-accent) 22%, var(--cp-bg));
+  --cp-activity-3: color-mix(in oklab, var(--cp-accent) 34%, var(--cp-bg));
+  --cp-activity-4: color-mix(in oklab, var(--cp-accent) 46%, var(--cp-bg));
+  --cp-activity-5: color-mix(in oklab, var(--cp-accent) 60%, var(--cp-bg));
 }

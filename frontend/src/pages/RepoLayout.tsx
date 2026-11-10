@@ -32,14 +32,15 @@ import { markChecklistFlag } from "../lib/checklist";
 import type { RepoOut, StageName, StageOut, StageStatus } from "../api/types";
 
 /**
- * The five repository surfaces (rebuild spec section 4) -- real routes,
+ * The six repository surfaces (rebuild spec section 4, plus the Map) -- real routes,
  * `NavLink`s, so deep-linking, the back button, and every existing share
- * link keep working. "Explore" absorbs the former Map/Structure/Impact
+ * link keep working. "Explore" absorbs the former canvas map/Structure/Impact
  * surfaces; "Guide" absorbs Tour/Glossary/People; Risk/Benchmark are now
  * views inside Findings.
  */
 const REPO_TABS = [
   { to: "overview", label: "Overview" },
+  { to: "map", label: "Map" },
   { to: "guide", label: "Guide" },
   { to: "explore", label: "Explore" },
   { to: "findings", label: "Findings" },

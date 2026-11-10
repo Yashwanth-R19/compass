@@ -61,3 +61,11 @@ export function fileName(path: string): string {
   const parts = path.split("/");
   return parts[parts.length - 1] ?? path;
 }
+
+/** Compact count for dense UI (map cards): 950 -> "950", 6120 -> "6.1k",
+ * 1200000 -> "1.2M". A trailing ".0" is dropped. */
+export function formatCompact(n: number): string {
+  if (Math.abs(n) < 1000) return String(Math.round(n));
+  const [value, suffix] = Math.abs(n) < 1_000_000 ? [n / 1000, "k"] : [n / 1_000_000, "M"];
+  return `${value.toFixed(1).replace(/\.0$/, "")}${suffix}`;
+}

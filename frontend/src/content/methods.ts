@@ -47,6 +47,12 @@ export const METHODS_SECTIONS: MethodsSection[] = [
     title: "Reproducibility",
     body: "The same repository at the same commit, analysed twice, produces byte-identical output — this is a core product claim, not an incidental property. Here is what that guarantee covers, and what legitimately changes the numbers.",
   },
+  {
+    id: "map",
+    eyebrow: "Section 6",
+    title: "How the Map is drawn",
+    body: "The Map is drawn entirely from data Compass already computed. Boxes are either the computed subsystems (Louvain community detection over imports and co-change) or folders, split automatically until no single folder dominates. Arrows are import statements between files, rolled up to whatever level is on screen; dashed amber links join groups whose files change together in commit history with no import between them; red arrows take part in a dependency cycle. The horizontal bands are layers computed from import direction: the top band is code nothing else imports, the bottom band is code that is imported but imports nothing internal, and groups that import each other share a band. Infrastructure boxes are a documented heuristic, detected from config file names and declared dependencies, never from file contents. The optional AI labelling writes names, one-line captions, a summary and arrow verbs only; it cannot add or remove a box or an arrow, every name it mentions must exist in the computed data, and arrow verbs are marked as suggestions inferred from names.",
+  },
 ];
 
 export const CORPUS_DESCRIPTION =
@@ -70,7 +76,7 @@ export const LIMITATIONS: string[] = [
   "The hard clone timeout is enforced on this project's actual Linux deployment targets, not on Windows, where the underlying library raises instead of enforcing it — a documented gap, not a silent one.",
   "The domain glossary extracts a repository's own vocabulary, not definitions — Compass shows that a word is one the codebase revolves around, and the handful of files that would tell a reader what it means, not what the word itself means.",
   "Unreferenced-file detection is not dead-code detection — a file with no detected structural edge can still be reached through a dynamic import, reflection, framework auto-discovery, or a build-config reference Compass doesn't parse.",
-  "There is no code city, treemap, or force-directed dependency graph anywhere in this app — three different canvas renderers once showed variations of the same already-computed numbers, and the rebuild that simplified this UI deleted all three as decorative rather than informative. Structure is shown as ranked evidence lists with small, hand-authored diagrams instead.",
+  "There is no code city, treemap, or force-directed dependency graph anywhere in this app — three different canvas renderers once showed variations of the same already-computed numbers, and the rebuild that simplified this UI deleted all three as decorative rather than informative. The one diagram that exists, the Map, is a layered SVG layout of computed groups where every box and arrow is backed by a computed fact; elsewhere, structure is shown as ranked evidence lists with small, hand-authored diagrams.",
   "There is no cross-repository portfolio view — comparing many repositories at once was cut entirely as feature sprawl, not narrowed or hidden behind a flag.",
   "There is no test-gap (test-maintenance) analysis — the engine that mapped test files to the source they cover was removed entirely; `files.is_test` still exists and still feeds the entry-point detector and commit-hygiene scoring, but nothing maps tests to coverage any more.",
   "The heuristic scores (health, onboarding difficulty, commit-hygiene instability, glossary term score) are documented, adjustable starting points, not statistically fitted models — treat their exact weights as a considered opinion, not a proven constant.",
