@@ -6,7 +6,9 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
+  getNodesBounds,
   useReactFlow,
+  useStoreApi,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -15,7 +17,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { MAP_COPY } from "../../content/map";
 import type { DiagramResponse } from "../../api/types";
-import { groupColor } from "../../lib/diagram/display";
+import { resolvedGroupColor } from "../../lib/diagram/display";
 import { layoutDiagram } from "../../lib/diagram/layout";
 import type { VisibleEdge, VisibleGraph } from "../../lib/diagram/visible";
 import { Skeleton } from "../ui/Skeleton";
@@ -23,6 +25,10 @@ import type { DiagramEdgeData } from "./DiagramEdge";
 import type { DiagramNodeData } from "./MapNodes";
 import { mapEdgeTypes, mapNodeTypes, NODE_TYPE_FOR_KIND } from "./flowTypes";
 import { useMapContext } from "./mapContext";
+
+/** Below this zoom the boxes switch to their compact titles. The first view
+ * never opens smaller than this unless the map is too WIDE to fit at it. */
+const READABLE_ZOOM = 0.6;
 
 export interface FitRequest {
   /** Candidate node ids in priority order; the first one on screen wins. */
@@ -32,6 +38,50 @@ export interface FitRequest {
   /** The request also changed what's visible (expand/search), so it must
    * wait for the NEXT layout -- fitting the old one would frame stale boxes. */
   afterRelayout: boolean;
+}
+
+type Box = { x: number; y: number; w: number; h: number };
+
+/** Which side of each box an edge leaves / enters, chosen so lines run
+ * through gutters rather than across other boxes (GitDiagram-style):
+ * - two boxes stacked in the same container: straight down/up when they're
+ *   neighbours, otherwise a bracket along the right-hand gutter;
+ * - a box INSIDE a container talking to anything outside it: through its
+ *   side facing the other end, so the line never cuts through its stack;
+ * - two top-level boxes: facing sides within a row, bottom-to-top across rows. */
+function pickHandles(
+  graph: VisibleGraph,
+  absolute: Map<string, Box>,
+  sourceId: string,
+  targetId: string,
+): [string, string] {
+  const a = absolute.get(sourceId) as Box;
+  const b = absolute.get(targetId) as Box;
+  const s = graph.byId.get(sourceId);
+  const t = graph.byId.get(targetId);
+  const ax = a.x + a.w / 2;
+  const bx = b.x + b.w / 2;
+  if (s?.parentId && s.parentId === t?.parentId) {
+    const top = Math.min(a.y + a.h, b.y + b.h);
+    const bottom = Math.max(a.y, b.y);
+    const between = graph.nodes.some((n) => {
+      if (n.parentId !== s.parentId || n.id === s.id || n.id === t.id) return false;
+      const box = absolute.get(n.id);
+      return Boolean(box) && box!.y >= top - 1 && box!.y + box!.h <= bottom + 1;
+    });
+    if (!between && Math.abs(ax - bx) < 4) return a.y < b.y ? ["b", "t"] : ["t", "b"];
+    return ["r", "r"];
+  }
+  const facing = (fromX: number, toX: number) => (toX >= fromX ? "r" : "l");
+  const sourceSide = s?.parentId ? facing(ax, bx) : null;
+  const targetSide = t?.parentId ? facing(bx, ax) : null;
+  if (sourceSide || targetSide) {
+    const vertical = a.y < b.y ? ["b", "t"] : ["t", "b"];
+    return [sourceSide ?? vertical[0], targetSide ?? vertical[1]];
+  }
+  const sameRow = a.y < b.y + b.h && b.y < a.y + a.h;
+  if (sameRow) return ax <= bx ? ["r", "l"] : ["l", "r"];
+  return a.y < b.y ? ["b", "t"] : ["t", "b"];
 }
 
 function buildFlow(
@@ -83,7 +133,7 @@ function buildFlow(
     nodes.push(node);
   }
   // Absolute boxes (children are stored relative to their parent).
-  const absolute = new Map<string, { x: number; y: number; w: number; h: number }>();
+  const absolute = new Map<string, Box>();
   for (const vnode of graph.nodes) {
     const box = layout.nodes.get(vnode.id);
     if (!box) continue;
@@ -99,18 +149,7 @@ function buildFlow(
   const flowEdges: Edge<DiagramEdgeData>[] = edges
     .filter((e) => absolute.has(e.source) && absolute.has(e.target))
     .map((e) => {
-      const a = absolute.get(e.source) as { x: number; y: number; w: number; h: number };
-      const b = absolute.get(e.target) as { x: number; y: number; w: number; h: number };
-      // Overlapping vertically (same row) -> connect the facing sides;
-      // otherwise bottom of the upper box to the top of the lower one.
-      const sameRow = a.y < b.y + b.h && b.y < a.y + a.h;
-      let sourceHandle: string;
-      let targetHandle: string;
-      if (sameRow) {
-        [sourceHandle, targetHandle] = a.x + a.w / 2 <= b.x + b.w / 2 ? ["r", "l"] : ["l", "r"];
-      } else {
-        [sourceHandle, targetHandle] = a.y < b.y ? ["b", "t"] : ["t", "b"];
-      }
+      const [sourceHandle, targetHandle] = pickHandles(graph, absolute, e.source, e.target);
       return {
         id: e.id,
         source: e.source,
@@ -143,7 +182,8 @@ export function MapCanvas({
   const { theme } = useTheme();
   const reducedMotion = usePrefersReducedMotion();
   const ctx = useMapContext();
-  const { fitView } = useReactFlow();
+  const { fitView, setViewport } = useReactFlow();
+  const store = useStoreApi();
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
   const firstFitDone = useRef(false);
   const flowVersion = useRef(0);
@@ -175,7 +215,22 @@ export function MapCanvas({
     const frame = requestAnimationFrame(() => {
       if (!firstFitDone.current) {
         firstFitDone.current = true;
-        void fitView({ padding: 0.12, duration: 0 });
+        // Fit the whole map when it's still legible that way; otherwise open
+        // at a readable zoom aligned to the TOP band (GitDiagram-style: start
+        // readable and scroll down, rather than start as a thumbnail).
+        const { width, height } = store.getState();
+        const bounds = getNodesBounds(flow.nodes);
+        const fitZoom = Math.min(width / (bounds.width * 1.1), height / (bounds.height * 1.1));
+        if (fitZoom >= READABLE_ZOOM || !width || !bounds.width) {
+          void fitView({ padding: 0.08, duration: 0, maxZoom: 1 });
+        } else {
+          const zoom = Math.max(fitZoom, Math.min(READABLE_ZOOM, width / (bounds.width + 80)));
+          void setViewport({
+            x: (width - bounds.width * zoom) / 2 - bounds.x * zoom,
+            y: 24 - bounds.y * zoom,
+            zoom,
+          });
+        }
         return;
       }
       const pending = pendingFit.current;
@@ -189,7 +244,7 @@ export function MapCanvas({
       void fitView({ nodes: [{ id: target }], padding: 0.3, duration, maxZoom: 1.2 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [flow, fitRequest, fitView, reducedMotion]);
+  }, [flow, fitRequest, fitView, setViewport, store, reducedMotion]);
 
   if (!flow) {
     return (
@@ -224,7 +279,12 @@ export function MapCanvas({
       onEdgeClick={(_, edge) => ctx.onSelect(edge.id)}
       onPaneClick={() => ctx.onSelect("")}
     >
-      <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--color-border)" />
+      <Background
+        variant={BackgroundVariant.Dots}
+        gap={28}
+        size={1}
+        color="color-mix(in oklab, var(--color-border) 70%, transparent)"
+      />
       <Controls showInteractive={false} position="bottom-left" />
       <MiniMap
         pannable
@@ -234,7 +294,7 @@ export function MapCanvas({
         nodeColor={(node) => {
           const vnode = (node.data as Partial<DiagramNodeData>).vnode;
           if (!vnode) return "transparent";
-          return groupColor(data, vnode.groupId);
+          return resolvedGroupColor(data, vnode.groupId);
         }}
         maskColor="var(--color-overlay)"
       />

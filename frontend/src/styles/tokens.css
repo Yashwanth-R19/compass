@@ -115,7 +115,7 @@
    * running-stage indeterminate rule (components/PipelineSequence.tsx)
    * is the ONLY looping animation permitted anywhere in this app.
    * Exception (owner-approved): the Map's flowing edges
-   * (`.cp-map-edge-flow*` in index.css), disabled under reduced motion
+   * (`.cp-map-edge-*` in index.css), disabled under reduced motion
    * and by the Map's own Motion toggle.
    * prefers-reduced-motion handling lives in index.css (CSS) and in
    * each ReactBits-sourced/motion primitive itself (JS springs).
@@ -411,4 +411,94 @@
   --cp-activity-3: color-mix(in oklab, var(--cp-accent) 34%, var(--cp-bg));
   --cp-activity-4: color-mix(in oklab, var(--cp-accent) 46%, var(--cp-bg));
   --cp-activity-5: color-mix(in oklab, var(--cp-accent) 60%, var(--cp-bg));
+}
+
+/* ============================================================
+ * The Map's diagram palette -- modelled on GitDiagram's Mermaid theme:
+ * neutral containers, pastel component boxes (Tailwind 100 fill / 600
+ * stroke / 900 text) in light mode, deep tints with 400 strokes and 100
+ * text in dark mode. Eight hues (no purple, per the categorical-palette
+ * rule in lib/palette.ts) plus a neutral slate for external things (the
+ * actor, infrastructure). A group's hue is chosen by
+ * lib/diagram/display.ts::groupHue. Read only via inline style var().
+ * ============================================================ */
+:root {
+  --map-canvas: var(--cp-bg);
+  --map-cluster-bg: color-mix(in oklab, #ffffff 3%, var(--cp-bg-elevated));
+  --map-cluster-border: #2c3038;
+  --map-cluster-title: var(--cp-text-heading);
+  --map-edge: #9aa3b2;
+  --map-label-bg: color-mix(in oklab, var(--cp-bg) 88%, transparent);
+  --map-label-text: #c9ced8;
+  --map-ext-fill: color-mix(in oklab, #94a3b8 12%, var(--cp-bg-elevated));
+  --map-ext-stroke: #94a3b8;
+  --map-ext-text: #e2e8f0;
+  /* blue */
+  --map-h0-stroke: #60a5fa;
+  --map-h0-text: #dbeafe;
+  --map-h0-fill: color-mix(in oklab, var(--map-h0-stroke) 15%, var(--cp-bg-elevated));
+  /* amber */
+  --map-h1-stroke: #fbbf24;
+  --map-h1-text: #fef3c7;
+  --map-h1-fill: color-mix(in oklab, var(--map-h1-stroke) 15%, var(--cp-bg-elevated));
+  /* green */
+  --map-h2-stroke: #4ade80;
+  --map-h2-text: #dcfce7;
+  --map-h2-fill: color-mix(in oklab, var(--map-h2-stroke) 15%, var(--cp-bg-elevated));
+  /* rose */
+  --map-h3-stroke: #fb7185;
+  --map-h3-text: #ffe4e6;
+  --map-h3-fill: color-mix(in oklab, var(--map-h3-stroke) 15%, var(--cp-bg-elevated));
+  /* teal */
+  --map-h4-stroke: #2dd4bf;
+  --map-h4-text: #ccfbf1;
+  --map-h4-fill: color-mix(in oklab, var(--map-h4-stroke) 15%, var(--cp-bg-elevated));
+  /* orange */
+  --map-h5-stroke: #fb923c;
+  --map-h5-text: #ffedd5;
+  --map-h5-fill: color-mix(in oklab, var(--map-h5-stroke) 15%, var(--cp-bg-elevated));
+  /* cyan */
+  --map-h6-stroke: #22d3ee;
+  --map-h6-text: #cffafe;
+  --map-h6-fill: color-mix(in oklab, var(--map-h6-stroke) 15%, var(--cp-bg-elevated));
+  /* lime */
+  --map-h7-stroke: #a3e635;
+  --map-h7-text: #ecfccb;
+  --map-h7-fill: color-mix(in oklab, var(--map-h7-stroke) 15%, var(--cp-bg-elevated));
+}
+
+:root[data-theme="light"] {
+  --map-cluster-bg: #f7f7f7;
+  --map-cluster-border: #dedede;
+  --map-cluster-title: #0a0a0a;
+  --map-edge: #1f2937;
+  --map-label-bg: rgba(240, 240, 240, 0.88);
+  --map-label-text: #171717;
+  --map-ext-fill: #f1f5f9;
+  --map-ext-stroke: #64748b;
+  --map-ext-text: #1e293b;
+  --map-h0-fill: #dbeafe;
+  --map-h0-stroke: #2563eb;
+  --map-h0-text: #1e3a8a;
+  --map-h1-fill: #fef3c7;
+  --map-h1-stroke: #d97706;
+  --map-h1-text: #78350f;
+  --map-h2-fill: #dcfce7;
+  --map-h2-stroke: #16a34a;
+  --map-h2-text: #14532d;
+  --map-h3-fill: #ffe4e6;
+  --map-h3-stroke: #e11d48;
+  --map-h3-text: #881337;
+  --map-h4-fill: #ccfbf1;
+  --map-h4-stroke: #0d9488;
+  --map-h4-text: #134e4a;
+  --map-h5-fill: #ffedd5;
+  --map-h5-stroke: #ea580c;
+  --map-h5-text: #7c2d12;
+  --map-h6-fill: #cffafe;
+  --map-h6-stroke: #0891b2;
+  --map-h6-text: #164e63;
+  --map-h7-fill: #ecfccb;
+  --map-h7-stroke: #65a30d;
+  --map-h7-text: #365314;
 }

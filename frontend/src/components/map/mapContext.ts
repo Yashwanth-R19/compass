@@ -22,6 +22,8 @@ export interface MapContextValue {
   selectedId: string | null;
   /** Tour stop positions (1-based, as the Guide numbers them) per visible node id. */
   tourSteps: Map<string, number[]>;
+  /** How many child boxes each visible container currently shows. */
+  childCount: Map<string, number>;
   onToggleExpand: (id: string) => void;
   onSelect: (id: string) => void;
 }

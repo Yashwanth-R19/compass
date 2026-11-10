@@ -27,7 +27,7 @@ import {
 } from "../../content/map";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { activityBucket, type ActivityBucket } from "../../lib/diagram/activity";
-import { displayName, edgeVerb } from "../../lib/diagram/display";
+import { displayName, edgeVerb, fileTitle, groupHueIndex } from "../../lib/diagram/display";
 import { downloadDiagramImage, readCssVar } from "../../lib/diagram/exportImage";
 import {
   fileNodeId,
@@ -214,7 +214,8 @@ function MapWorkspace({
     const values = new Map<string, number>();
     let max = 0;
     for (const n of graph.nodes) {
-      if (n.kind !== "group" && n.kind !== "folder" && n.kind !== "file") continue;
+      if (n.kind !== "group" && n.kind !== "folder" && n.kind !== "file" && n.kind !== "component")
+        continue;
       const v = sumChurn(data, n.fileIndices);
       values.set(n.id, v);
       max = Math.max(max, v);
@@ -485,6 +486,8 @@ function MapWorkspace({
         infraCategory: (id) => data.infra.find((i) => i.id === id)?.category ?? null,
         verbOf: (e) => edgeVerb(e, aiOn, aiVerbs),
         cycleColor: readCssVar("--cp-danger"),
+        hueOf: (n) => groupHueIndex(data, n.groupId),
+        titleOf: (n) => fileTitle(n.fileIndex != null ? data.files[n.fileIndex].path : n.label),
       });
       try {
         await navigator.clipboard.writeText(text);
@@ -501,6 +504,14 @@ function MapWorkspace({
     }
   }
 
+  const childCount = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const n of graph.nodes) {
+      if (n.parentId) counts.set(n.parentId, (counts.get(n.parentId) ?? 0) + 1);
+    }
+    return counts;
+  }, [graph]);
+
   const contextValue: MapContextValue = useMemo(
     () => ({
       data,
@@ -513,6 +524,7 @@ function MapWorkspace({
       emphasis,
       selectedId,
       tourSteps,
+      childCount,
       onToggleExpand: toggleExpand,
       onSelect: select,
     }),
@@ -527,6 +539,7 @@ function MapWorkspace({
       emphasis,
       selectedId,
       tourSteps,
+      childCount,
       toggleExpand,
       select,
     ],

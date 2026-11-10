@@ -226,7 +226,7 @@ img {
  * unmistakable and also honour the Map's own Motion toggle.
  * ============================================================ */
 .cp-map .react-flow {
-  --xy-background-color: var(--color-bg-elevated);
+  --xy-background-color: var(--map-canvas);
   --xy-background-pattern-color: var(--color-border);
   --xy-node-border: none;
   --xy-node-color: var(--color-text);
@@ -243,7 +243,7 @@ img {
   --xy-controls-button-color-hover: var(--color-accent);
   --xy-controls-button-border-color: var(--color-border);
   --xy-handle-background-color: transparent;
-  background: var(--color-bg-elevated);
+  background: var(--map-canvas);
 }
 
 /* Custom node components draw their own box; React Flow's default node
@@ -261,6 +261,12 @@ img {
   outline-offset: 2px;
 }
 
+/* Edge labels sit ON the line, above boxes (React Flow layers them below
+   nodes by default, which clipped labels on gutter-routed edges). */
+.cp-map .react-flow__edgelabel-renderer {
+  z-index: 1001;
+}
+
 .cp-map .react-flow__controls {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -275,29 +281,36 @@ img {
 
 @keyframes cp-map-flow {
   to {
-    stroke-dashoffset: -32;
+    stroke-dashoffset: -28;
   }
 }
 
-.cp-map-edge-flow {
-  stroke-dasharray: 2 14;
-  animation: cp-map-flow 1.4s linear infinite;
+/* Imports: solid at rest; while Motion is on, a slow marching dash in the
+   arrow's direction (GitDiagram's own "edge-animation-slow" treatment). */
+[data-map-motion="on"] .cp-map-edge-flow {
+  stroke-dasharray: 9 5;
+  animation: cp-map-flow 1.6s linear infinite;
 }
 
-.cp-map-edge-flow-hidden {
-  stroke-dasharray: 4 6;
-  animation: cp-map-flow 2.8s linear infinite;
+[data-map-motion="on"] .cp-map-edge-flow-slow {
+  stroke-dasharray: 9 5;
+  animation: cp-map-flow 3.2s linear infinite;
 }
 
-[data-map-motion="off"] .cp-map-edge-flow,
-[data-map-motion="off"] .cp-map-edge-flow-hidden {
-  animation: none;
+/* Co-change links: always dotted (that IS their meaning), drifting slowly. */
+.cp-map-edge-dotted {
+  stroke-dasharray: 2 5;
+}
+
+[data-map-motion="on"] .cp-map-edge-dotted {
+  animation: cp-map-flow 4s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cp-map-edge-flow,
-  .cp-map-edge-flow-hidden {
-    animation: none;
+  .cp-map-edge-flow-slow,
+  .cp-map-edge-dotted {
+    animation: none !important;
   }
   .cp-map .react-flow__node {
     transition: none;

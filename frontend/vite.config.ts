@@ -10,6 +10,19 @@ import tailwindcss from '@tailwindcss/vite'
 // dev server, not the Vite/Vitest pipeline.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Mirrors frontend/vercel.json's production rewrite (/api/* -> the API),
+  // so running the dev server with VITE_API_URL=/api exercises the exact
+  // same-origin path production uses. The default dev setup (no
+  // VITE_API_URL) still talks to http://localhost:8000 directly.
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

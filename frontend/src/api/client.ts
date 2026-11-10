@@ -1,4 +1,14 @@
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
+/** Where the API lives. Production defaults to the SAME-ORIGIN `/api` path,
+ * which frontend/vercel.json proxies to the Render backend: that makes the
+ * session cookie first-party, so browsers that block third-party cookies
+ * (Safari, Brave, Firefox strict mode, incognito, Chrome with the setting
+ * on) still keep you logged in. Calling the Render URL directly from the
+ * Vercel page would make it a cross-site cookie those browsers silently
+ * drop. Local dev talks to the API on :8000 directly. VITE_API_URL, when
+ * set, overrides both. */
+const API_URL =
+  (import.meta.env.VITE_API_URL as string | undefined) ??
+  (import.meta.env.PROD ? "/api" : "http://localhost:8000");
 
 export class ApiError extends Error {
   status: number;

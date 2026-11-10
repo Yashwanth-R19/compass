@@ -2,7 +2,10 @@ import type { DiagramResponse } from "../../api/types";
 import { ACTOR_NODE_ID, fileNodeId, groupNodeId, moreNodeId } from "./ids";
 import { hasChildren, orderedChildren, type TreeChild, type TreeFolder } from "./tree";
 
-export type VisibleNodeKind = "group" | "folder" | "file" | "more" | "actor" | "infra";
+/** "component" = one of a COLLAPSED group's key files, drawn inside the group
+ * container (GitDiagram-style); "file" = a file inside an EXPANDED group. */
+export type VisibleNodeKind =
+  "group" | "folder" | "file" | "component" | "more" | "actor" | "infra";
 
 export interface VisibleNode {
   id: string;
@@ -50,6 +53,8 @@ export interface VisibleGraph {
 }
 
 const MAX_FILE_PAIRS = 20;
+/** HEURISTIC: how many key files a collapsed group shows as components. */
+export const COMPONENTS_PER_GROUP = 4;
 /** HEURISTIC: past this many import edges on screen, single-import edges
  * are hidden by default ("Weak links" toggle brings them back). */
 export const WEAK_EDGE_THRESHOLD = 60;
@@ -125,6 +130,48 @@ export function computeVisible(
     }
   }
 
+  // A collapsed group's key files: the ones the most import edges touch
+  // (so the arrows have real anchors), then centrality / size, then path.
+  // Drawn top-to-bottom importer-before-imported, like a flow.
+  const degree = new Map<number, number>();
+  for (const [f, t] of data.imports) {
+    degree.set(f, (degree.get(f) ?? 0) + 1);
+    degree.set(t, (degree.get(t) ?? 0) + 1);
+  }
+  function keyFiles(indices: number[]): number[] {
+    const ranked = [...indices].sort((a, b) => {
+      const fa = data.files[a];
+      const fb = data.files[b];
+      return (
+        (degree.get(b) ?? 0) - (degree.get(a) ?? 0) ||
+        (fb.centrality ?? 0) - (fa.centrality ?? 0) ||
+        fb.loc - fa.loc ||
+        fa.path.localeCompare(fb.path)
+      );
+    });
+    const chosen = ranked.slice(0, COMPONENTS_PER_GROUP);
+    const inSet = new Set(chosen);
+    const incoming = new Map(chosen.map((i) => [i, 0]));
+    const out = new Map<number, number[]>(chosen.map((i) => [i, []]));
+    for (const [f, t] of data.imports) {
+      if (f !== t && inSet.has(f) && inSet.has(t)) {
+        out.get(f)?.push(t);
+        incoming.set(t, (incoming.get(t) ?? 0) + 1);
+      }
+    }
+    const order: number[] = [];
+    const remaining = new Set(chosen);
+    while (remaining.size > 0) {
+      const ready = chosen.filter((i) => remaining.has(i) && (incoming.get(i) ?? 0) === 0);
+      const next = ready[0] ?? chosen.find((i) => remaining.has(i)); // cycle: fall back to rank
+      if (next === undefined) break;
+      remaining.delete(next);
+      order.push(next);
+      for (const t of out.get(next) ?? []) incoming.set(t, (incoming.get(t) ?? 0) - 1);
+    }
+    return order;
+  }
+
   const actorLayer = data.layers.find((l) => l.kind === "actor");
   if (options.showActor && data.actor && actorLayer) {
     nodes.push({
@@ -160,6 +207,24 @@ export function computeVisible(
       band: g.layer,
     });
     if (isExpanded) addChildren(tree, id, g.id, 1);
+    else {
+      for (const index of keyFiles(tree.allFiles)) {
+        const file = data.files[index];
+        nodes.push({
+          id: fileNodeId(file.path),
+          kind: "component",
+          parentId: id,
+          groupId: g.id,
+          label: file.path.split("/").pop() ?? file.path,
+          fileIndices: [index],
+          fileIndex: index,
+          expandable: false,
+          expanded: false,
+          depth: 1,
+          band: null,
+        });
+      }
+    }
   }
 
   const infraLayer = data.layers.find((l) => l.kind === "infra");
@@ -286,7 +351,7 @@ export function projectEdges(
     }
   }
 
-  let list = [...edges.values()];
+  let list = dedupeAcrossCollapsedGroups([...edges.values()], graph);
   let weakHiddenCount = 0;
   const importCount = list.filter((e) => e.kind === "import").length;
   if (!options.showWeak && importCount > WEAK_EDGE_THRESHOLD) {
@@ -296,6 +361,59 @@ export function projectEdges(
   }
   list.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { edges: list, weakHiddenCount };
+}
+
+function topLevelOf(graph: VisibleGraph, id: string): VisibleNode | undefined {
+  let node = graph.byId.get(id);
+  while (node?.parentId) node = graph.byId.get(node.parentId);
+  return node;
+}
+
+/** Between two COLLAPSED groups, draw ONE arrow per direction (one dashed
+ * link for co-change), anchored on the endpoints that carry the most
+ * imports, labelled with the pair's TOTAL -- the GitDiagram-style "one
+ * clear line per relationship" instead of a fan of thin file-level lines.
+ * Edges touching an expanded group keep full detail. */
+function dedupeAcrossCollapsedGroups(edges: VisibleEdge[], graph: VisibleGraph): VisibleEdge[] {
+  const kept: VisibleEdge[] = [];
+  const buckets = new Map<string, VisibleEdge[]>();
+  for (const e of edges) {
+    if (e.kind !== "import" && e.kind !== "hidden") {
+      kept.push(e);
+      continue;
+    }
+    const a = topLevelOf(graph, e.source);
+    const b = topLevelOf(graph, e.target);
+    const collapsedPair =
+      a &&
+      b &&
+      a.id !== b.id &&
+      a.kind === "group" &&
+      b.kind === "group" &&
+      !a.expanded &&
+      !b.expanded;
+    if (!collapsedPair) {
+      kept.push(e);
+      continue;
+    }
+    const key = e.kind === "hidden" ? `h:${[a.id, b.id].sort().join("|")}` : `i:${a.id}>${b.id}`;
+    const list = buckets.get(key) ?? [];
+    list.push(e);
+    buckets.set(key, list);
+  }
+  for (const list of buckets.values()) {
+    const best = [...list].sort((x, y) => y.count - x.count || (x.id < y.id ? -1 : 1))[0];
+    const merged: VisibleEdge = {
+      ...best,
+      count: list.reduce((sum, e) => sum + e.count, 0),
+      inCycle: list.some((e) => e.inCycle),
+      maxDegree: list.reduce((m, e) => Math.max(m, e.maxDegree ?? 0), 0) || best.maxDegree,
+      sharedRevs: list.reduce((sum, e) => sum + (e.sharedRevs ?? 0), 0) || best.sharedRevs,
+      filePairs: list.flatMap((e) => e.filePairs).slice(0, MAX_FILE_PAIRS),
+    };
+    kept.push(merged);
+  }
+  return kept;
 }
 
 /** Ids of a node and every ancestor up to the top level. */

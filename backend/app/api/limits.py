@@ -147,12 +147,15 @@ def get_client_ip(request: Request) -> str:
     """The first entry of ``X-Forwarded-For``, or the direct connection's
     address as a local-dev fallback.
 
-    This is only safe to trust because Render (this project's deployment
-    target, DEPLOY.md) is a TRUSTED proxy that OVERWRITES ``X-Forwarded-For``
-    with the real client address rather than appending to whatever a client
-    sent -- behind an untrusted proxy (or with no proxy at all, where a
-    client could set this header directly), taking it at face value would
-    let anyone forge their way past IP-based rate limiting.
+    Production traffic arrives browser -> Vercel (frontend/vercel.json's
+    ``/api/*`` rewrite) -> Render -> here. Vercel SETS ``X-Forwarded-For`` to
+    the visitor's public IP on proxied requests (it does not pass through a
+    client-supplied value), and Render APPENDS its own hop after it, so the
+    first entry is the real visitor -- every anonymous visitor still gets
+    their own rate-limit bucket, not one shared Vercel-edge bucket. A client
+    that bypasses Vercel and calls the Render URL directly can still put
+    whatever it likes first (Render appends rather than overwriting); that
+    was equally true before the proxy existed.
     """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:

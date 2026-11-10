@@ -1,7 +1,7 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useDiagram } from "../../api/hooks";
 import type { DiagramResponse } from "../../api/types";
-import { groupColor, withShare } from "../../lib/diagram/display";
+import { groupHue, withShare } from "../../lib/diagram/display";
 import { Card } from "../ui/Card";
 
 const VIEW_WIDTH = 600;
@@ -100,7 +100,7 @@ function MiniMapSvg({ data }: { data: DiagramResponse }) {
         );
       })}
       {[...positions.entries()].map(([gid, p]) => {
-        const color = groupColor(data, gid);
+        const hue = groupHue(data, gid);
         return (
           <g key={gid}>
             <rect
@@ -109,8 +109,7 @@ function MiniMapSvg({ data }: { data: DiagramResponse }) {
               width={p.w}
               height={BOX_HEIGHT}
               rx={4}
-              fill={`color-mix(in oklab, ${color} 22%, transparent)`}
-              stroke={color}
+              style={{ fill: hue.fill, stroke: hue.stroke, strokeWidth: 1.5 }}
             />
             <text
               x={p.x + p.w / 2}
@@ -118,7 +117,7 @@ function MiniMapSvg({ data }: { data: DiagramResponse }) {
               textAnchor="middle"
               fontFamily="var(--font-mono)"
               fontSize="9"
-              fill="var(--color-text)"
+              style={{ fill: hue.text }}
             >
               {truncate(labelOf.get(gid) ?? gid)}
             </text>

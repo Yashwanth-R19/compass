@@ -16,7 +16,26 @@ export interface MermaidInput {
   verbOf: (edge: VisibleEdge) => string | null;
   /** Literal colour for cycle edges (Mermaid needs a colour value, not a CSS var). */
   cycleColor: string;
+  /** Palette slot (0-7) of a node's group, or null for neutral/external. */
+  hueOf: (node: VisibleNode) => number | null;
+  /** Readable title for a file box (the file name goes underneath). */
+  titleOf: (node: VisibleNode) => string;
 }
+
+/** The Map's light palette as literal colours (Tailwind 100/600/900), the
+ * same scheme GitDiagram's Mermaid output uses -- an exported diagram
+ * should look right pasted into a README on a white page. */
+const CLASS_DEFS: [string, string, string][] = [
+  ["#dbeafe", "#2563eb", "#1e3a8a"],
+  ["#fef3c7", "#d97706", "#78350f"],
+  ["#dcfce7", "#16a34a", "#14532d"],
+  ["#ffe4e6", "#e11d48", "#881337"],
+  ["#ccfbf1", "#0d9488", "#134e4a"],
+  ["#ffedd5", "#ea580c", "#7c2d12"],
+  ["#cffafe", "#0891b2", "#164e63"],
+  ["#ecfccb", "#65a30d", "#365314"],
+];
+const EXTERNAL_DEF: [string, string, string] = ["#f1f5f9", "#64748b", "#1e293b"];
 
 function escape(text: string): string {
   return text.replace(/"/g, "#quot;").replace(/\n/g, " ");
@@ -61,16 +80,16 @@ export function toMermaid(input: MermaidInput): string {
         ? `${id}[("${text}")]`
         : `${id}[/"${text}"/]`;
     }
-    const files =
-      n.kind === "file"
-        ? ""
-        : ` (${n.fileIndices.length} file${n.fileIndices.length === 1 ? "" : "s"})`;
+    if (n.kind === "file" || n.kind === "component") {
+      return `${id}["${escape(input.titleOf(n))}<br/>[${escape(n.label)}]"]`;
+    }
+    const files = ` (${n.fileIndices.length} file${n.fileIndices.length === 1 ? "" : "s"})`;
     return `${id}["${text}${files}"]`;
   };
 
   const emit = (n: VisibleNode, indent: string): void => {
     const kids = childrenOf.get(n.id) ?? [];
-    if (n.expanded && kids.length > 0) {
+    if (kids.length > 0) {
       lines.push(`${indent}subgraph ${alias.get(n.id)}["${label(n)}"]`);
       for (const k of kids) emit(k, `${indent}  `);
       lines.push(`${indent}end`);
@@ -109,6 +128,23 @@ export function toMermaid(input: MermaidInput): string {
   }
   for (const i of cycleLinks) {
     lines.push(`  linkStyle ${i} stroke:${input.cycleColor || "red"},stroke-width:2px`);
+  }
+
+  CLASS_DEFS.forEach(([fill, stroke, color], h) => {
+    lines.push(`  classDef g${h} fill:${fill},stroke:${stroke},stroke-width:1.5px,color:${color}`);
+  });
+  lines.push(
+    `  classDef ext fill:${EXTERNAL_DEF[0]},stroke:${EXTERNAL_DEF[1]},stroke-width:1.5px,color:${EXTERNAL_DEF[2]}`,
+  );
+  for (const n of sorted) {
+    const id = alias.get(n.id);
+    if (!id || (childrenOf.get(n.id)?.length ?? 0) > 0) continue; // subgraphs keep the default style
+    if (n.kind === "actor" || n.kind === "infra") {
+      lines.push(`  class ${id} ext`);
+      continue;
+    }
+    const h = input.hueOf(n);
+    lines.push(`  class ${id} ${h === null ? "ext" : `g${h}`}`);
   }
   return `${lines.join("\n")}\n`;
 }

@@ -4,7 +4,7 @@ import { DiagramEdge } from "./DiagramEdge";
 import {
   ActorNode,
   BandNode,
-  FileNode,
+  ComponentNode,
   FolderNode,
   GroupNode,
   InfraNode,
@@ -16,7 +16,7 @@ import {
 export const mapNodeTypes = {
   mapGroup: memo(GroupNode),
   mapFolder: memo(FolderNode),
-  mapFile: memo(FileNode),
+  mapComponent: memo(ComponentNode),
   mapMore: memo(MoreNode),
   mapActor: memo(ActorNode),
   mapInfra: memo(InfraNode),
@@ -28,7 +28,8 @@ export const mapEdgeTypes = { diagram: memo(DiagramEdge) };
 export const NODE_TYPE_FOR_KIND: Record<VisibleNode["kind"], keyof typeof mapNodeTypes> = {
   group: "mapGroup",
   folder: "mapFolder",
-  file: "mapFile",
+  file: "mapComponent",
+  component: "mapComponent",
   more: "mapMore",
   actor: "mapActor",
   infra: "mapInfra",

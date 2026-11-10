@@ -6,16 +6,24 @@ import type { VisibleEdge, VisibleGraph, VisibleNode, VisibleNodeKind } from "./
  * (semantic zoom swaps its content, not its footprint), so a zoom change
  * never forces a relayout. Expanded group/folder boxes are sized by ELK. */
 export const NODE_SIZE: Record<VisibleNodeKind, { width: number; height: number }> = {
-  group: { width: 248, height: 120 },
-  folder: { width: 208, height: 72 },
-  file: { width: 208, height: 56 },
-  more: { width: 132, height: 40 },
-  actor: { width: 168, height: 56 },
-  infra: { width: 196, height: 72 },
+  group: { width: 260, height: 96 },
+  folder: { width: 220, height: 56 },
+  file: { width: 220, height: 56 },
+  component: { width: 220, height: 56 },
+  more: { width: 132, height: 36 },
+  actor: { width: 112, height: 112 },
+  infra: { width: 200, height: 60 },
 };
 
-/** Room at the top of an expanded box for its header row. */
+/** Room at the top of a container for its centred title + [path] line. */
 export const EXPANDED_HEADER = 56;
+
+/** A collapsed group's container: header, its component stack (with room
+ * between boxes for an edge label, GitDiagram-style), then a footer line. */
+const STACK_GAP = 34;
+const STACK_PAD_X = 20;
+const STACK_PAD_BOTTOM = 18;
+export const CONTAINER_FOOTER = 26;
 
 export interface LaidOutNode {
   id: string;
@@ -42,12 +50,12 @@ export interface DiagramLayout {
 
 /** Top-level boxes per row inside one band before it wraps onto a new row. */
 const MAX_PER_ROW = 5;
-const GAP_X = 48;
-const GAP_ROW = 40;
-const GAP_BAND = 88;
-const BAND_PAD_X = 40;
-const BAND_PAD_TOP = 36;
-const BAND_PAD_BOTTOM = 24;
+const GAP_X = 72;
+const GAP_ROW = 56;
+const GAP_BAND = 104;
+const BAND_PAD_X = 48;
+const BAND_PAD_TOP = 40;
+const BAND_PAD_BOTTOM = 28;
 
 const elk = new ELK();
 
@@ -138,6 +146,32 @@ async function layoutContainer(
   return { width: result.width ?? NODE_SIZE[top.kind].width, height: result.height ?? 0 };
 }
 
+function stackComponents(
+  top: VisibleNode,
+  kids: string[],
+  out: Map<string, LaidOutNode>,
+): { width: number; height: number } {
+  const comp = NODE_SIZE.component;
+  const width = comp.width + 2 * STACK_PAD_X;
+  let y = EXPANDED_HEADER;
+  // `kids` keeps computeVisible's order (importer above imported).
+  kids.forEach((id, k) => {
+    if (k > 0) y += STACK_GAP;
+    out.set(id, {
+      id,
+      parentId: top.id,
+      x: STACK_PAD_X,
+      y,
+      width: comp.width,
+      height: comp.height,
+    });
+    y += comp.height;
+  });
+  const hiddenFiles = top.fileIndices.length - kids.length;
+  const footer = hiddenFiles > 0 ? CONTAINER_FOOTER : 0;
+  return { width, height: y + STACK_PAD_BOTTOM + footer };
+}
+
 /** Orders each band's boxes to reduce crossings: every box is placed at the
  * average position of the boxes it connects to in the bands ABOVE it
  * (a single downward barycenter sweep). Boxes with no such neighbour keep
@@ -186,11 +220,15 @@ export async function layoutDiagram(
     }
   }
 
-  // 1. Size every top-level box (ELK only for expanded ones).
+  // 1. Size every top-level box: ELK for expanded groups, a fixed vertical
+  //    stack for a collapsed group's key-file components, fixed otherwise.
   const size = new Map<string, { width: number; height: number }>();
   for (const top of topLevel) {
-    if (top.expanded && (childrenOf.get(top.id)?.length ?? 0) > 0) {
+    const kids = childrenOf.get(top.id) ?? [];
+    if (top.expanded && kids.length > 0) {
       size.set(top.id, await layoutContainer(graph, top, childrenOf, edges, nodes));
+    } else if (kids.length > 0) {
+      size.set(top.id, stackComponents(top, kids, nodes));
     } else {
       size.set(top.id, NODE_SIZE[top.kind]);
     }
