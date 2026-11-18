@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Navigate,
-  NavLink,
   Outlet,
   useLocation,
   useParams,
@@ -14,7 +13,6 @@ import {
   useRepo,
   useRepoStatus,
   useRevokeShareLink,
-  useRuns,
   useSubmitRepo,
 } from "../api/hooks";
 import { ApiError } from "../api/client";
@@ -32,7 +30,7 @@ import { markChecklistFlag } from "../lib/checklist";
 import type { RepoOut, StageName, StageOut, StageStatus } from "../api/types";
 
 /**
- * The six repository surfaces (rebuild spec section 4, plus the Map) -- real routes,
+ * The five repository surfaces (rebuild spec section 4, plus the Map) -- real routes,
  * `NavLink`s, so deep-linking, the back button, and every existing share
  * link keep working. "Explore" absorbs the former canvas map/Structure/Impact
  * surfaces; "Guide" absorbs Tour/Glossary/People; Risk/Benchmark are now
@@ -44,7 +42,6 @@ const REPO_TABS = [
   { to: "guide", label: "Guide" },
   { to: "explore", label: "Explore" },
   { to: "findings", label: "Findings" },
-  { to: "evolution", label: "Evolution" },
 ];
 
 /** The bare `/repos/:repoId` index route always lands on Overview now --
@@ -97,7 +94,7 @@ function buildRedirectTarget(
  * (see `buildRedirectTarget` above). Covers the pre-consolidation
  * eight-surface paths, the session-02 legacy share-link paths
  * (`coupling`/`architecture`/`risk`), and the pre-eight-surface dual-mode
- * paths (`onboard/*`/`audit/*`/bare `compare`) -- all still-live links,
+ * paths (`onboard/*`/`audit/*`) -- all still-live links,
  * never a one-time migration aid.
  *
  * `absolute`: for the handful of redirects that are NOT `/repos/:id/...`
@@ -201,7 +198,6 @@ export function RepoLayout() {
   const { data: repo, isPending, isError, error, refetch } = useRepo(repoId, share);
   const status = useRepoStatus(repoId, share);
   const me = useMe();
-  const runs = useRuns(repoId, share);
 
   if (isPending) return <LoadingState label="Loading repo…" />;
   if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
@@ -246,7 +242,6 @@ export function RepoLayout() {
             >
               {REPO_STATUS_LABEL[displayStatus] ?? displayStatus}
             </span>
-            {(runs.data?.runs.length ?? 0) >= 2 ? <CompareLink /> : null}
             {status.data?.current_run_id ? (
               <NarrativeDrawer repoId={repo.id} share={share} />
             ) : null}
@@ -398,28 +393,6 @@ function stageSummaryValue(stage: StageOut): string | null {
   const value = stage.summary[key];
   if (typeof value !== "number") return null;
   return Math.round(value).toLocaleString();
-}
-
-/** A header entry point to run-vs-run compare, shown only when the repo
- * has >= 2 runs -- not part of the tab bar itself (compare is a
- * cross-run view, not one of the eight surfaces), reached via
- * `evolution?tab=compare` (the "evolution" surface's own Compare
- * segment). */
-function CompareLink() {
-  return (
-    <NavLink
-      to="evolution?view=compare"
-      className={({ isActive }) =>
-        `inline-flex items-center rounded-xs border px-2.5 py-1 text-xs font-medium transition-colors ${
-          isActive
-            ? "border-accent bg-accent text-accent-contrast"
-            : "border-border text-text-muted hover:bg-bg-inset"
-        }`
-      }
-    >
-      Compare
-    </NavLink>
-  );
 }
 
 /** Links a repo with no owner yet (e.g. analyzed while logged out) to the

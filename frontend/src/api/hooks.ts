@@ -7,7 +7,6 @@ import type {
   BenchmarkResponse,
   BlastRadiusResponse,
   CityResponse,
-  CompareResponse,
   DiagramAiResponse,
   DiagramGrouping,
   DiagramResponse,
@@ -37,7 +36,6 @@ import type {
   ShareLinkOut,
   ShowcaseReposResponse,
   SubsystemsResponse,
-  TimelineResponse,
   TourResponse,
   TruckFactorResponse,
   UserOut,
@@ -392,30 +390,6 @@ export function useHealthHistory(repoId: string | undefined, runIds: string[], s
         enabled: Boolean(repoId),
       };
     }),
-  });
-}
-
-/** Session 13: the evolution scrubber's data source. Gates on "onboarding"
- * (TimelineEngine runs inside that stage) -- a normal StageGate consumer. */
-export function useTimeline(repoId: string | undefined, share?: string) {
-  const qs = share ? `?share=${encodeURIComponent(share)}` : "";
-
-  return useQuery({
-    queryKey: ["timeline", repoId, share ?? null],
-    queryFn: () => apiGetOrPending<TimelineResponse>(`/repos/${repoId}/timeline${qs}`),
-    enabled: Boolean(repoId),
-  });
-}
-
-/** Session 13: run-vs-run compare. NOT run-scoped in the 202-while-pending
- * sense -- `/compare/runs` always computes fresh from two already-finished
- * runs, so this is a plain `apiGet`, never `apiGetOrPending`. Disabled until
- * both run ids are picked. */
-export function useCompare(runIdBefore: string | undefined, runIdAfter: string | undefined) {
-  return useQuery({
-    queryKey: ["compare", runIdBefore ?? null, runIdAfter ?? null],
-    queryFn: () => apiGet<CompareResponse>(`/compare/runs?a=${runIdBefore}&b=${runIdAfter}`),
-    enabled: Boolean(runIdBefore) && Boolean(runIdAfter) && runIdBefore !== runIdAfter,
   });
 }
 

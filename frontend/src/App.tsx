@@ -14,7 +14,6 @@ import { OverviewSurfacePage } from "./pages/repo/OverviewSurfacePage";
 import { GuideSurfacePage } from "./pages/repo/GuideSurfacePage";
 import { ExploreSurfacePage } from "./pages/repo/ExploreSurfacePage";
 import { FindingsSurfacePage } from "./pages/repo/FindingsSurfacePage";
-import { EvolutionSurfacePage } from "./pages/repo/EvolutionSurfacePage";
 import { LoadingState } from "./components/LoadingState";
 
 // The Map pulls in React Flow + ELK -- lazy-loaded so those libraries only
@@ -73,7 +72,6 @@ function App() {
               <Route path="guide" element={<GuideSurfacePage />} />
               <Route path="explore" element={<ExploreSurfacePage />} />
               <Route path="findings" element={<FindingsSurfacePage />} />
-              <Route path="evolution" element={<EvolutionSurfacePage />} />
 
               {/* Every currently-live path must keep working (section
                   4.6) -- both the pre-consolidation eight-surface paths
@@ -94,10 +92,6 @@ function App() {
               <Route path="onboard/map" element={<LegacyRedirect to="explore?view=files" />} />
               <Route path="onboard/city" element={<LegacyRedirect to="explore?view=files" />} />
               <Route path="onboard/impact" element={<LegacyRedirect to="explore?view=impact" />} />
-              <Route
-                path="onboard/evolution"
-                element={<LegacyRedirect to="evolution?view=timeline" />}
-              />
 
               <Route path="structure" element={<LegacyRedirect to="explore?view=structure" />} />
               <Route path="audit" element={<LegacyRedirect to="findings" />} />
@@ -127,8 +121,6 @@ function App() {
                 element={<LegacyRedirect to="findings?view=benchmark" />}
               />
               <Route path="audit/health" element={<LegacyRedirect to="overview#health" />} />
-
-              <Route path="compare" element={<LegacyRedirect to="evolution?view=compare" />} />
             </Route>
 
             <Route

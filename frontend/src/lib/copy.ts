@@ -9,14 +9,11 @@
 // backend enum member that was never added to the frontend's own union type
 // still gets caught at test time, not just at the type-checker's mercy.
 import type {
-  ContributorChangeKind,
-  CouplingChangeKind,
   EntryPointKind,
   FindingCategory,
   FirstPrCode,
   HygieneEventKind,
   LabelSource,
-  SubsystemChangeKind,
   TourReasonCode,
 } from "../api/types";
 import { formatPercent, formatScore } from "./format";
@@ -168,26 +165,4 @@ export const LABEL_SOURCE_COPY: Record<LabelSource, () => string> = {
   path_prefix: () => "Named from a shared directory prefix",
   identifiers: () => "Named from its most common identifier",
   fallback: () => "No confident name could be derived",
-};
-
-// --- Session 13: run-vs-run compare -----------------------------------------
-
-export const SUBSYSTEM_CHANGE_COPY: Record<SubsystemChangeKind, () => string> = {
-  appeared: () => "New subsystem",
-  disappeared: () => "Subsystem gone",
-  merged: () => "Merged from",
-  split: () => "Split into",
-};
-
-export const CONTRIBUTOR_CHANGE_COPY: Record<ContributorChangeKind, () => string> = {
-  joined: () => "Joined",
-  left: () => "Left",
-  went_stale: () => "Went quiet",
-};
-
-export const COUPLING_CHANGE_COPY: Record<CouplingChangeKind, () => string> = {
-  appeared: () => "New pairing",
-  strengthened: () => "Strengthened",
-  weakened: () => "Weakened",
-  vanished: () => "No longer coupled",
 };

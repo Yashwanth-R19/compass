@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     analysis,
     auth,
-    compare,
     diagram,
     health,
     internal,
@@ -14,7 +13,6 @@ from app.api import (
     narrative,
     repos,
     share,
-    timeline,
 )
 from app.api.logging_config import configure_logging
 from app.api.middleware import (
@@ -76,5 +74,3 @@ app.include_router(diagram.router)
 app.include_router(me.router)
 app.include_router(share.router)
 app.include_router(narrative.router)
-app.include_router(timeline.router)
-app.include_router(compare.router)

@@ -595,9 +595,8 @@ _STAGE_DESCRIPTIONS: dict[str, str] = {
         "repository's truck factor via greedy expert removal."
     ),
     "onboarding": (
-        "Builds a guided reading order, extracts a domain vocabulary glossary, computes "
-        "historical snapshots for the evolution scrubber, composes the overall health "
-        "score, and assembles the one-page repo passport."
+        "Builds a guided reading order, extracts a domain vocabulary glossary, composes "
+        "the overall health score, and assembles the one-page repo passport."
     ),
     "security": (
         "Looks up each declared dependency against the OSV.dev vulnerability database, "

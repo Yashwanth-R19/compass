@@ -199,15 +199,6 @@
   --color-scale-3: var(--scale-3);
   --color-scale-4: var(--scale-4);
   --color-scale-5: var(--scale-5);
-
-  /* Compare-direction diverging pair (the evolution surface's run-vs-run
-     compare view) -- improve reuses the accent (the positive hue in this
-     system); worsen reuses danger directly (a text/foreground use, not a
-     fill, so no contrast-engineering is needed the way the heat ramp's
-     fills would). */
-  --color-diverging-improve: var(--cp-accent);
-  --color-diverging-worsen: var(--cp-danger);
-  --color-diverging-neutral: var(--cp-text-muted);
 }
 
 /* ============================================================

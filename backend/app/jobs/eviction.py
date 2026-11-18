@@ -18,8 +18,8 @@ the only driver):
    not filtered out after the fact, so there is no code path that could
    accidentally prune one.
 2. Evict superseded runs beyond the most recent ``KEEP_RUNS_PER_REPO`` per
-   repository, oldest first (keeping 3 preserves session 13's compare
-   feature -- a user diffing "the last few" runs).
+   repository, oldest first (keeping 3 preserves a short run history for
+   the Overview health-over-time chart).
 3. If storage is still above ``EVICTION_LOW_WATER`` after step 2, evict
    **Facts** (not Insight) for repositories with no run viewed in
    ``FACTS_TTL_DAYS``. The repository row and its current run's Insight
@@ -60,8 +60,8 @@ logger = logging.getLogger(__name__)
 
 KEEP_RUNS_PER_REPO = 3
 """Superseded runs beyond the most recent N (per repo, newest-first) are
-eligible for pruning -- keeping 3 preserves session 13's run-vs-run compare
-(picking any two of "the last few" runs), while still bounding how many old
+eligible for pruning -- keeping 3 preserves a short run history for the
+Overview health-over-time chart, while still bounding how many old
 runs' Insight rows a frequently-reanalyzed repo accumulates forever."""
 
 FACTS_TTL_DAYS = 30
@@ -72,8 +72,8 @@ wiped. The repository row and its current run's Insight stay intact."""
 
 NEVER_EVICT_RUN_AGE_DAYS = 7
 """No run younger than this is ever pruned, even if already superseded -- a
-very recent re-analysis is exactly the kind of run a "before my last few
-commits" compare would reach for."""
+very recent re-analysis is still part of the run history the Overview
+health-over-time chart reads."""
 
 
 @dataclass

@@ -13,8 +13,7 @@ const ICON = {
  * honesty registry (plan/UI_REBUILD_SESSIONS.md section 5.3) — Compass's
  * refusal to claim more than it measured, made a VISIBLE statement rather
  * than a buried footnote. Three variants: `scope-limitation` (what was not
- * measured — e.g. the evolution timeline's "this is churn-ranked, not risk
- * over time"), `confidence-caveat` (how sure Compass is about a specific
+ * measured — e.g. "complexity was never measured historically"), `confidence-caveat` (how sure Compass is about a specific
  * number — e.g. "this repository had too few commits for the normal
  * coupling floor"), and `calibration` (whether a score is heuristic or
  * corpus-calibrated).
@@ -23,8 +22,7 @@ const ICON = {
  * never below the fold, never as a dismissible tooltip. `text` is a prop,
  * not a lookup, specifically so a caller can pass either a fixed string
  * from `content/explainability.ts`'s `HONESTY` registry OR — whenever the
- * backend already returns the exact sentence (`TimelineResponse.not_covered`,
- * `TestGapsResponse.limitation`, `GlossaryResponse.limitation`,
+ * backend already returns the exact sentence (`TestGapsResponse.limitation`, `GlossaryResponse.limitation`,
  * `unreferenced_files_caveat`, `secrets_caveat`, `pooled_distribution_label`,
  * `corpus_note`, the truck-factor `interpretation`) — that API string
  * verbatim, never a local paraphrase that could drift out of sync with it.

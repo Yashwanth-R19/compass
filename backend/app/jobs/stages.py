@@ -25,7 +25,6 @@ from app.engines.passport import PassportEngine
 from app.engines.risk import RiskEngine
 from app.engines.security import SecurityEngine, fetch_and_persist_vulnerabilities
 from app.engines.subsystems import SubsystemEngine
-from app.engines.timeline import TimelineEngine
 from app.engines.tour import TourEngine
 from app.engines.truck_factor import TruckFactorEngine
 
@@ -119,7 +118,6 @@ INSIGHT_STAGES: tuple[Stage, ...] = (
         (
             TourEngine().run,
             GlossaryEngine().run,
-            TimelineEngine().run,
             HealthEngine().run,
             _run_passport_engine,
         ),
@@ -175,17 +173,10 @@ whole run (app/jobs/stages.py::stage's ``optional`` parameter)."""
   earlier stages but don't depend on each other or on Health, so they run
   first (in this fixed relative order for no reason beyond "Tour before
   Glossary" being the order the session prompt names them in -- neither
-  actually reads the other's output). **TimelineEngine (session 13) runs
-  THIRD, after GlossaryEngine and before HealthEngine** -- it needs nothing
-  from either (it reads only Facts -- ``commits``/``files`` -- via its own
-  single accumulation pass, see app/engines/timeline.py), so its exact slot
-  here is a placement choice, not a dependency; it was inserted at the
-  position the session 13 prompt specified rather than appended to the end,
-  since a later session reading this list top-to-bottom should see the same
-  order the prompt itself describes. HealthEngine runs FOURTH, UNCHANGED
+  actually reads the other's output). HealthEngine runs THIRD, UNCHANGED
   from its pre-session-06 behavior (needs Risk's file_metrics plus
   Architecture's cycles and Overlay's hidden-dependency count -- see its own
-  docstring). **PassportEngine runs FIFTH, strictly after HealthEngine, in
+  docstring). **PassportEngine runs FOURTH, strictly after HealthEngine, in
   the SAME stage** -- this is the one new load-bearing order dependency
   session 06 introduces: PassportEngine's ``data.health`` embeds the
   ``health`` row HealthEngine writes earlier in this same stage, and the

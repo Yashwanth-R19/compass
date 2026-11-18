@@ -69,7 +69,6 @@ Compass exists to compute the specific set of facts that require history and a f
 | Domain glossary | What vocabulary does this codebase's own identifiers and structure define? |
 | Blast radius | If this file changes, what else is affected — both by imports and by historical co-change? |
 | File browser | Every file's LOC, complexity, risk, churn, commit count, and subsystem, sortable in one table. |
-| Evolution timeline | How the repository's shape, hotspots, and contributor mix changed over its history. |
 | Repository passport | A one-page computed summary: identity, cadence, team shape, and an onboarding-difficulty score. |
 
 ### Hardening a codebase already in production
@@ -98,10 +97,6 @@ Compass exists to compute the specific set of facts that require history and a f
 **Ranked findings** — every issue detected across every category, in one severity- and confidence-ranked stream.
 
 ![Findings stream](docs/screenshot-findings.png)
-
-**Evolution timeline** — repository shape, churn, and contributor activity sampled at 24 points across its full history, on a fixed scale.
-
-![Evolution timeline](docs/screenshot-evolution.png)
 
 ## System architecture
 
@@ -132,7 +127,7 @@ flowchart TB
     insight --> P[(PostgreSQL)]
 ```
 
-The split matters for correctness, not just performance: Facts are keyed by repository and replaced wholesale only when the remote commit hash actually changes; Insight is keyed by an individual analysis run, so re-analysing a repository creates a new, independently queryable run rather than overwriting the last one. That is what makes run-to-run comparison possible without any extra bookkeeping.
+The split matters for correctness, not just performance: Facts are keyed by repository and replaced wholesale only when the remote commit hash actually changes; Insight is keyed by an individual analysis run, so re-analysing a repository creates a new, independently queryable run rather than overwriting the last one.
 
 ### Deployment topology
 
@@ -207,7 +202,7 @@ This is not a trained model, a defect classifier, or transfer learning — it is
 compass/
 ├── backend/
 │   ├── app/
-│   │   ├── analysis/     # pure computation helpers shared across engines (blast radius, compare, staleness)
+│   │   ├── analysis/     # pure computation helpers shared across engines (blast radius, staleness)
 │   │   ├── api/          # FastAPI routers — one module per resource area
 │   │   ├── auth/         # GitHub OAuth, session handling, token encryption
 │   │   ├── baseline/     # the corpus-calibration provider seam and its build/seed scripts

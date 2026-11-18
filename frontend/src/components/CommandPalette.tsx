@@ -62,7 +62,6 @@ export function CommandPalette() {
         ["guide", "Guide"],
         ["explore", "Explore"],
         ["findings", "Findings"],
-        ["evolution", "Evolution"],
       ];
       for (const [path, label] of surfaces) {
         list.push({

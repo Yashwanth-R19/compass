@@ -107,8 +107,6 @@ export type TooltipKey =
   | "benchmarkPercentile"
   | "widenedComparison"
   | "calibration"
-  | "snapshot"
-  | "churnRankedHotspot"
   | "engineVersion"
   // The Map surface.
   | "mapLayers"
@@ -200,10 +198,6 @@ export const TOOLTIPS: Record<TooltipKey, string> = {
     "The exact (language, size bucket) cell had fewer than 5 contributing corpus repositories, so the comparison broadened — first to any size bucket in the same language, then to any language at all — before falling back to a purely per-repository heuristic. A percentile is never presented as more authoritative than the repository count actually behind it.",
   calibration:
     'Whether a heuristic score\'s normalization is per-repository min-max scaling ("heuristic") or drawn from the curated corpus\'s own percentile curve ("corpus"). Read from the response at request time — a score is never labelled more precisely calibrated than the currently configured provider actually supports.',
-  snapshot:
-    "One point in the evolution timeline, recomputed from commit history up to that point only — never from a checked-out tree at that revision. Up to 24 points, spaced evenly by commit index (not by date), so an unevenly active repository's snapshots still represent roughly equal amounts of real development activity.",
-  churnRankedHotspot:
-    "The top files by cumulative churn AS OF one historical snapshot — deliberately never called 'risk' at that point in time, since complexity was never measured historically and the locked risk formula needs it.",
   mapLayers:
     "Bands are computed from import direction: the top band holds code nothing else imports, the bottom band code that is imported but imports nothing internal. Groups that import each other share a band.",
   mapImportEdge:
@@ -500,7 +494,7 @@ export const CALIBRATION_COPY: Record<"heuristic" | "corpus", string> = {
 // ---------------------------------------------------------------------------
 // The honesty registry (section 5.3) — fixed strings for statements that
 // are NOT already returned verbatim by the API. Where the API DOES return
-// the string (TimelineResponse.not_covered, GlossaryResponse.limitation,
+// the string (GlossaryResponse.limitation,
 // unreferenced_files_caveat, secrets_caveat, corpus_note, the truck-factor
 // interpretation), render THAT string verbatim instead — never a local
 // copy that could drift out of sync with it.
@@ -532,8 +526,6 @@ export const HONESTY = {
     "This repository had too few analyzed commits for the normal coupling floor, so a lowered threshold was used for this run — read these pairs as a smaller, less certain sample.",
   benchmarkWidened:
     "This comparison broadened past the exact language-and-size-bucket cell because too few corpus repositories matched it exactly — treat it as a coarser comparison.",
-  compareEngineVersionDiffers:
-    "These two runs used different engine versions. A prior change altered how an input is measured (for example, churn) — some movement shown here may reflect that measurement change rather than a real change in the code.",
   // UI rebuild session 3 additions -- the Map and People surfaces.
   pageRankUniformOnEdgelessGraph:
     "PageRank returns a uniform distribution on a graph with no detected import or coupling edges — every file gets the same centrality score. This correctly reflects the absence of structural data, not a computation error; centrality is not discriminating on a repository like this.",
@@ -543,13 +535,13 @@ export const HONESTY = {
     "Bot commits are excluded from authorship modelling entirely, not merely down-weighted. A file only ever touched by a bot — a lockfile only a dependency-update bot edits, for example — has no expert at all, rather than a weak one.",
   identityMergingIsRuleBasedNotFuzzy:
     "Contributor identities are merged by deterministic, rule-based matching only — an exact email, a GitHub noreply address, an exact name, or a shared email local part — never fuzzy string similarity. A missed merge only slightly undercounts one person's activity; a false merge would put someone else's history under the wrong name, which is the worse mistake to risk.",
-  // UI rebuild session 4 additions -- Findings, Risk, Structure, Evolution.
+  // UI rebuild session 4 additions -- Findings, Risk, Structure.
   timeOfDayExcludedFromHygiene:
     "Time of day is deliberately not one of the risky-commit conditions. It is folklore — dependent on a contributor's own timezone, which commit metadata doesn't reliably record — and including it would weaken the credibility of the three evidence-based conditions this signal actually uses.",
   riskConfidenceNotAFourthTerm:
     "risk_confidence is not a fourth term in the risk_score formula — it is a completely independent measure of how much commit history backs the score. A file can be exactly as risky as its score says and still be low-confidence, simply because there isn't much history behind the number yet.",
   benchmarkVsPortfolioDistinct:
-    "This is a comparison against a curated corpus of OTHER repositories — a genuine external benchmark, not a self-comparison against this repository's own past runs (that's what the Evolution surface's run-to-run compare is for).",
+    "This is a comparison against a curated corpus of OTHER repositories — a genuine external benchmark, not a self-comparison against this repository's own past runs.",
   directoryGrainHasNoStructuralCrossReference:
     "\"Hidden dependencies only\" isn't offered at directory granularity — the backend's own directory-truncation depth isn't known to the frontend, so there is no honest way to check which directory pairs share a structural edge at this grain. Switch to subsystem or file granularity for that filter.",
   layeringHeuristicConservative:

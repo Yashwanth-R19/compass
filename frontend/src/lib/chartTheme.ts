@@ -89,11 +89,6 @@ export const RISK_HIGH = RISK_SCALE[RISK_SCALE.length - 1];
 export const RECENCY_FRESH: string = readVar("--cp-accent", "#d6ac4d");
 export const RECENCY_STALE: string = UNASSIGNED_COLOR;
 
-// ---- Diverging (compare: improved / worsened / neutral) ------------------
-export const DIVERGING_IMPROVE: string = readVar("--cp-accent", "#d6ac4d");
-export const DIVERGING_WORSEN: string = readVar("--cp-danger", "#d98a98");
-export const DIVERGING_NEUTRAL: string = readVar("--cp-text-muted", "#7e848f");
-
 // ---- Severity / confidence -------------------------------------------
 // Severity reads from the three named status tones (danger/warning/
 // success) -- lib/format.ts::SEVERITY_CLASSES' own docstring explains why
